@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Hey Pi
+Comment=Switch the screen to Hey Pi
+Exec=@HOME@/hey-pi/start-hey-pi.sh
+Icon=@HOME@/hey-pi/hey-pi.svg
+Terminal=false
+Categories=Utility;

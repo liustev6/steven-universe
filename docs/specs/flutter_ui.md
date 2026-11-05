@@ -1,4 +1,4 @@
-# Spec: Home panel Flutter UI (Raspberry Pi 5 + flutter-pi)
+# Spec: Hey Pi, the home panel Flutter UI (Raspberry Pi 5 + flutter-pi)
 
 ## Scope
 A full-screen Flutter touch UI for a wall/desk home control panel. It runs on a Raspberry Pi 5 via
@@ -116,7 +116,7 @@ pi-agent ⇄ AgentClient ──▶ MessageRouter ──▶ Notifiers (Riverpod) 
 
 ### SnapshotCache: `lib/cache/snapshot_cache.dart`
 - Contents: feed data + `fetchedAt` (weather, HA states). **Not** display state or assistant state.
-- Path: `$HOME_PANEL_CACHE`, default `~/.cache/home-panel/cache.json`.
+- Path: `$HEY_PI_CACHE`, default `~/.cache/hey-pi/cache.json`.
 - Write debounced (at most once per 30 s, SD-card wear), atomically (write temp file → rename).
 - Cold start: load cache → render everything as stale → replace on `snapshot`.
 - Corrupt/missing cache → start empty, log, overwrite on next write.
@@ -219,7 +219,7 @@ home-hub → client
 
 client → home-hub
 ```json
-{"type":"hello","protocol_version":1,"client":"home-panel"}
+{"type":"hello","protocol_version":1,"client":"hey-pi"}
 {"type":"subscribe","feeds":["weather","ha:light.living_room","ha:scene.movie"]}
 {"type":"ha_action","id":"a1b2","entity_id":"light.living_room","service":"light.toggle","data":{}}
 {"type":"assistant_text","text":"turn off the kitchen lights"}
@@ -352,9 +352,9 @@ The city name comes from home-hub config (or Open-Meteo's geocoding API). WMO `w
 `[P]` = portable data layer (D8): pure Dart or Riverpod only, no imports from `[panel]` code.
 Everything else is panel-only.
 ```
-dart/apps/home-panel/
+dart/apps/hey-pi/
 ├── README.md                    # toolchain, dev, build, deploy, protocol
-├── pubspec.yaml                 # name: home_panel
+├── pubspec.yaml                 # name: hey_pi
 ├── analysis_options.yaml
 ├── assets/
 │   └── fonts/inter/             # Inter (OFL), weights 200–700
@@ -418,10 +418,10 @@ dart/apps/home-panel/
 │   └── widgets/                 # dashboard at 1024×600, sleep view, overlay
 ├── macos/                       # generated; window size fixed in MainFlutterWindow.swift
 ├── deploy/                      # files that get INSTALLED ON THE PI
-│   ├── start-panel.sh           # desktop → app switch (transient unit home-panel-app)
-│   ├── home-panel.desktop       # desktop/app-menu launcher (@HOME@ filled in on install)
-│   ├── home-panel.svg           # launcher icon
-│   └── home-panel.service       # (later) systemd unit for boot-to-app
+│   ├── start-hey-pi.sh           # desktop → app switch (transient unit hey-pi)
+│   ├── hey-pi.desktop       # desktop/app-menu launcher (@HOME@ filled in on install)
+│   ├── hey-pi.svg           # launcher icon
+│   └── hey-pi.service       # (later) systemd unit for boot-to-app
 └── scripts/                     # scripts RUN ON THE MAC
     └── run_deploy.sh            # build → stop app → rsync app + deploy/ files [--run] [--skip-build]
 ```
@@ -452,12 +452,12 @@ when "lab offline" is toggled, and provides:
 
 ## Dev loop
 - **Mac (default):** `dart run tool/mock_agent.dart` in one terminal; `flutter run -d macos` (or F5
-  with the `home-panel (macOS)` launch config) in another. The macOS window is fixed at 1024×600 in
+  with the `hey-pi (macOS)` launch config) in another. The macOS window is fixed at 1024×600 in
   `macos/Runner/MainFlutterWindow.swift`.
 - **On the Pi with hot reload:** register once with
   `flutterpi_tool devices add <user>@panel.local --id=panel --display-size=269x158`
   (269 mm gives flutter-pi's pixel-ratio formula ≈ 1.0, matching release), then
-  `flutterpi_tool run -d panel`. Stop the `home-panel` service first; only one process can own the display.
+  `flutterpi_tool run -d panel`. Stop the `hey-pi` service first; only one process can own the display.
 
 ## Pi setup (one-time, `deploy/pi-setup.sh`, run on the Pi)
 1. Boot to console: `sudo raspi-config nonint do_boot_behaviour B1`.
@@ -466,21 +466,21 @@ when "lab offline" is toggled, and provides:
    (flutterpi_tool bundles the `flutter-pi` binary and engine into the app, so flutter-pi does
    **not** need to be compiled on the Pi.)
 3. Groups: `sudo usermod -aG render,video,input <user>` (GPU, DRM, touch input).
-4. Create `~/panel/` and install the unit:
-   `sudo cp home-panel.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable home-panel`.
+4. Create `~/hey-pi/` and install the unit:
+   `sudo cp hey-pi.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable hey-pi`.
 5. Reboot.
 
 On-Pi directory layout:
 ```
-~/panel/
+~/hey-pi/
 ├── app/          # build output; replaced wholesale on every deploy (rsync --delete)
 └── cache.json    # snapshot cache; survives deploys
 ```
 
 ## Build & deploy (`scripts/run_deploy.sh`, run on the Mac)
 Current mode: **the Pi boots to the desktop**; the app runs only when started from the
-"Home Panel" launcher (or `--run`), which stops the desktop and starts the app as the transient
-unit `home-panel-app`. Reboot (or `sudo systemctl stop home-panel-app; sudo systemctl start lightdm`)
+"Hey Pi" launcher (or `--run`), which stops the desktop and starts the app as the transient
+unit `hey-pi`. Reboot (or `sudo systemctl stop hey-pi; sudo systemctl start lightdm`)
 returns to the desktop.
 ```sh
 scripts/run_deploy.sh            # build, stop app, copy app + launcher files
@@ -489,9 +489,9 @@ scripts/run_deploy.sh --run      # ...and switch the Pi screen to the app
 Under the hood:
 ```sh
 flutterpi_tool build --arch=arm64 --cpu=pi5 --release   # → build/flutter-pi/pi5-64/
-ssh panel 'sudo systemctl stop home-panel-app'
-rsync -a --delete build/flutter-pi/pi5-64/ panel:panel/app/
-rsync deploy/{start-panel.sh,home-panel.svg,home-panel.desktop} panel:panel/   # + install launcher
+ssh panel 'sudo systemctl stop hey-pi'
+rsync -a --delete build/flutter-pi/pi5-64/ panel:hey-pi/app/
+rsync deploy/{start-hey-pi.sh,hey-pi.svg,hey-pi.desktop} panel:hey-pi/   # + install launcher
 ```
 - Output goes to `build/flutter-pi/<target>/` (`pi5-64` with `--cpu=pi5`), **not**
   `build/flutter_assets/`. It contains the `flutter-pi` binary, `libflutter_engine.so`, `app.so`
@@ -500,19 +500,19 @@ rsync deploy/{start-panel.sh,home-panel.svg,home-panel.desktop} panel:panel/   #
 - `PI_HOST` comes from the environment, default `panel` (the `~/.ssh/config` alias).
 - `sudo` over ssh relies on passwordless sudo (Pi OS default for the first user).
 
-## systemd unit (`deploy/home-panel.service`), later, for boot-to-app
+## systemd unit (`deploy/hey-pi.service`), later, for boot-to-app
 ```ini
 [Unit]
-Description=Home panel Flutter UI
+Description=Hey Pi (home panel Flutter UI)
 After=systemd-user-sessions.service pi-agent.service
 Conflicts=getty@tty1.service
 
 [Service]
 User=<user>
 SupplementaryGroups=render video input
-WorkingDirectory=/home/<user>/panel
-Environment=HOME_PANEL_CACHE=/home/<user>/panel/cache.json
-ExecStart=/home/<user>/panel/app/flutter-pi --release --dimensions 269,158 /home/<user>/panel/app
+WorkingDirectory=/home/<user>/hey-pi
+Environment=HEY_PI_CACHE=/home/<user>/hey-pi/cache.json
+ExecStart=/home/<user>/hey-pi/app/flutter-pi --release --dimensions 269,158 /home/<user>/hey-pi/app
 Restart=always
 RestartSec=2
 
