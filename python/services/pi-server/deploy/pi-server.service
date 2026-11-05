@@ -1,0 +1,14 @@
+[Unit]
+Description=pi-server (local service for Hey Pi)
+After=network.target
+
+[Service]
+User=@USER@
+WorkingDirectory=@HOME@/pi-server
+Environment=PI_SERVER_DATA_DIR=@HOME@/.local/share/pi-server
+ExecStart=@HOME@/pi-server/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8765
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+# Development requirements (local development and tests only)
+
+# Include base requirements
+-r requirements.txt
+
+# Tests (FastAPI's TestClient needs httpx)
+pytest==8.3.5
+httpx==0.28.1
