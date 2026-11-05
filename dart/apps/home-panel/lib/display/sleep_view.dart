@@ -66,9 +66,8 @@ class SleepClock extends StatelessWidget {
   /// Font size of the main time; every other size derives from it.
   static const double timeSize = 180;
 
-  /// Height of digits as a fraction of font size (≈0.71 for SF, Inter and
-  /// Roboto).
-  static const double _capHeight = 0.71;
+  /// Height of digits as a fraction of font size (Inter: 0.727).
+  static const double _capHeight = 0.727;
 
   /// Distance from the top of the time row to the shared text baseline.
   /// Equal to the digit height, so the row starts exactly at the top of the
@@ -95,7 +94,7 @@ class SleepClock extends StatelessWidget {
                   fontSize: timeSize,
                   fontWeight: FontWeight.w600,
                   height: 1,
-                  letterSpacing: -20,
+                  letterSpacing: -10,
                   fontFeatures: _figures,
                 ),
               ),

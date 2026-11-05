@@ -83,9 +83,9 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('debug sleep button switches to the sleep clock', (tester) async {
+  testWidgets('sleep button switches to the sleep clock', (tester) async {
     await pumpPanel(tester);
-    await tester.tap(find.byType(DebugSleepButton));
+    await tester.tap(find.byType(SleepButton));
     await tester.pumpAndSettle();
     expect(find.byType(SleepView), findsOneWidget);
     expect(find.byType(DashboardView), findsNothing);

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,8 +7,8 @@ import '../ui/sizing.dart';
 import '../ui/theme.dart';
 
 /// Top status bar. The pi-agent connection isn't built yet, so it always
-/// reports offline for now. Debug builds also get a sleep button at the
-/// right end for testing the sleep view.
+/// reports offline for now. A sleep button at the right end switches to the
+/// sleep clock immediately.
 class StatusStrip extends StatelessWidget {
   const StatusStrip({super.key});
 
@@ -21,10 +20,7 @@ class StatusStrip extends StatelessWidget {
       height: Sizing.statusStripHeight,
       child: GlassPanel(
         radius: Sizing.statusStripHeight / 2,
-        padding: const EdgeInsets.only(
-          left: Sizing.gap + 4,
-          right: kDebugMode ? 6 : Sizing.gap + 4,
-        ),
+        padding: const EdgeInsets.only(left: Sizing.gap + 4, right: 6),
         child: Row(
           children: [
             Text('Home', style: style),
@@ -32,10 +28,8 @@ class StatusStrip extends StatelessWidget {
             const _Dot(color: PanelColors.offline),
             const SizedBox(width: 8),
             Text('pi-agent offline', style: style),
-            if (kDebugMode) ...[
-              const SizedBox(width: 12),
-              const DebugSleepButton(),
-            ],
+            const SizedBox(width: 12),
+            const SleepButton(),
           ],
         ),
       ),
@@ -43,9 +37,9 @@ class StatusStrip extends StatelessWidget {
   }
 }
 
-/// Debug-only: puts the panel to sleep immediately.
-class DebugSleepButton extends ConsumerWidget {
-  const DebugSleepButton({super.key});
+/// Puts the panel to sleep immediately.
+class SleepButton extends ConsumerWidget {
+  const SleepButton({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

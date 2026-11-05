@@ -43,17 +43,23 @@ Enclosure: `models/3d-print/home-control-frame/`.
 | D3 | **Riverpod 3** (`flutter_riverpod`), **no code generation** (no `riverpod_generator`/`build_runner`). State machines are pure-Dart reducers hosted in Riverpod `Notifier`s. |
 | D4 | **Caching:** a full `snapshot` (from home-hub, via pi-agent) arrives on every (re)connect; the UI also keeps a debounced JSON cache file for cold boot. No database. |
 | D5 | **One transport, one router:** a single WebSocket client plus a typed message router (sealed classes, exhaustive `switch`). No HTTP clients in the app. |
-| D6 | Device pixel ratio pinned to **1.0**; the logical canvas is 1024×600 on both Pi and Mac. |
+| D6 | Device pixel ratio ≈ **1.0**; the logical canvas is 1024×600 on both Pi and Mac. |
 | D7 | Pure-Dart packages only, no plugins with native code. |
 | D8 | **Protocol is split** into a *client protocol* (spoken by home-hub; pi-agent passes it through) and a *device protocol* (pi-agent only). The data layer (`protocol/`, `connection/`, `feeds/`, `cache/`, non-display state) is **portable**: it must not import panel-only code, so it can later move to `dart/libs/home_client/` and be shared with a phone app that connects to home-hub directly. |
 
 ## Hardware / display
-- Raspberry Pi 5, Raspberry Pi OS Lite 64-bit (Bookworm), booted to console.
-- Screen: **1024×600 px**, landscape, active area **152.4 × 83.3 mm**. Touch only, no keyboard/mouse.
-- Run flutter-pi with `--pixel-ratio 1.0` (D6). Without it, flutter-pi derives
-  `10·1024 / (152·38) ≈ 1.77` from `--dimensions` and the logical canvas shrinks to ~578×338.
+- Raspberry Pi 5, Raspberry Pi OS 64-bit (Bookworm). The current Pi runs the **desktop** image
+  (hostname `raspberrypi`, user `liustev6`, SSH alias `panel`); the desktop (`lightdm`) must be
+  stopped while flutter-pi runs. All flutter-pi runtime libraries ship with the desktop image.
+- Screen: **1024×600 px over HDMI** (HDMI-A-2, native mode 1024×600), landscape, active area
+  **152.4 × 83.3 mm**. Touch only, no keyboard/mouse.
+- Run flutter-pi with `--dimensions "269,158"` (D6). flutter-pi derives the pixel ratio as
+  `10·width_px / (width_mm·38)`, so a nominal 269 mm width gives ≈ 1.0. (The real 152 mm would give
+  ≈ 1.77 and shrink the canvas to ~578×338.) The bundled flutter-pi binary does **not** support
+  `--pixel-ratio` yet; that flag only exists on flutter-pi's GitHub `master`.
 - Tap targets ≥ 12 mm physical ≈ **81 logical px**, defined once in `ui/sizing.dart`.
-- Viewed from ~0.5–1.5 m: large type, high contrast, dark theme. Fonts bundled in `assets/fonts/`.
+- Viewed from ~0.5–1.5 m: large type, high contrast, dark theme. **Inter** (OFL) is bundled in `assets/fonts/inter/` (weights 200–700) and set app-wide, so the Mac and
+  the Pi render identically (the Pi has no SF; it would fall back to DejaVu).
 - **Visual style: lightweight glass** (`ui/glass.dart`), built from plain Flutter: translucent
   gradient panels with a hairline border over a static, soft-colored background. One shared
   backdrop blur (`BackdropGroup`) that can be switched off with `GlassTokens.enableBlur` if the Pi
@@ -315,10 +321,13 @@ dart/apps/home-panel/
 │   ├── connection/              # router + fake socket reconnect
 │   └── widgets/                 # dashboard at 1024×600, sleep view, overlay
 ├── macos/                       # generated; window size fixed in MainFlutterWindow.swift
-└── deploy/
-    ├── pi-setup.sh              # one-time Pi provisioning (run on the Pi)
-    ├── deploy.sh                # build → rsync → restart (run on the Mac)
-    └── home-panel.service       # systemd unit
+├── deploy/                      # files that get INSTALLED ON THE PI
+│   ├── start-panel.sh           # desktop → app switch (transient unit home-panel-app)
+│   ├── home-panel.desktop       # desktop/app-menu launcher (@HOME@ filled in on install)
+│   ├── home-panel.svg           # launcher icon
+│   └── home-panel.service       # (later) systemd unit for boot-to-app
+└── scripts/                     # scripts RUN ON THE MAC
+    └── run_deploy.sh            # build → stop app → rsync app + deploy/ files [--run] [--skip-build]
 ```
 
 Dependencies: `flutter_riverpod` (3.x), `yaml`, `intl`. Everything else from the SDK (`dart:io`
@@ -339,9 +348,10 @@ when "lab offline" is toggled, and provides:
 - Flutter **3.47.9** stable at `~/flutter` (on `PATH` via `~/.zshrc`); Xcode 27.2 for the macOS dev build.
   CocoaPods not needed (no plugins; Flutter uses Swift Package Manager).
 - Apple Silicon: Rosetta (flutterpi_tool uses the x64 macOS build tools); already installed.
-- `flutter pub global activate flutterpi_tool`. **Compatibility check pending:** the latest
-  release (0.12.0) supports Flutter 3.44; 3.47 support is only on its `main` branch. If the release
-  fails, install from git or pin Flutter to 3.44.
+- flutterpi_tool: the pub.dev release (0.12.0) does **not** compile against Flutter 3.47. Install
+  from GitHub instead: `flutter pub global activate --source git https://github.com/ardera/flutterpi_tool`
+  (working commit `248d799`, "add support for flutter 3.47"). Switch back to pub.dev once a release
+  supports the installed Flutter.
 - Record the working Flutter + flutterpi_tool versions in the README.
 
 ## Dev loop
@@ -372,21 +382,31 @@ On-Pi directory layout:
 └── cache.json    # snapshot cache; survives deploys
 ```
 
-## Build & deploy (`deploy/deploy.sh`, run on the Mac)
+## Build & deploy (`scripts/run_deploy.sh`, run on the Mac)
+Current mode: **the Pi boots to the desktop**; the app runs only when started from the
+"Home Panel" launcher (or `--run`), which stops the desktop and starts the app as the transient
+unit `home-panel-app`. Reboot (or `sudo systemctl stop home-panel-app; sudo systemctl start lightdm`)
+returns to the desktop.
 ```sh
-flutterpi_tool build --arch=arm64 --release          # → build/flutter-pi/<target>/
-rsync -a --delete build/flutter-pi/<target>/ <user>@panel.local:~/panel/app/
-ssh <user>@panel.local sudo systemctl restart home-panel
+scripts/run_deploy.sh            # build, stop app, copy app + launcher files
+scripts/run_deploy.sh --run      # ...and switch the Pi screen to the app
 ```
-- Output goes to `build/flutter-pi/<target>/` (e.g. `genericAArch64`), **not**
+Under the hood:
+```sh
+flutterpi_tool build --arch=arm64 --cpu=pi5 --release   # → build/flutter-pi/pi5-64/
+ssh panel 'sudo systemctl stop home-panel-app'
+rsync -a --delete build/flutter-pi/pi5-64/ panel:panel/app/
+rsync deploy/{start-panel.sh,home-panel.svg,home-panel.desktop} panel:panel/   # + install launcher
+```
+- Output goes to `build/flutter-pi/<target>/` (`pi5-64` with `--cpu=pi5`), **not**
   `build/flutter_assets/`. It contains the `flutter-pi` binary, `libflutter_engine.so`, `app.so`
   and assets. The script globs for the single target directory rather than hard-coding it.
-- `--cpu=generic` (default). Switch to `--cpu=pi5` once a released flutterpi_tool ships it.
-- `PI_HOST` / `PI_USER` come from environment variables with defaults `panel.local` / `$USER`.
-- `sudo systemctl restart` over ssh relies on passwordless sudo (Pi OS default for the first user).
-- Optional: `deploy.sh --layout <file>` also copies a layout file to `~/panel/layout.yaml`.
+- `--cpu=pi5` uses the Pi 5–tuned engine (available in the git build of flutterpi_tool).
+- `PI_HOST` comes from the environment, default `panel` (the `~/.ssh/config` alias).
+- `sudo` over ssh relies on passwordless sudo (Pi OS default for the first user).
+- Later: `run_deploy.sh --layout <file>` also copies a layout file to `~/panel/layout.yaml`.
 
-## systemd unit (`deploy/home-panel.service`)
+## systemd unit (`deploy/home-panel.service`), later, for boot-to-app
 ```ini
 [Unit]
 Description=Home panel Flutter UI
@@ -399,7 +419,7 @@ SupplementaryGroups=render video input
 WorkingDirectory=/home/<user>/panel
 Environment=HOME_PANEL_LAYOUT=/home/<user>/panel/layout.yaml
 Environment=HOME_PANEL_CACHE=/home/<user>/panel/cache.json
-ExecStart=/home/<user>/panel/app/flutter-pi --release --pixel-ratio 1.0 /home/<user>/panel/app
+ExecStart=/home/<user>/panel/app/flutter-pi --release --dimensions 269,158 /home/<user>/panel/app
 Restart=always
 RestartSec=2
 
@@ -431,6 +451,5 @@ backlight/GPIO/audio code; no app-store packaging; no `linux/` desktop target; n
 - **Pixels may not be square:** 1024/152.4 ≈ 6.7 px/mm across but 600/83.3 ≈ 7.2 px/mm down.
   Confirm the active area from the panel datasheet; if the pixels really aren't square, round/square
   shapes will look ~7% squashed (Flutter can't compensate).
-- DSI or HDMI? (Affects `--rotation` / `--videomode` only.)
 - Weather location and the HA entity list for `layout.default.yaml`.
 - Keep the on-screen keyboard in v1, or ship PTT-only first?

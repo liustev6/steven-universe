@@ -23,6 +23,7 @@ abstract final class PanelColors {
 ThemeData buildPanelTheme() {
   return ThemeData(
     brightness: Brightness.dark,
+    fontFamily: 'Inter',
     scaffoldBackgroundColor: PanelColors.background,
     colorScheme: const ColorScheme.dark(
       surface: PanelColors.background,

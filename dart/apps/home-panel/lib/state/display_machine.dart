@@ -46,7 +46,7 @@ final class IdleTimeout extends DisplayEvent {
   const IdleTimeout();
 }
 
-/// An explicit request to go to sleep now (the debug sleep button).
+/// An explicit request to go to sleep now (the sleep button).
 final class SleepRequested extends DisplayEvent {
   const SleepRequested();
 }

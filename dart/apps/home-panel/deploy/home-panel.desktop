@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Home Panel
+Comment=Switch the screen to the home panel app
+Exec=@HOME@/panel/start-panel.sh
+Icon=@HOME@/panel/home-panel.svg
+Terminal=false
+Categories=Utility;
