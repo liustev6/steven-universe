@@ -24,7 +24,8 @@ class PlaceholderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final iconWidget = Icon(icon, color: PanelColors.textMuted, size: 26);
+    final palette = context.palette;
+    final iconWidget = Icon(icon, color: palette.secondary, size: 26);
 
     if (columns == 1 && rows == 1) {
       return GlassPanel(
@@ -37,7 +38,7 @@ class PlaceholderCard extends StatelessWidget {
     if (columns == 1 || rows == 1) {
       final label = Text(
         title,
-        style: text.bodyMedium!.copyWith(color: PanelColors.white),
+        style: text.bodyMedium!.copyWith(color: palette.primaryColor),
       );
       return GlassPanel(
         radius: Sizing.smallRadius,

@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:home_panel/app.dart';
 import 'package:home_panel/display/dashboard_view.dart';
 import 'package:home_panel/display/sleep_view.dart';
-import 'package:home_panel/display/touch_guard.dart';
 import 'package:home_panel/widgets/sleep_tile.dart';
 
 void main() {
@@ -13,18 +12,6 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(const ProviderScope(child: HomePanelApp()));
-  }
-
-  bool inputBlocked(WidgetTester tester) {
-    final ignore = tester.widget<IgnorePointer>(
-      find
-          .descendant(
-            of: find.byType(TouchGuard),
-            matching: find.byType(IgnorePointer),
-          )
-          .first,
-    );
-    return ignore.ignoring;
   }
 
   Future<void> idleUntilAsleep(WidgetTester tester) async {
@@ -66,21 +53,14 @@ void main() {
     expect(find.byType(SleepView), findsOneWidget);
   });
 
-  testWidgets('a touch wakes the panel and the wake tap is swallowed', (
-    tester,
-  ) async {
+  testWidgets('a touch on the sleep clock wakes the panel', (tester) async {
     await pumpPanel(tester);
     await idleUntilAsleep(tester);
-    expect(inputBlocked(tester), isTrue);
 
     await tester.tapAt(const Offset(500, 300));
-    await tester.pump();
-    expect(find.byType(DashboardView), findsOneWidget);
-    expect(inputBlocked(tester), isTrue);
-
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(inputBlocked(tester), isFalse);
     await tester.pumpAndSettle();
+    expect(find.byType(DashboardView), findsOneWidget);
+    expect(find.byType(SleepView), findsNothing);
   });
 
   testWidgets('sleep tile switches to the sleep clock', (tester) async {

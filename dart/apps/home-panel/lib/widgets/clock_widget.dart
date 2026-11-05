@@ -17,7 +17,7 @@ abstract final class ClockFormats {
 }
 
 /// The clock design shared by the sleep view and the dashboard card: big
-/// semi-bold time in [PanelColors.whiteWithShade], AM/PM stacked over the seconds
+/// semi-bold time in the palette's primary (shaded) colour, AM/PM stacked over the seconds
 /// on its right, and the date below. Every size derives from [timeSize].
 class ClockLockup extends StatelessWidget {
   const ClockLockup({
@@ -47,6 +47,7 @@ class ClockLockup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: alignment,
@@ -83,7 +84,7 @@ class ClockLockup extends StatelessWidget {
                       fontSize: timeSize * 0.4,
                       fontWeight: FontWeight.w500,
                       height: 1,
-                      color: PanelColors.clockSecondary,
+                      color: palette.secondary,
                       fontFeatures: _figures,
                     ),
                   ),
@@ -98,7 +99,7 @@ class ClockLockup extends StatelessWidget {
                       fontWeight: FontWeight.w500,
                       height: 1,
                       letterSpacing: 1,
-                      color: PanelColors.clockSecondary,
+                      color: palette.secondary,
                     ),
                   ),
                 ),
@@ -112,7 +113,7 @@ class ClockLockup extends StatelessWidget {
           style: TextStyle(
             fontSize: timeSize * 0.18,
             fontWeight: FontWeight.w400,
-            color: PanelColors.clockSecondary,
+            color: palette.secondary,
           ),
         ),
       ],
@@ -167,7 +168,7 @@ class _Seconds extends ConsumerWidget {
   }
 }
 
-/// The time text in [PanelColors.whiteWithShade], applied with a
+/// The time text in the palette's primary gradient, applied with a
 /// [ShaderMask] so the gradient spans just this text.
 class _ShadedTime extends StatelessWidget {
   const _ShadedTime(this.text, {required this.style});
@@ -179,7 +180,7 @@ class _ShadedTime extends StatelessWidget {
   Widget build(BuildContext context) {
     return ShaderMask(
       blendMode: BlendMode.srcIn,
-      shaderCallback: PanelColors.whiteWithShade.createShader,
+      shaderCallback: context.palette.primary.createShader,
       // Negative letter spacing makes the first and last digits overhang the
       // text box (half on each side); pad it back so the box, and the
       // gradient, cover every glyph.

@@ -9,6 +9,7 @@ import 'package:home_panel/widgets/clock_widget.dart';
 import 'package:home_panel/widgets/home_controls_widget.dart';
 import 'package:home_panel/widgets/placeholder_tile.dart';
 import 'package:home_panel/widgets/sleep_tile.dart';
+import 'package:home_panel/widgets/theme_mode_tile.dart';
 import 'package:home_panel/widgets/weather_widget.dart';
 
 void main() {
@@ -41,9 +42,12 @@ void main() {
     expect(find.byType(HomeControlsWidget), findsOneWidget);
     expect(find.byType(AssistantWidget), findsOneWidget);
     expect(find.byType(SleepTile), findsOneWidget);
+    expect(find.byType(ThemeModeTile), findsOneWidget);
     expect(
       find.byType(PlaceholderTile),
-      findsNWidgets(dashboardLayout.length - 5),
+      findsNWidgets(
+        dashboardLayout.where((p) => p.widget is PlaceholderTile).length,
+      ),
     );
     expect(tester.takeException(), isNull);
   });

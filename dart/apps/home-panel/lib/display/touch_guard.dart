@@ -1,11 +1,12 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../state/panel_providers.dart';
+import '../state/events/app_event.dart';
+import '../state/handler/event_dispatcher.dart';
 
-/// Wraps the whole screen. Every touch counts as user activity (wakes the
-/// panel, resets the idle timer); while the display state says input is
-/// blocked, touches don't reach the controls underneath.
+/// Wraps the whole screen. Every touch counts as user activity: it wakes the
+/// panel if it's asleep and restarts the idle timer. Touches still reach the
+/// controls underneath as normal.
 class TouchGuard extends ConsumerWidget {
   const TouchGuard({super.key, required this.child});
 
@@ -13,11 +14,12 @@ class TouchGuard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final blocked = ref.watch(displayProvider.select((s) => s.inputBlocked));
     return Listener(
       behavior: HitTestBehavior.translucent,
-      onPointerDown: (_) => ref.read(displayProvider.notifier).userActivity(),
-      child: IgnorePointer(ignoring: blocked, child: child),
+      onPointerDown: (_) => ref
+          .read(eventDispatcherProvider)
+          .dispatch(const UserUncategorizedClick()),
+      child: child,
     );
   }
 }

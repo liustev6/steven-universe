@@ -40,7 +40,7 @@ Enclosure: `models/3d-print/home-control-frame/`.
 |---|---|
 | D1 | Two display states: **`active`** (dashboard) and **`sleep`** (ambient clock view). No separate black state; if pi-agent turns the backlight off, the UI keeps rendering the sleep view. **The UI owns the idle timer** (2 min without a touch → `sleep`; a touch → `active`); pi-agent can force a state with `display_state`. |
 | D2 | **All data fetching lives in home-hub** (home lab): weather, Home Assistant, assistant. **pi-agent is a hardware layer + thin relay.** The UI declares what it needs via `subscribe` (derived from the dashboard layout) and renders what is pushed. |
-| D3 | **Riverpod 3** (`flutter_riverpod`), **no code generation** (no `riverpod_generator`/`build_runner`). State machines are pure-Dart reducers hosted in Riverpod `Notifier`s. |
+| D3 | **Riverpod 3** (`flutter_riverpod`), **no code generation** (no `riverpod_generator`/`build_runner`). Zustand-style: one store (state + setters), **events** describe what happened, **handlers** decide the new state and call the setters. |
 | D4 | **Caching:** a full `snapshot` (from home-hub, via pi-agent) arrives on every (re)connect; the UI also keeps a debounced JSON cache file for cold boot. No database. |
 | D5 | **One transport, one router:** a single WebSocket client plus a typed message router (sealed classes, exhaustive `switch`). No HTTP clients in the app. |
 | D6 | Device pixel ratio ≈ **1.0**; the logical canvas is 1024×600 on both Pi and Mac. |
@@ -61,10 +61,22 @@ Enclosure: `models/3d-print/home-control-frame/`.
 - Viewed from ~0.5–1.5 m: large type, high contrast, dark theme. **Inter** (OFL) is bundled in `assets/fonts/inter/` (weights 200–700) and set app-wide, so the Mac and
   the Pi render identically (the Pi has no SF; it would fall back to DejaVu).
 - **Visual style: lightweight glass** (`ui/glass.dart`), built from plain Flutter: translucent
-  gradient panels with a hairline border over a static, soft-colored background. One shared
+  gradient panels with a hairline border over a static background with soft colour fields. The
+  sleep view has its own calmer background: a plain vignette. One shared
   backdrop blur (`BackdropGroup`) that can be switched off with `GlassTokens.enableBlur` if the Pi
   can't hold frame rate. No glass-effect packages (e.g. `liquid_glass_widgets`: its iOS-style
   refraction needs Impeller, which flutter-pi doesn't use). The sleep view has no glass.
+- **Design system** (`ui/theme.dart`):
+  - Tokens (`PanelColors`): **primary** = shaded white (gradient `#F4F4F7 → #B4B6C1`, the
+    clock's colour), **secondary** = subtitle grey `#9497A3`, plus **primaryInverse** (shaded
+    near-black `#1C1F2A → #4A4F5E`) and **secondaryInverse** (`#5B6070`) for light mode.
+  - `PanelPalette` (a `ThemeExtension`, read with `context.palette`) maps tokens per mode:
+    `primary` (gradient, applied with a `ShaderMask`), `primaryColor` (flat), `secondary`,
+    dashboard background (`background` + `glows`), sleep vignette (`sleepGlow` → `sleepBackground`),
+    glass fill/border (contrasting: white tint in dark mode, near-black tint in light mode). `PanelPalette.dark` uses primary/secondary;
+    `PanelPalette.light` uses the inverses. Widgets never hard-code colours.
+  - **Light/dark mode**: a 1×1 tile in the bottom row toggles it; dark is the default. It applies
+    to both the dashboard and the sleep view (each palette has its own sleep vignette colours).
 
 ## Architecture
 ```
@@ -110,10 +122,16 @@ pi-agent ⇄ AgentClient ──▶ MessageRouter ──▶ Notifiers (Riverpod) 
 - Corrupt/missing cache → start empty, log, overwrite on next write.
 
 ## State management (Riverpod 3, D3)
-- Pure-Dart reducers `(State, Event) → State` live in `lib/state/*_machine.dart`, with no Flutter or
-  Riverpod imports, and are unit-tested directly.
-- Each reducer is hosted by a Riverpod `Notifier`; side effects (timers, sends) live in the
-  Notifier, not the reducer.
+- **Store** (`state/app_state.dart`): one `AppState` plus plain setters on `AppStore`; no logic.
+  Widgets watch slices with `ref.watch(appStoreProvider.select(...))`.
+- **Events** (`state/events/`): every event is a `UserEvent` or a `SystemEvent` (source) and may
+  also be a `DisplayEvent` (effect). Widgets only ever **dispatch events**.
+- **Handlers** (`state/handler/user_handler.dart`, `system_handler.dart`): one function per event;
+  read the state, call the store's setters. The dispatcher routes events to handlers (exhaustive
+  over the sealed `AppEvent`), restarts the idle timer for every `UserEvent`, and owns side effects
+  (timers; later, network sends).
+- Tests run events through the dispatcher and check the store (e.g. the display table in
+  `test/state/handler/display_handlers_test.dart`).
 - Providers:
 
 | Provider | Kind | Holds | Layer (D8) |
@@ -124,10 +142,12 @@ pi-agent ⇄ AgentClient ──▶ MessageRouter ──▶ Notifiers (Riverpod) 
 | `assistantProvider` | `Notifier` | assistant state (below) | portable |
 | `haProvider` | `Notifier` | entity states + pending optimistic actions | portable |
 | `feedsProvider` | `Notifier` | feed registry (weather + staleness) | portable |
-| `displayProvider` | `Notifier` | `active / sleep` + wake-guard timestamp | panel |
+| `appStoreProvider` | `Notifier` | the app store (Zustand-style), **state + setters only**: `AppState` = display state (`active / sleep`) + settings (`themeMode`); setters `setDisplay`, `setThemeMode`. Widgets watch slices with `.select` | panel |
+| `eventDispatcherProvider` | `Provider` | `dispatch(AppEvent)`: routes each event to its handler, which works out the new state and calls the store's setters; owns side effects (the idle timer). Widgets send events here, never call setters directly | panel |
 | `screenProvider` | `Provider` (derived) | what to render (below); never stored | panel |
 
-- Portable providers live in `state/client_providers.dart`, panel ones in `state/panel_providers.dart`.
+- Portable providers live in `state/client_providers.dart`; panel state lives in the app store,
+  `state/app_state.dart` (plus `state/app_time.dart` for the clock tick).
   Portable code never imports panel code; panel code may import portable code.
 - Tests override `agentClientProvider` with a fake client.
 
@@ -142,8 +162,8 @@ pi-agent ⇄ AgentClient ──▶ MessageRouter ──▶ Notifiers (Riverpod) 
   timer. Works the same with or without pi-agent.
 - **pi-agent overrides:** a `display_state` message (e.g. wake word → `active`, night schedule →
   `sleep`) is applied immediately; the idle timer keeps running from the last touch.
-- **Wake-tap swallowing:** while `sleep`, and for 300 ms after switching to `active`, touches send
-  `user_activity` but don't reach controls.
+- **No wake-tap swallowing:** we assume a single tap. The tap that wakes the panel lands on the
+  sleep view (no controls), so it can't press anything on the dashboard.
 - Every touch anywhere sends `user_activity`, throttled to ≤ 1/s.
 
 ### Assistant state
@@ -280,13 +300,13 @@ span ≥ 2×2.
 Current `dashboardLayout` (fills all 84 cells; a test checks this):
 ```
      0  1  2  3 | 4  5  6  7 | 8  9  10 | 11
-r0   Clock 4×2  | Home 4×4   | Calendar | Temp 1×1
-r1              |            |   3×3    | Humid 1×1
-r2   Weather 3×2  |UV|        |          | Door 1×1
-r3                |1×3|       | Media 3×2| Volume
-r4   Forecast 3×1 |  | Assistant|          |  1×2
-r5   Hourly 4×1 |   4×2      | Camera   | Energy
-r6   Sun 2×1|Air 2×1|Sleep Lock Fan Scene| 2×2 | 2×2
+r0   Clock 4×2  | Home 4×4   | Weather 3×2  | Temp 1×1
+r1              |            |              | Humid 1×1
+r2   Media 4×2  |            | Calendar 3×3 | Door 1×1
+r3              |            |              | Volume
+r4   Forecast 4×1 | Assistant |             |  1×2
+r5   Hourly 4×1 |   4×2      | Camera       | Energy
+r6   Sleep Lock Fan Theme|Sun 2×1|Air 2×1| 2×2 | 2×2
 ```
 
 ## Weather feed contract
@@ -352,16 +372,28 @@ dart/apps/home-panel/
 │   ├── cache/                   # [P]
 │   │   └── snapshot_cache.dart  # debounced atomic JSON file
 │   ├── state/
-│   │   ├── assistant_machine.dart  # [P] pure reducer
-│   │   ├── ha_machine.dart         # [P] pure reducer (optimistic/pending)
-│   │   ├── client_providers.dart   # [P] connection / assistant / ha / feeds notifiers
-│   │   ├── display_machine.dart    # pure reducer (panel)
-│   │   └── panel_providers.dart    # relay / display / layout / screen providers
+│   │   ├── app_state.dart          # global app store: AppState (display + settings) + setters
+│   │   ├── app_time.dart           # global clock: per-second / per-minute time
+│   │   ├── types/                  # state data types
+│   │   │   └── display_state.dart     # DisplayMode, DisplayState
+│   │   ├── events/                 # what can happen (definitions only)
+│   │   │   ├── app_event.dart         # sealed AppEvent; source: UserEvent | SystemEvent (extends);
+│   │   │   │                          # effect: DisplayEvent (implements); the files below are parts
+│   │   │   ├── user_events.dart       # UserUncategorizedClick, SleepClick, ThemeModeClick
+│   │   │   └── system_events.dart     # IdleTimeout
+│   │   ├── handler/                # what each event does
+│   │   │   ├── event_dispatcher.dart  # dispatch(event) → handler; owns the idle timer (UserEvents
+│   │   │   │                          # restart it); HandlerContext (state, setters, dispatch)
+│   │   │   ├── user_handler.dart      # handlers for every UserEvent
+│   │   │   └── system_handler.dart    # handlers for every SystemEvent
+│   │   ├── assistant_machine.dart  # [P] pure reducer (planned)
+│   │   ├── ha_machine.dart         # [P] pure reducer (optimistic/pending, planned)
+│   │   └── client_providers.dart   # [P] connection / assistant / ha / feeds notifiers (planned)
 │   ├── display/
 │   │   ├── dashboard_view.dart  # grid from layout
 │   │   ├── sleep_view.dart      # ambient clock, 1/min redraw, pixel shift
 │   │   ├── assistant_overlay.dart
-│   │   └── touch_guard.dart     # wake-tap swallowing + user_activity throttle
+│   │   └── touch_guard.dart     # every touch → UserUncategorizedClick (wake + idle reset)
 │   ├── layout/
 │   │   ├── panel_widget.dart    # abstract PanelWidget: columns, rows (≤4), expandable
 │   │   ├── panel_grid.dart      # 12-column square-cell grid, PanelPlacement, validPlacements
@@ -381,7 +413,7 @@ dart/apps/home-panel/
 │   └── mock_agent.dart          # `dart run tool/mock_agent.dart`
 ├── test/
 │   ├── protocol/                # JSON round-trip for every message
-│   ├── state/                   # reducer tables (display, assistant, ha)
+│   ├── state/                   # store, events, handler tables (display, …)
 │   ├── connection/              # router + fake socket reconnect
 │   └── widgets/                 # dashboard at 1024×600, sleep view, overlay
 ├── macos/                       # generated; window size fixed in MainFlutterWindow.swift
@@ -497,7 +529,7 @@ backlight/GPIO/audio code; no app-store packaging; no `linux/` desktop target; n
 
 ## Done when
 - Dashboard renders cleanly at 1024×600 on the Mac against the mock.
-- `active` ↔ `sleep` switch on touch, on 2 min idle, and on `display_state`; wake-tap swallowing works.
+- `active` ↔ `sleep` switch on touch, on 2 min idle, and on `display_state`.
 - Connect sequence works; snapshot replaces cached data; stale indicators appear when feeds age out.
 - Cold start with pi-agent down shows cached data marked stale.
 - HA toggles round-trip; rollback works on `ok:false`, on a dropped confirmation, and when offline.

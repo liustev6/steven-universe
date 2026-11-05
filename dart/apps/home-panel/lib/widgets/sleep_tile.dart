@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../layout/panel_widget.dart';
-import '../state/panel_providers.dart';
+import '../state/events/app_event.dart';
+import '../state/handler/event_dispatcher.dart';
 import '../ui/glass.dart';
 import '../ui/sizing.dart';
 import '../ui/theme.dart';
@@ -21,14 +22,15 @@ class SleepTile extends PanelWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => ref.read(displayProvider.notifier).sleepNow(),
-      child: const GlassPanel(
+      onTap: () =>
+          ref.read(eventDispatcherProvider).dispatch(const SleepClick()),
+      child: GlassPanel(
         radius: Sizing.smallRadius,
         padding: EdgeInsets.zero,
         child: Center(
           child: Icon(
             Icons.bedtime_outlined,
-            color: PanelColors.white,
+            color: context.palette.primaryColor,
             size: 26,
           ),
         ),

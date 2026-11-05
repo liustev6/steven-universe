@@ -1,58 +1,147 @@
 import 'package:flutter/material.dart';
 
+/// Design tokens: the raw colours. Widgets don't use these directly; they
+/// read the current mode's [PanelPalette] (`context.palette`), which picks
+/// the right token for dark or light mode.
 abstract final class PanelColors {
-  static const background = Color(0xFF070B14);
-
-  /// White: headers and primary text (titles, city, temperature, icons).
-  static const white = Color(0xFFF2F5FA);
-
-  /// [white] at 60%: secondary text.
-  static const textMuted = Color(0x99F2F5FA);
-
-  /// White with shade: the clock's colour, white fading to light grey from
-  /// top to bottom. It's a gradient, so text uses it by wrapping the `Text`
-  /// in a `ShaderMask` (`blendMode: BlendMode.srcIn`,
-  /// `shaderCallback: PanelColors.whiteWithShade.createShader`) rather than
-  /// through a `color:`.
-  static const whiteWithShade = LinearGradient(
+  /// Primary: the shaded white (the clock's colour), white fading to light
+  /// grey top to bottom. Headline text and the white parts of icons.
+  static const primary = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
     colors: [Color(0xFFF4F4F7), Color(0xFFB4B6C1)],
   );
 
-  /// Sleep view background: dark navy vignette.
-  static const sleepBackground = Color(0xFF0B0D12);
-  static const sleepGlow = Color(0xFF1C1F2A);
+  /// Primary for light mode: shaded near-black.
+  static const primaryInverse = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [Color(0xFF1C1F2A), Color(0xFF4A4F5E)],
+  );
 
-  /// Clock (sleep view and dashboard card) details: AM/PM, seconds, date.
-  /// The time itself uses [whiteWithShade].
-  static const clockSecondary = Color(0xFF9497A3);
+  /// Secondary: the subtitle grey (the clock's date, AM/PM, seconds).
+  static const secondary = Color(0xFF9497A3);
 
-  /// Soft color fields behind the glass panels.
-  static const glowIndigo = Color(0xFF4F46E5);
-  static const glowTeal = Color(0xFF0EA5A4);
-  static const glowRose = Color(0xFFDB2777);
+  /// Secondary for light mode.
+  static const secondaryInverse = Color(0xFF5B6070);
 
   static const offline = Color(0xFFF87171);
 }
 
-ThemeData buildPanelTheme() {
+/// The colours for one mode. Read it with `context.palette`.
+@immutable
+class PanelPalette extends ThemeExtension<PanelPalette> {
+  const PanelPalette({
+    required this.primary,
+    required this.primaryColor,
+    required this.secondary,
+    required this.background,
+    required this.glows,
+    required this.glowOpacity,
+    required this.sleepGlow,
+    required this.sleepBackground,
+    required this.glassFillTop,
+    required this.glassFillBottom,
+    required this.glassBorder,
+  });
+
+  /// Headline text and white icon parts. A gradient: apply it with
+  /// `ShaderMask(blendMode: BlendMode.srcIn, shaderCallback:
+  /// palette.primary.createShader, child: ...)`.
+  final LinearGradient primary;
+
+  /// Flat version of [primary], for text and icons that aren't shaded.
+  final Color primaryColor;
+
+  /// Subtitles, secondary text and quiet icons.
+  final Color secondary;
+
+  /// Dashboard background: a flat [background] with soft colour fields
+  /// ([glows], at [glowOpacity]) for the glass to sit on.
+  final Color background;
+  final List<Color> glows;
+  final double glowOpacity;
+
+  /// Sleep view background: a plain radial vignette from [sleepGlow]
+  /// (centre) to [sleepBackground] (edges), calmer than the dashboard.
+  final Color sleepGlow;
+  final Color sleepBackground;
+
+  /// Glass panels. The glass contrasts with the background: a light (white)
+  /// tint over the dark background in dark mode, a dark tint over the pale
+  /// background in light mode.
+  final Color glassFillTop;
+  final Color glassFillBottom;
+  final Color glassBorder;
+
+  static const dark = PanelPalette(
+    primary: PanelColors.primary,
+    primaryColor: Color(0xFFF2F5FA),
+    secondary: PanelColors.secondary,
+    background: Color(0xFF070B14),
+    glows: [Color(0xFF4F46E5), Color(0xFF0EA5A4), Color(0xFFDB2777)],
+    glowOpacity: 0.45,
+    sleepGlow: Color(0xFF1C1F2A),
+    sleepBackground: Color(0xFF0B0D12),
+    // White tint: lighter than the background.
+    glassFillTop: Color(0x26FFFFFF),
+    glassFillBottom: Color(0x0AFFFFFF),
+    glassBorder: Color(0x33FFFFFF),
+  );
+
+  static const light = PanelPalette(
+    primary: PanelColors.primaryInverse,
+    primaryColor: Color(0xFF1C1F2A),
+    secondary: PanelColors.secondaryInverse,
+    background: Color(0xFFE8ECF4),
+    glows: [Color(0xFF818CF8), Color(0xFF2DD4BF), Color(0xFFF472B6)],
+    glowOpacity: 0.35,
+    sleepGlow: Color(0xFFF7F8FC),
+    sleepBackground: Color(0xFFDFE4ED),
+    // Near-black (#1C1F2A) tint: darker than the background.
+    glassFillTop: Color(0x0F1C1F2A),
+    glassFillBottom: Color(0x051C1F2A),
+    glassBorder: Color(0x1A1C1F2A),
+  );
+
+  @override
+  PanelPalette copyWith() => this;
+
+  /// Mode switches are instant, so no blending between palettes.
+  @override
+  PanelPalette lerp(PanelPalette? other, double t) =>
+      t < 0.5 || other == null ? this : other;
+}
+
+extension PanelPaletteContext on BuildContext {
+  /// The current mode's colours (dark if no panel theme is installed).
+  PanelPalette get palette =>
+      Theme.of(this).extension<PanelPalette>() ?? PanelPalette.dark;
+}
+
+ThemeData buildPanelTheme(Brightness brightness) {
+  final palette = brightness == Brightness.dark
+      ? PanelPalette.dark
+      : PanelPalette.light;
+  final scheme = brightness == Brightness.dark
+      ? const ColorScheme.dark()
+      : const ColorScheme.light();
   return ThemeData(
-    brightness: Brightness.dark,
+    brightness: brightness,
     fontFamily: 'Inter',
-    scaffoldBackgroundColor: PanelColors.background,
-    colorScheme: const ColorScheme.dark(
-      surface: PanelColors.background,
-      onSurface: PanelColors.white,
-      primary: PanelColors.glowTeal,
+    scaffoldBackgroundColor: palette.background,
+    colorScheme: scheme.copyWith(
+      surface: palette.background,
+      onSurface: palette.primaryColor,
     ),
-    textTheme: const TextTheme(
+    textTheme: TextTheme(
       titleMedium: TextStyle(
         fontSize: 22,
         fontWeight: FontWeight.w500,
-        color: PanelColors.white,
+        color: palette.primaryColor,
       ),
-      bodyMedium: TextStyle(fontSize: 18, color: PanelColors.textMuted),
+      bodyMedium: TextStyle(fontSize: 18, color: palette.secondary),
     ),
+    extensions: [palette],
   );
 }

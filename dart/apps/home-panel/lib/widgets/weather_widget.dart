@@ -44,6 +44,7 @@ class WeatherWidget extends PanelWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final palette = context.palette;
     final weather = ref.watch(weatherProvider);
     final body = Theme.of(context).textTheme.bodyMedium!;
     return GlassPanel(
@@ -66,11 +67,7 @@ class WeatherWidget extends PanelWidget {
                 // their area.
                 child: Row(
                   children: [
-                    const Icon(
-                      Icons.near_me,
-                      size: 20,
-                      color: PanelColors.white,
-                    ),
+                    Icon(Icons.near_me, size: 20, color: palette.primaryColor),
                     const SizedBox(width: 6),
                     // Fixed size; long names end with "…".
                     Flexible(
@@ -80,7 +77,7 @@ class WeatherWidget extends PanelWidget {
                         overflow: TextOverflow.ellipsis,
                         style: body.copyWith(
                           fontSize: 18,
-                          color: PanelColors.white,
+                          color: palette.primaryColor,
                         ),
                       ),
                     ),
@@ -96,7 +93,7 @@ class WeatherWidget extends PanelWidget {
                   // Same white-with-shade as the clock's time.
                   child: ShaderMask(
                     blendMode: BlendMode.srcIn,
-                    shaderCallback: PanelColors.whiteWithShade.createShader,
+                    shaderCallback: palette.primary.createShader,
                     child: Text(
                       weather == null
                           ? '--°C'
@@ -106,7 +103,7 @@ class WeatherWidget extends PanelWidget {
                         fontWeight: FontWeight.w600,
                         height: 1,
                         letterSpacing: -2,
-                        color: PanelColors.white,
+                        color: palette.primaryColor,
                         fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
@@ -159,8 +156,9 @@ class WeatherWidget extends PanelWidget {
 }
 
 /// Condition icon, coloured like Apple's multicolour weather symbols. White
-/// parts (clouds, fog, wind) use [PanelColors.whiteWithShade], like the
-/// clock; sun, moon, rain and snow keep their colours. Where Material Icons
+/// parts (clouds, fog, wind, snow) use the palette's primary (shaded) colour,
+/// like the clock, so they follow light/dark mode; sun, moon and rain keep
+/// their colours. Where Material Icons
 /// has no matching symbol, two icons are layered (sun behind a cloud, a
 /// cloud over rain drops).
 class WeatherIcon extends StatelessWidget {
@@ -178,64 +176,70 @@ class WeatherIcon extends StatelessWidget {
   static const _sun = Color(0xFFFFD60A);
   static const _moon = Color(0xFFF5E6A3);
   static const _rain = Color(0xFF64D2FF);
-  static const _snow = Color(0xFFE0F2FE);
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
       label: condition.label,
       child: ExcludeSemantics(
-        child: SizedBox.square(dimension: size, child: _glyph()),
+        child: SizedBox.square(dimension: size, child: _glyph(context.palette)),
       ),
     );
   }
 
-  Widget _glyph() => switch (condition) {
+  Widget _glyph(PanelPalette palette) => switch (condition) {
     WeatherCondition.clear =>
       isDay
           ? _single(Icons.sunny, _sun)
           : _single(Icons.nightlight_round, _moon),
     // Sun (or moon) peeking out from behind a cloud.
     WeatherCondition.partlyCloudy => _behindCloud(
+      palette,
       isDay ? Icons.sunny : Icons.nightlight_round,
       isDay ? _sun : _moon,
     ),
-    WeatherCondition.cloudy => _white(Icons.cloud, size),
-    WeatherCondition.fog => _white(Icons.foggy, size),
+    WeatherCondition.cloudy => _white(palette, Icons.cloud, size),
+    WeatherCondition.fog => _white(palette, Icons.foggy, size),
     WeatherCondition.drizzle => _single(Icons.grain, _rain),
     // Cloud with rain drops below it.
-    WeatherCondition.rain => _cloudOver(Icons.grain, _rain),
-    WeatherCondition.snow => _single(Icons.ac_unit, _snow),
-    WeatherCondition.sleet => _single(Icons.cloudy_snowing, _snow),
+    WeatherCondition.rain => _cloudOver(palette, Icons.grain, _rain),
+    WeatherCondition.snow => _white(palette, Icons.ac_unit, size),
+    WeatherCondition.sleet => _white(palette, Icons.cloudy_snowing, size),
     WeatherCondition.thunderstorm => _single(Icons.thunderstorm, _sun),
-    WeatherCondition.windy => _white(Icons.air, size),
-    WeatherCondition.unknown => _white(Icons.cloud_queue, size),
+    WeatherCondition.windy => _white(palette, Icons.air, size),
+    WeatherCondition.unknown => _white(palette, Icons.cloud_queue, size),
   };
 
   Widget _single(IconData icon, Color color) =>
       Icon(icon, size: size, color: color);
 
-  /// A white icon part, shaded white → light grey like the clock.
-  Widget _white(IconData icon, double size) => ShaderMask(
+  /// A "white" icon part, in the palette's primary (shaded) colour like the
+  /// clock: shaded white in dark mode, shaded near-black in light mode.
+  Widget _white(PanelPalette palette, IconData icon, double size) => ShaderMask(
     blendMode: BlendMode.srcIn,
-    shaderCallback: PanelColors.whiteWithShade.createShader,
-    child: Icon(icon, size: size, color: PanelColors.white),
+    shaderCallback: palette.primary.createShader,
+    child: Icon(icon, size: size, color: palette.primaryColor),
   );
 
   /// [icon] small at the top right, partly covered by a cloud.
-  Widget _behindCloud(IconData icon, Color color) => Stack(
-    children: [
-      Positioned(
-        top: 0,
-        right: 0,
-        child: Icon(icon, size: size * 0.62, color: color),
-      ),
-      Positioned(left: 0, bottom: 0, child: _white(Icons.cloud, size * 0.85)),
-    ],
-  );
+  Widget _behindCloud(PanelPalette palette, IconData icon, Color color) =>
+      Stack(
+        children: [
+          Positioned(
+            top: 0,
+            right: 0,
+            child: Icon(icon, size: size * 0.62, color: color),
+          ),
+          Positioned(
+            left: 0,
+            bottom: 0,
+            child: _white(palette, Icons.cloud, size * 0.85),
+          ),
+        ],
+      );
 
   /// A cloud at the top with [icon] (e.g. drops) below it.
-  Widget _cloudOver(IconData icon, Color color) => Stack(
+  Widget _cloudOver(PanelPalette palette, IconData icon, Color color) => Stack(
     children: [
       Positioned(
         left: size * 0.22,
@@ -245,7 +249,7 @@ class WeatherIcon extends StatelessWidget {
       Positioned(
         top: 0,
         left: size * 0.08,
-        child: _white(Icons.cloud, size * 0.8),
+        child: _white(palette, Icons.cloud, size * 0.8),
       ),
     ],
   );

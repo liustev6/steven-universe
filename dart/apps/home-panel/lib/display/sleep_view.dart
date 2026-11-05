@@ -31,17 +31,19 @@ class SleepView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final palette = context.palette;
     final now = ref.watch(currentMinuteProvider);
     // A black layer painted over everything dims the page evenly.
     return DecoratedBox(
       position: DecorationPosition.foreground,
       decoration: const BoxDecoration(color: Color.fromRGBO(0, 0, 0, dimming)),
       child: DecoratedBox(
-        decoration: const BoxDecoration(
+        // The sleep view's own calm vignette, not the dashboard background.
+        decoration: BoxDecoration(
           gradient: RadialGradient(
-            center: Alignment(0, -0.05),
+            center: const Alignment(0, -0.05),
             radius: 1.1,
-            colors: [PanelColors.sleepGlow, PanelColors.sleepBackground],
+            colors: [palette.sleepGlow, palette.sleepBackground],
           ),
         ),
         child: Center(
