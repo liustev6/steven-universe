@@ -1,83 +1,28 @@
 import 'package:flutter/material.dart';
 
+import '../layout/layout_config.dart';
 import '../layout/panel_grid.dart';
 import '../ui/glass.dart';
 import '../ui/sizing.dart';
-import '../widgets/clock_widget.dart';
-import '../widgets/status_strip.dart';
 
-/// The `active` screen. The grid is hard-coded for now; it will come from the
-/// layout file once that exists.
+/// The `active` screen: the widgets from [dashboardLayout] on the
+/// square-cell grid.
 class DashboardView extends StatelessWidget {
   const DashboardView({super.key});
+
+  /// 16 px at the sides and 8 px top/bottom: at 1024×600 this fits exactly
+  /// 7 rows of 68 px cells (12 × 7), with ~14 px above and below the grid.
+  static const padding = EdgeInsets.symmetric(
+    horizontal: Sizing.gap,
+    vertical: Sizing.gap / 2,
+  );
 
   @override
   Widget build(BuildContext context) {
     return const GlassBackground(
       child: Padding(
-        padding: EdgeInsets.all(Sizing.gap),
-        child: Column(
-          children: [
-            StatusStrip(),
-            SizedBox(height: Sizing.gap),
-            Expanded(
-              child: PanelGrid(
-                columns: 4,
-                rows: 3,
-                gap: Sizing.gap,
-                items: [
-                  PanelGridItem(
-                    column: 0,
-                    row: 0,
-                    columnSpan: 2,
-                    child: ClockWidget(),
-                  ),
-                  PanelGridItem(
-                    column: 2,
-                    row: 0,
-                    columnSpan: 2,
-                    rowSpan: 2,
-                    child: _PlaceholderCard('Weather'),
-                  ),
-                  PanelGridItem(
-                    column: 0,
-                    row: 1,
-                    columnSpan: 2,
-                    rowSpan: 2,
-                    child: _PlaceholderCard('Home'),
-                  ),
-                  PanelGridItem(
-                    column: 2,
-                    row: 2,
-                    columnSpan: 2,
-                    child: _PlaceholderCard('Assistant'),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PlaceholderCard extends StatelessWidget {
-  const _PlaceholderCard(this.title);
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    return GlassPanel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: text.titleMedium),
-          const SizedBox(height: 6),
-          Text('Not built yet', style: text.bodyMedium),
-        ],
+        padding: padding,
+        child: PanelGrid(gap: Sizing.gap, placements: dashboardLayout),
       ),
     );
   }

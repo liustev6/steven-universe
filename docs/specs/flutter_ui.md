@@ -39,7 +39,7 @@ Enclosure: `models/3d-print/home-control-frame/`.
 | # | Decision |
 |---|---|
 | D1 | Two display states: **`active`** (dashboard) and **`sleep`** (ambient clock view). No separate black state; if pi-agent turns the backlight off, the UI keeps rendering the sleep view. **The UI owns the idle timer** (2 min without a touch → `sleep`; a touch → `active`); pi-agent can force a state with `display_state`. |
-| D2 | **All data fetching lives in home-hub** (home lab): weather, Home Assistant, assistant. **pi-agent is a hardware layer + thin relay.** The UI declares what it needs via `subscribe` (derived from the layout file) and renders what is pushed. |
+| D2 | **All data fetching lives in home-hub** (home lab): weather, Home Assistant, assistant. **pi-agent is a hardware layer + thin relay.** The UI declares what it needs via `subscribe` (derived from the dashboard layout) and renders what is pushed. |
 | D3 | **Riverpod 3** (`flutter_riverpod`), **no code generation** (no `riverpod_generator`/`build_runner`). State machines are pure-Dart reducers hosted in Riverpod `Notifier`s. |
 | D4 | **Caching:** a full `snapshot` (from home-hub, via pi-agent) arrives on every (re)connect; the UI also keeps a debounced JSON cache file for cold boot. No database. |
 | D5 | **One transport, one router:** a single WebSocket client plus a typed message router (sealed classes, exhaustive `switch`). No HTTP clients in the app. |
@@ -95,8 +95,8 @@ pi-agent ⇄ AgentClient ──▶ MessageRouter ──▶ Notifiers (Riverpod) 
 - Malformed JSON is logged and dropped; it does not drop the connection.
 
 ### Feeds: `lib/feeds/feed_registry.dart`
-- Each widget type declares the feeds it needs from its layout options (registry entry
-  `feedsFor(options)`). Feed ids: `weather`, `ha:<entity_id>`.
+- Each `PanelWidget` declares the feeds it needs (later: a `feeds` getter, e.g. the Home widget
+  built with a list of entity ids). Feed ids: `weather`, `ha:<entity_id>`.
 - The union of all widgets' feeds is sent in `subscribe` on every connect (and again if the layout changes).
 - Tracks per feed: last data, `fetchedAt` (from the message `ts` set by home-hub, else arrival time), and a
   staleness threshold (weather 30 min, HA 5 min; overridable per widget in the layout).
@@ -125,7 +125,6 @@ pi-agent ⇄ AgentClient ──▶ MessageRouter ──▶ Notifiers (Riverpod) 
 | `haProvider` | `Notifier` | entity states + pending optimistic actions | portable |
 | `feedsProvider` | `Notifier` | feed registry (weather + staleness) | portable |
 | `displayProvider` | `Notifier` | `active / sleep` + wake-guard timestamp | panel |
-| `layoutProvider` | `FutureProvider` | parsed layout config | panel |
 | `screenProvider` | `Provider` (derived) | what to render (below); never stored | panel |
 
 - Portable providers live in `state/client_providers.dart`, panel ones in `state/panel_providers.dart`.
@@ -238,33 +237,96 @@ UI → pi-agent
   upstream so a fresh `snapshot` arrives.
 
 ## Widgets (v1)
-A config-driven grid. The layout file sets the grid size (default 4 columns × 3 rows below the
-status strip) and each widget's type, position, size, and options. Widgets register in a single
-`type → (builder, feedsFor)` registry.
+A grid of **square cells**: always **12 columns**; the cell size is the width
+divided by 12 (minus gaps), and the number of rows is however many full rows fit the height. At
+1024×600, with 16 px side and 8 px top/bottom padding, that's **68 px cells, 12 × 7 = 84 cells**
+(16 px gaps; the leftover 12 px is split above and below the grid). There is no top bar: the
+dashboard is the grid only. A 1×1 cell (68 px ≈ 10 mm) is below the 12 mm tap target, so tappable widgets should
+span ≥ 2×2.
+
+**Widget model** (`lib/layout/`):
+- **`PanelWidget`** (`panel_widget.dart`): abstract base class (a Riverpod `ConsumerWidget`) for every
+  dashboard widget. Each subclass declares its own **size** (`columns`, `rows`, each 1–4 cells,
+  `PanelWidget.maxSpan`) and whether it is **`expandable`** (has a detail page, opened via the
+  router later). Widget-specific settings (e.g. the Home widget's entity list) are constructor
+  parameters.
+- **Layout** (`layout_config.dart`): `dashboardLayout`, a `const` Dart list of
+  `PanelPlacement(column, row, widget)`: which widgets appear and the grid cell of each one's
+  top-left corner. Sizes come from the widgets. **No YAML and no registry**: adding a widget means a
+  `PanelWidget` subclass plus one placement line. Changing the layout means a rebuild + deploy
+  (`scripts/run_deploy.sh`, ~30 s); there is no on-Pi layout file.
+- **Validation** (`panel_grid.dart`, `validPlacements`): spans outside 1–4, negative positions,
+  anything past the last column or row, and overlaps are skipped with a log message. One bad
+  placement never takes the dashboard down; a test checks the real layout has no skips.
 
 1. **Clock + date.** No feeds.
-2. **Weather**: current conditions and the next few hours. Feed `weather`.
-3. **HA quick controls**: lights/scenes as toggle tiles. Option `entities: [...]` → feeds `ha:<id>`.
+2. **Weather** (3×2, `expandable`): glass card like the other widgets. Inside, 6 equal sub-rows:
+   rows 1–2 **location arrow + city** (regular body text); rows 3–5 **current temperature**
+   ("18°C", medium weight, left); rows 3–6 **condition icon** (square, right; coloured Material
+   Icons, sun/moon layered behind a cloud for partly cloudy, cloud over drops for rain); row 6
+   **today's low / high** ("12°C / 23°C", left). Feed `weather` (contract below). Uses a random
+   mock (`MockWeather`, new values every 5 s) until the feed exists.
+3. **HA quick controls**: lights/scenes as toggle tiles. Constructor `entities: [...]` → feeds `ha:<id>`.
 4. **Assistant panel**: phase indicator, live transcript, streamed reply, push-to-talk button
    (press = start, release = stop), text input via the in-app on-screen keyboard (flutter-pi has no
    system IME). Rendered as the assistant overlay (see Screen derivation); an optional dashboard
    tile opens it.
-5. **Status strip** (fixed, not a grid widget): pi-agent connected/disconnected, relay to home-hub online/offline,
-   time of last update, protocol mismatch.
+5. **Status** (connection, relay, last update, protocol mismatch): the fixed top status strip was
+   **removed**; it will come back as a grid widget.
+6. **Sleep tile** (1×1): puts the panel to sleep immediately.
+7. **`PlaceholderTile(title, icon, columns, rows)`**: stand-in of any size for widgets that don't
+   exist yet (icon only at 1×1, icon + title when one cell wide or tall, full card otherwise).
 
-Example `layout.yaml`:
-```yaml
-grid: {columns: 4, rows: 3}
-widgets:
-  - {type: clock,       pos: [0, 0], size: [2, 1]}
-  - {type: weather,     pos: [2, 0], size: [2, 2]}
-  - {type: ha_controls, pos: [0, 1], size: [2, 2],
-     options: {entities: [light.living_room, light.kitchen, scene.movie]}}
-  - {type: assistant,   pos: [2, 2], size: [2, 1]}
+Current `dashboardLayout` (fills all 84 cells; a test checks this):
+```
+     0  1  2  3 | 4  5  6  7 | 8  9  10 | 11
+r0   Clock 4×2  | Home 4×4   | Calendar | Temp 1×1
+r1              |            |   3×3    | Humid 1×1
+r2   Weather 3×2  |UV|        |          | Door 1×1
+r3                |1×3|       | Media 3×2| Volume
+r4   Forecast 3×1 |  | Assistant|          |  1×2
+r5   Hourly 4×1 |   4×2      | Camera   | Energy
+r6   Sun 2×1|Air 2×1|Sleep Lock Fan Scene| 2×2 | 2×2
 ```
 
-Layout file resolution: `$HOME_PANEL_LAYOUT` if set and readable, else the bundled
-`assets/layout.default.yaml`. Invalid file → log and fall back to the bundled default.
+## Weather feed contract
+home-hub fetches weather and pushes it; the app only renders it. Model: `lib/weather/weather_data.dart`
+(pure Dart, moves into `protocol/messages.dart` later). Provider: `weatherProvider`
+(`lib/weather/weather_provider.dart`); the mock is swapped for a feed-backed notifier later, widgets
+don't change.
+
+Message (also used for the `weather` entry in `snapshot.widgets`):
+```json
+{"type": "widget_update", "widget": "weather", "ts": 1762290000000,
+ "data": {"location": {"name": "San Francisco"},
+          "current": {"temperature_c": 18.4, "condition": "partly_cloudy", "is_day": true},
+          "today": {"low_c": 7.2, "high_c": 23.8}}}
+```
+- Celsius always; the UI rounds for display. snake_case keys (Python backend).
+- `condition` is a provider-independent enum: `clear`, `partly_cloudy`, `cloudy`, `fog`, `drizzle`,
+  `rain`, `snow`, `sleet`, `thunderstorm`, `windy`. Unknown values render as `unknown` (never crash).
+- `is_day` picks sun vs moon icons and the night background.
+- `today` (optional): forecast low/high for the location's current day; the UI hides the row if
+  missing. Open-Meteo: `&daily=temperature_2m_min,temperature_2m_max&forecast_days=1`.
+- Later fields (additive, optional): `hourly: [...]`, `daily: [...]`.
+
+Backend (home-hub) suggestion: **Open-Meteo** (free, no API key), polled every ~10–15 min:
+`GET https://api.open-meteo.com/v1/forecast?latitude=…&longitude=…&current=temperature_2m,weather_code,is_day,wind_speed_10m&timezone=auto`.
+The city name comes from home-hub config (or Open-Meteo's geocoding API). WMO `weather_code` →
+`condition`:
+
+| WMO code | condition |
+|---|---|
+| 0, 1 | `clear` |
+| 2 | `partly_cloudy` |
+| 3 | `cloudy` |
+| 45, 48 | `fog` |
+| 51, 53, 55 | `drizzle` |
+| 56, 57, 66, 67 | `sleet` (freezing drizzle/rain) |
+| 61, 63, 65, 80, 81, 82 | `rain` |
+| 71, 73, 75, 77, 85, 86 | `snow` |
+| 95, 96, 99 | `thunderstorm` |
+| (any non-precipitating code with `wind_speed_10m` ≥ 40 km/h) | `windy` |
 
 ## Flutter project layout
 `[P]` = portable data layer (D8): pure Dart or Riverpod only, no imports from `[panel]` code.
@@ -275,8 +337,7 @@ dart/apps/home-panel/
 ├── pubspec.yaml                 # name: home_panel
 ├── analysis_options.yaml
 ├── assets/
-│   ├── layout.default.yaml
-│   └── fonts/
+│   └── fonts/inter/             # Inter (OFL), weights 200–700
 ├── lib/
 │   ├── main.dart                # ProviderScope, env config, runApp
 │   ├── app.dart                 # MaterialApp, theme, screenProvider switch
@@ -285,6 +346,7 @@ dart/apps/home-panel/
 │   ├── connection/              # [P]
 │   │   ├── agent_client.dart    # WebSocket, ping, reconnect/backoff; endpoint is config
 │   │   └── message_router.dart  # decode → dispatch to notifiers
+│   ├── weather/                 # [P] weather_data.dart (model + JSON), weather_provider.dart (mock for now)
 │   ├── feeds/                   # [P]
 │   │   └── feed_registry.dart   # feed ids, fetchedAt, staleness
 │   ├── cache/                   # [P]
@@ -301,14 +363,16 @@ dart/apps/home-panel/
 │   │   ├── assistant_overlay.dart
 │   │   └── touch_guard.dart     # wake-tap swallowing + user_activity throttle
 │   ├── layout/
-│   │   ├── layout_config.dart   # YAML → typed config
-│   │   └── widget_registry.dart # type → builder + feedsFor
+│   │   ├── panel_widget.dart    # abstract PanelWidget: columns, rows (≤4), expandable
+│   │   ├── panel_grid.dart      # 12-column square-cell grid, PanelPlacement, validPlacements
+│   │   └── layout_config.dart   # dashboardLayout: const list of PanelPlacement
 │   ├── widgets/
 │   │   ├── clock_widget.dart
 │   │   ├── weather_widget.dart
 │   │   ├── ha_controls_widget.dart
 │   │   ├── assistant_panel.dart
-│   │   └── status_strip.dart
+│   │   ├── sleep_tile.dart      # 1×1 sleep button
+│   │   └── placeholder_tile.dart # stand-in of any size
 │   └── ui/
 │       ├── theme.dart
 │       ├── sizing.dart          # 12 mm tap target, spacing scale
@@ -330,7 +394,7 @@ dart/apps/home-panel/
     └── run_deploy.sh            # build → stop app → rsync app + deploy/ files [--run] [--skip-build]
 ```
 
-Dependencies: `flutter_riverpod` (3.x), `yaml`, `intl`. Everything else from the SDK (`dart:io`
+Dependencies: `flutter_riverpod` (3.x), `intl`. Everything else from the SDK (`dart:io`
 WebSocket and files). Only the `macos` platform folder exists; flutter-pi builds don't need `linux/`.
 
 ## Mock pi-agent (`tool/mock_agent.dart`)
@@ -378,7 +442,6 @@ On-Pi directory layout:
 ```
 ~/panel/
 ├── app/          # build output; replaced wholesale on every deploy (rsync --delete)
-├── layout.yaml   # optional local layout override; survives deploys
 └── cache.json    # snapshot cache; survives deploys
 ```
 
@@ -404,7 +467,6 @@ rsync deploy/{start-panel.sh,home-panel.svg,home-panel.desktop} panel:panel/   #
 - `--cpu=pi5` uses the Pi 5–tuned engine (available in the git build of flutterpi_tool).
 - `PI_HOST` comes from the environment, default `panel` (the `~/.ssh/config` alias).
 - `sudo` over ssh relies on passwordless sudo (Pi OS default for the first user).
-- Later: `run_deploy.sh --layout <file>` also copies a layout file to `~/panel/layout.yaml`.
 
 ## systemd unit (`deploy/home-panel.service`), later, for boot-to-app
 ```ini
@@ -417,7 +479,6 @@ Conflicts=getty@tty1.service
 User=<user>
 SupplementaryGroups=render video input
 WorkingDirectory=/home/<user>/panel
-Environment=HOME_PANEL_LAYOUT=/home/<user>/panel/layout.yaml
 Environment=HOME_PANEL_CACHE=/home/<user>/panel/cache.json
 ExecStart=/home/<user>/panel/app/flutter-pi --release --dimensions 269,158 /home/<user>/panel/app
 Restart=always
@@ -451,5 +512,5 @@ backlight/GPIO/audio code; no app-store packaging; no `linux/` desktop target; n
 - **Pixels may not be square:** 1024/152.4 ≈ 6.7 px/mm across but 600/83.3 ≈ 7.2 px/mm down.
   Confirm the active area from the panel datasheet; if the pixels really aren't square, round/square
   shapes will look ~7% squashed (Flutter can't compensate).
-- Weather location and the HA entity list for `layout.default.yaml`.
+- Weather location and the HA entity list for the Home widget.
 - Keep the on-screen keyboard in v1, or ship PTT-only first?

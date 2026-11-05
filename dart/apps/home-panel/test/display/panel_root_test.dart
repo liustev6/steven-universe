@@ -5,7 +5,7 @@ import 'package:home_panel/app.dart';
 import 'package:home_panel/display/dashboard_view.dart';
 import 'package:home_panel/display/sleep_view.dart';
 import 'package:home_panel/display/touch_guard.dart';
-import 'package:home_panel/widgets/status_strip.dart';
+import 'package:home_panel/widgets/sleep_tile.dart';
 
 void main() {
   Future<void> pumpPanel(WidgetTester tester) async {
@@ -83,9 +83,9 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('sleep button switches to the sleep clock', (tester) async {
+  testWidgets('sleep tile switches to the sleep clock', (tester) async {
     await pumpPanel(tester);
-    await tester.tap(find.byType(SleepButton));
+    await tester.tap(find.byType(SleepTile));
     await tester.pumpAndSettle();
     expect(find.byType(SleepView), findsOneWidget);
     expect(find.byType(DashboardView), findsNothing);
