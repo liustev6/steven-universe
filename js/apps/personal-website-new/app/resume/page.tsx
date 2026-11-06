@@ -22,13 +22,20 @@ const PDFViewer = dynamic(
     async () => {
         const mod = await import("react-pdf");
 
-        // ✅ legacy worker REQUIRED for Node / Next
+        // Worker version must match the PDF.js bundled with react-pdf.
         mod.pdfjs.GlobalWorkerOptions.workerSrc =
-            `https://unpkg.com/pdfjs-dist@${mod.pdfjs.version}/legacy/build/pdf.worker.min.mjs`;
+            `https://unpkg.com/pdfjs-dist@${mod.pdfjs.version}/build/pdf.worker.min.mjs`;
 
+        // react-pdf 11 suspends by default; this page has no Suspense/Error
+        // boundary, so keep the built-in loading and error states.
         return function PDF({ scale }: { scale: number }) {
             return (
-                <mod.Document file="/resume/resume.pdf">
+                <mod.Document
+                    file="/resume/resume.pdf"
+                    suspense={false}
+                    loading="Loading resume…"
+                    error="Could not load the resume. Use the download link above."
+                >
                     <mod.Page pageNumber={1} scale={scale} />
                 </mod.Document>
             );

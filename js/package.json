@@ -17,7 +17,6 @@
   "author": "Steven Liu",
   "license": "MIT",
   "devDependencies": {
-    "@types/warning": "^3.0.3",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   }
 }
