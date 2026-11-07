@@ -44,9 +44,10 @@ app/
   admin.py         auth-service-admin CLI
   validation.py    client-id, user-id, and location rules
 policy.yaml        the policy (reviewed in git; deployed to /etc/auth-service/policy.yaml)
-bin/auth-service-admin   host wrapper for the CLI (runs as authsvc)
+Dockerfile         image (build context: python/, so libs/service-auth is included)
+compose.yaml       how it runs: hardened service + a network-less `admin` one-off service
+bin/auth-service-admin   host wrapper: runs the CLI in the `admin` container
 scripts/add-client.sh    pipe a new secret from the auth host into a service's host
-deploy/auth-service.service  hardened systemd unit
 ```
 
 ## Local development
@@ -58,7 +59,7 @@ uv pip install -p .venv -r requirements-dev.txt      # includes ../../libs/servi
 .venv/bin/python -m pytest tests ../../libs/service-auth/tests
 ```
 
-Run it against a scratch config directory (plain HTTP, local only):
+Run it in-process against a scratch config directory (plain HTTP, local only):
 
 ```sh
 export AUTH_SERVICE_CONFIG_DIR=$PWD/.local-config
@@ -73,6 +74,13 @@ curl -s -u "pi-server:$(cat .local-config/pi-server.secret)" \
 ```
 
 (`.local-config/` is git-ignored only if you add it; don't commit secrets.)
+
+Or run the real container locally (needs a cert in `tls/`; a self-signed one is fine):
+```sh
+export AUTH_SERVICE_HOST_CONFIG=$PWD/.local-config           # instead of /etc/auth-service
+AUTH_SERVICE_COMPOSE=$PWD/compose.yaml sh bin/auth-service-admin list-clients
+docker compose up -d --build && docker compose logs -f
+```
 
 ## Admin
 
@@ -89,22 +97,48 @@ ssh auth-host auth-service-admin check-policy
 # 2. create the secret and pipe it into the service host:
 scripts/add-client.sh pi-server panel /etc/pi-server/credentials/client_secret liustev6
 # 3. on the service: SERVICE_AUTH_ISSUER, SERVICE_AUTH_CLIENT_ID, SERVICE_AUTH_CLIENT_SECRET_FILE
-#    (or systemd LoadCredential=client_secret:...), restart, then check list-clients
+#    (the secret file mounted read-only into its container), restart, then check list-clients
 ```
 
 ## Deployment (not deployed yet)
 
-Target: an LXC on pve01 (1 core, 512 MB), `startup order=0`.
+Docker Compose on its own LXC on pve01 (1 core, 512 MB, `startup order=0`), deployed **by hand**
+(it is the root of trust; see the deployer spec). The container runs as uid 10001 with a read-only
+filesystem, no capabilities, and `no-new-privileges`; only `/etc/auth-service/clients` is
+writable (last-mint stamps).
 
-1. Create the `authsvc` user; code in `/opt/auth-service` with a venv
-   (`pip install -r requirements.txt ../../libs/service-auth`).
-2. `/etc/auth-service/` owned by `authsvc`, mode 700: `policy.yaml`, `keys/`, `clients/`, `tls/`.
-3. Network: DHCP reservation `192.168.50.21` on the router; Cloudflare `A auth.lan.liustev6.ca`
-   → that IP, DNS only. TLS certificate in `tls/` from Let's Encrypt via DNS-01 (Cloudflare API
-   token), renewed automatically. Details in the spec's Deployment section.
-4. `auth-service-admin new-key` then `promote-key <kid>`.
-5. Install `deploy/auth-service.service` and `bin/auth-service-admin`
-   (`/usr/local/bin`), `systemctl enable --now auth-service`.
+1. **LXC:** unprivileged, `features: nesting=1,keyctl=1` (needed for Docker); install Docker
+   Engine and the Compose plugin.
+2. **Network:** DHCP reservation `192.168.50.235` for CT 102 (MAC `BC:24:11:51:80:B6`); Cloudflare `A auth.lan.liustev6.ca` → that IP,
+   DNS only (spec, Deployment).
+3. **Code:** `git clone https://github.com/liustev6/steven-universe /opt/steven-universe`.
+4. **Config dir**, owned by the container user:
+   ```sh
+   install -d -m 700 -o 10001 -g 10001 /etc/auth-service /etc/auth-service/{keys,clients,tls}
+   install -m 600 -o 10001 -g 10001 /opt/steven-universe/python/services/auth-service/policy.yaml /etc/auth-service/
+   ```
+5. **TLS:** Let's Encrypt via DNS-01 (certbot + Cloudflare API token limited to DNS edit on
+   `liustev6.ca`). A deploy hook copies the files where the container can read them and restarts it:
+   ```sh
+   install -m 600 -o 10001 -g 10001 "$RENEWED_LINEAGE/fullchain.pem" /etc/auth-service/tls/cert.pem
+   install -m 600 -o 10001 -g 10001 "$RENEWED_LINEAGE/privkey.pem"   /etc/auth-service/tls/key.pem
+   docker compose -f /opt/steven-universe/python/services/auth-service/compose.yaml restart auth-service
+   ```
+6. **Admin CLI:** `install -m 755 bin/auth-service-admin /usr/local/bin/`, then
+   `auth-service-admin new-key` and `auth-service-admin promote-key <kid>`.
+7. **Start:** `cd /opt/steven-universe/python/services/auth-service && docker compose up -d --build`.
+
+**Deploy / update from the Mac:** `infra/deployment/auth-service.sh [ref]` does steps 3–7 for a
+pushed commit (default `main`): checkout on the host, config dir, admin CLI, policy (validated
+first), first signing key if missing, build, start, health check over TLS. It stops if the TLS
+certificate is missing, so do step 5 once by hand first.
+
+**By hand on the host:** `git pull`, then `docker compose up -d --build`. Policy-only changes need no restart:
+copy the new `policy.yaml` into `/etc/auth-service/` and it is reloaded (an invalid one is
+rejected and the old one stays). Later the image comes from GHCR instead
+(`AUTH_SERVICE_TAG=<sha> docker compose up -d`), built by CI.
+
+**Logs:** `docker compose logs -f auth-service` (includes the `auth_service.audit` lines).
 
 ## Notes and deviations from the spec
 
@@ -117,7 +151,7 @@ Target: an LXC on pve01 (1 core, 512 MB), `startup order=0`.
   not a background task; the effect is the same.
 - Rate limiting is in memory, per process: fine for one uvicorn worker.
 - The audit log is the `auth_service.audit` logger (one JSON line per mint or
-  denial), which ends up in journald.
+  denial), written to the container log (`docker compose logs auth-service`).
 
 ## Known issue: don't enable `can_downscope` yet
 

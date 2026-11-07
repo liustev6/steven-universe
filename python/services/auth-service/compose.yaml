@@ -1,0 +1,46 @@
+# auth-service on its LXC. Spec: docs/specs/auth-service.md ("Deployment").
+# On the auth-service host, from this directory:
+#   docker compose up -d --build            deploy / update (builds from this checkout)
+#   auth-service-admin <command>            admin CLI (bin/auth-service-admin runs the
+#                                           `admin` service below in a one-off container)
+# AUTH_SERVICE_HOST_CONFIG overrides the host config dir (only for local testing).
+name: auth-service
+
+x-hardening: &hardening
+  read_only: true                     # whole container filesystem read-only
+  user: "10001:10001"                 # owns /etc/auth-service on the host
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: ["/tmp"]
+
+x-image: &image
+  image: ghcr.io/liustev6/steven-universe/auth-service:${AUTH_SERVICE_TAG:-local}
+  build:
+    context: ../..                    # python/, so libs/service-auth is included
+    dockerfile: services/auth-service/Dockerfile
+    args:
+      REVISION: ${REVISION:-unknown}  # commit sha, recorded as the image's revision label
+
+services:
+  auth-service:
+    <<: [*hardening, *image]
+    restart: unless-stopped
+    ports: ["8443:8443"]
+    environment:
+      AUTH_SERVICE_LOG_LEVEL: ${AUTH_SERVICE_LOG_LEVEL:-INFO}
+    volumes:
+      # policy.yaml, keys/, tls/: read-only. Directory mounts, so policy edits are seen live.
+      - ${AUTH_SERVICE_HOST_CONFIG:-/etc/auth-service}:/etc/auth-service:ro
+      # last-mint stamps: the only writable path
+      - ${AUTH_SERVICE_HOST_CONFIG:-/etc/auth-service}/clients:/etc/auth-service/clients
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}
+
+  admin:
+    <<: [*hardening, *image]
+    profiles: [admin]                 # never started by `docker compose up`
+    entrypoint: ["python", "-m", "app.admin"]
+    network_mode: none                # the CLI only reads and writes files
+    volumes:
+      - ${AUTH_SERVICE_HOST_CONFIG:-/etc/auth-service}:/etc/auth-service   # writes keys/, clients/

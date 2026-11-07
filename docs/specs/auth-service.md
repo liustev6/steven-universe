@@ -695,20 +695,25 @@ sandbox_token = await tokens.downscope("file-management",
 ## Deployment
 - An LXC on pve01, `auth-service`: 1 core, 512 MB, 4 GB disk, **`startup order=0`** so it comes
   up before every other service.
-- **Address:** a fixed IPv4, `192.168.50.21`, set as a DHCP reservation on the router (the LXC
+- **Address:** a fixed IPv4, `192.168.50.235` (CT 102, MAC `BC:24:11:51:80:B6`), set as a DHCP reservation on the router (the LXC
   keeps `ip=dhcp`; its MAC is fixed by Proxmox). A reservation rather than a static IP because
   the router's DHCP pool covers the low range, so a static address could later be handed to
   another device. No IPv6 (AAAA) record: services reach it over IPv4 only.
-- **Name:** Cloudflare `A auth.lan.liustev6.ca → 192.168.50.21`, **DNS only** (Cloudflare's
+- **Name:** Cloudflare `A auth.lan.liustev6.ca → 192.168.50.235`, **DNS only** (Cloudflare's
   proxy cannot reach a private IP). Everyone can resolve it; only the LAN can reach it. Checked:
   the router and 1.1.1.1 both return private-IP answers (no DNS rebind blocking), and pve01 and
   its LXCs use the router for DNS. Trade-off: during an internet outage lookups fail once cached
   answers expire, so new tokens can't be minted; verification keeps working on cached JWKS.
 - **Certificate:** Let's Encrypt via the **DNS-01** challenge with a Cloudflare API token
   limited to `Zone:DNS:Edit` on `liustev6.ca`. Let's Encrypt checks a temporary TXT record and
-  never connects to the host, so nothing is exposed. Renewal is automatic (certbot or lego timer)
-  and reloads uvicorn. The certificate name appears in public Certificate Transparency logs.
-- FastAPI + uvicorn behind TLS, port 8443. Libraries: `pyjwt[crypto]` (ES256, JWKS client) and
+  never connects to the host, so nothing is exposed. Renewal is automatic (certbot timer); a
+  deploy hook copies the files into `/etc/auth-service/tls/` and restarts the container. The
+  certificate name appears in public Certificate Transparency logs.
+- **Runtime:** Docker Compose, like every LXC service (deployer D11). The container runs as uid
+  10001 with a read-only filesystem, no capabilities and `no-new-privileges`; `/etc/auth-service`
+  is mounted read-only except `clients/` (last-mint stamps). The admin CLI runs in a one-off
+  container with no network. Deployed by hand, not through the pipeline (root of trust).
+- FastAPI + uvicorn with TLS, port 8443. Libraries: `pyjwt[crypto]` (ES256, JWKS client) and
   `cryptography`. Use the libraries for JWT/JWK work; don't hand-roll signing or parsing.
 - Files: `policy.yaml` (deployed from git), `/etc/auth-service/keys/`, `/etc/auth-service/clients/`
   (see "Client registration and credential lifecycle").

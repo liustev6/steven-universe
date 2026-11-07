@@ -3,7 +3,7 @@
 # Include base requirements
 -r requirements.txt
 
-# Shared token client/verifier (also installed on the host, see scripts/run_deploy.sh)
+# Shared token client/verifier (also installed into the image, see Dockerfile)
 -e ../../libs/service-auth[fastapi]
 
 # Tests (FastAPI's TestClient needs httpx)
