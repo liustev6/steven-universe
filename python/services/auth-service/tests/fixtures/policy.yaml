@@ -1,0 +1,84 @@
+# TEST FIXTURE, not deployed. The full multi-service policy from the spec, so the tests
+# cover every grant (api-service relay, user chains, downscoping, gpu-server, admin-cli).
+# The deployed policy is ../../policy.yaml.
+
+issuer: https://auth.lan.liustev6.ca
+token_ttl_seconds: 600
+downscoped_max_ttl_seconds: 3600
+max_delegation_depth: 3
+
+audiences:
+  api-service:                           # the edge; scopes its routes require from authenticated callers
+    scopes: [files:read, files:write, files:delete, files:list, chat:stream]
+  file-management:
+    scopes: [files:read, files:write, files:delete, files:list]
+    detail_types:
+      file_access:
+        actions: [read, write, delete, list]
+        location_syntax: prefix          # "<bucket>/<key prefix>"; subset = string prefix
+        location_roots: [models/, public/, users/, workspaces/, services/]
+  gpu-server:
+    scopes: [tasks:run, sessions:read, sessions:admin]
+  stevenai-service:
+    scopes: [chat:stream]
+
+clients:
+  api-service:
+    can_assert_users: true               # may start a delegation for a user it authenticated
+    can_relay_clients: true              # may pass an outside machine client's own identity downstream
+    can_downscope: true                  # share links
+    grants:
+      stevenai-service:
+        scopes: [chat:stream]
+      file-management:
+        scopes: [files:read, files:write, files:delete, files:list]
+        authorization_details:
+          # its OWN token (no user) gets only this: exactly what anonymous visitors may do
+          - {type: file_access, actions: [read, list], locations: ["public/"]}
+          # only in tokens acting for a user (${user} can't resolve otherwise)
+          - {type: file_access, actions: [read, write, delete, list], locations: ["users/${user}/"]}
+
+  hey-pi:                                # pi-server on the panel; from outside it comes in via api-service
+    grants:
+      api-service:
+        scopes: [files:read, files:list]
+      file-management:
+        scopes: [files:read, files:list]
+        authorization_details:
+          - {type: file_access, actions: [read, list], locations: ["services/${client}/"]}
+
+  stevenai-v2:                           # next steven-ai, runs agent sandboxes
+    can_downscope: true
+    grants:
+      gpu-server:
+        scopes: [tasks:run]
+      file-management:
+        scopes: [files:read, files:write, files:delete, files:list]
+        authorization_details:
+          - {type: file_access, actions: [read, write, delete, list], locations: ["workspaces/${client}/"]}
+          - {type: file_access, actions: [read, write, list], locations: ["users/${user}/"]}
+
+  hey-pi-agent:
+    can_downscope: true
+    grants:
+      file-management:
+        scopes: [files:read, files:write, files:delete, files:list]
+        authorization_details:
+          - {type: file_access, actions: [read, write, delete, list], locations: ["workspaces/${client}/"]}
+
+  gpu-server:
+    grants:
+      file-management:
+        scopes: [files:read, files:write]
+        authorization_details:
+          - {type: file_access, actions: [read], locations: ["models/"]}
+          - {type: file_access, actions: [write], locations: ["users/${user}/outputs/"]}
+
+  admin-cli:
+    grants:
+      file-management:
+        scopes: [files:read, files:write, files:delete, files:list]
+        authorization_details:
+          - {type: file_access, actions: [read, write, delete, list], locations: ["models/", "public/"]}
+      gpu-server:
+        scopes: [sessions:read, sessions:admin]

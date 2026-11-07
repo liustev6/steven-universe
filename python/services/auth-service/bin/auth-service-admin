@@ -1,0 +1,23 @@
+#!/usr/bin/env sh
+# auth-service-admin: the host-only admin CLI (installed as /usr/local/bin/auth-service-admin).
+#
+# Always runs as the service user (authsvc), so the mode-600 files it writes are
+# readable by the service. Run it as root or authsvc on the auth-service host:
+#   auth-service-admin list-clients
+#   auth-service-admin add-client pi-server --stdout | ssh panel '...'   (see scripts/add-client.sh)
+set -eu
+
+APP_DIR="${AUTH_SERVICE_HOME:-/opt/auth-service}"
+SERVICE_USER="${AUTH_SERVICE_USER:-authsvc}"
+export AUTH_SERVICE_CONFIG_DIR="${AUTH_SERVICE_CONFIG_DIR:-/etc/auth-service}"
+
+if [ "$(id -u)" = "0" ]; then
+  exec runuser -u "$SERVICE_USER" -- env AUTH_SERVICE_CONFIG_DIR="$AUTH_SERVICE_CONFIG_DIR" \
+    sh -c 'cd "$1" && shift && exec .venv/bin/python -m app.admin "$@"' sh "$APP_DIR" "$@"
+fi
+if [ "$(id -un)" != "$SERVICE_USER" ]; then
+  echo "run as root or $SERVICE_USER" >&2
+  exit 1
+fi
+cd "$APP_DIR"
+exec .venv/bin/python -m app.admin "$@"

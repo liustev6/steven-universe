@@ -21,7 +21,8 @@ that with:
 
 ```
                         ┌──────────────────────────────────────────┐
-                        │ auth-service  (issuer = https://auth.lab) │
+                        │ auth-service                             │
+                        │ issuer = https://auth.lan.liustev6.ca    │
    client credentials   │  POST /oauth2/token  (mint, exchange,    │   GET /.well-known/jwks.json
   ───────────────────▶  │                       downscope)         │  ─────────────────────────▶ every verifier
    ◀── access token ──  │  policy.yaml  (clients, grant templates) │      (public keys, cached)
@@ -116,13 +117,17 @@ async def get_object(bucket: str, key: str, p: Principal = Depends(require("file
 ## Token format (RFC 9068 + RFC 9396)
 Header: `{"alg": "ES256", "typ": "at+jwt", "kid": "<key id>"}`.
 
-The issuer identifier is an HTTPS URL, e.g. `https://auth.lab` (configurable as
-`SERVICE_AUTH_ISSUER`). Audiences are service identifiers, e.g. `file-management`. RFC 7519 allows
+The issuer identifier is `https://auth.lan.liustev6.ca` (services set it as `SERVICE_AUTH_ISSUER`).
+It is both the name verifiers match `iss` against and the address they fetch discovery and JWKS
+from (RFC 8414), so it must be an HTTPS URL services can reach. It is a name under a domain we own,
+not an IP, `.lab` or `.internal`, so that a publicly trusted certificate can be issued for it and
+the IP can change without touching any service (see Deployment). The name is public, the service
+is not: it resolves to a LAN address. Audiences are service identifiers, e.g. `file-management`. RFC 7519 allows
 any string; URLs such as `https://files.lab` would also work.
 
 | Claim | Service token | Delegated token | Downscoped token | Notes |
 |---|---|---|---|---|
-| `iss` | `https://auth.lab` | same | same | Verifiers check exactly |
+| `iss` | `https://auth.lan.liustev6.ca` | same | same | Verifiers check exactly |
 | `sub` | `service:<client_id>` | `user:<id>`, or `service:<client_id>` when relayed | same as the token it came from | |
 | `act` | absent | `{"sub": "service:<client_id>", "act": {...}}` | same as the token it came from | Nested, nearest actor outermost; max depth 3 |
 | `aud` | `<target service>` | same | same | Exactly one string |
@@ -135,7 +140,7 @@ any string; URLs such as `https://files.lab` would also work.
 Example delegated token (user → api-service → file-management):
 ```json
 {
-  "iss": "https://auth.lab", "aud": "file-management",
+  "iss": "https://auth.lan.liustev6.ca", "aud": "file-management",
   "sub": "user:42", "act": {"sub": "service:api-service"},
   "client_id": "api-service",
   "scope": "files:read files:write files:list",
@@ -148,7 +153,7 @@ Example delegated token (user → api-service → file-management):
 Example downscoped sandbox token (stevenai-v2 hands this to sandbox `ws-7f3`):
 ```json
 {
-  "iss": "https://auth.lab", "aud": "file-management",
+  "iss": "https://auth.lan.liustev6.ca", "aud": "file-management",
   "sub": "service:stevenai-v2", "client_id": "stevenai-v2",
   "scope": "files:read files:write files:list",
   "authorization_details": [
@@ -164,7 +169,7 @@ for delegated tokens, `actor_chain` = the nested `act` subjects, `authorization_
 ## Policy (`python/services/auth-service/policy.yaml`)
 Reviewed in git; contains no secrets.
 ```yaml
-issuer: https://auth.lab
+issuer: https://auth.lan.liustev6.ca
 token_ttl_seconds: 600
 downscoped_max_ttl_seconds: 3600
 max_delegation_depth: 3
@@ -172,20 +177,17 @@ max_delegation_depth: 3
 audiences:
   api-service:                           # the edge; scopes its routes require from authenticated callers
     scopes: [files:read, files:write, files:delete, files:list, chat:stream]
-    delegable_scopes: [files:read, files:write, files:delete, files:list, chat:stream]
   file-management:
     scopes: [files:read, files:write, files:delete, files:list]
-    delegable_scopes: [files:read, files:write, files:delete, files:list]
     detail_types:
       file_access:
         actions: [read, write, delete, list]
         location_syntax: prefix          # "<bucket>/<key prefix>"; subset = string prefix
+        location_roots: [models/, public/, users/, workspaces/, services/]   # the buckets
   gpu-server:
     scopes: [tasks:run, sessions:read, sessions:admin]
-    delegable_scopes: [tasks:run]
   stevenai-service:
     scopes: [chat:stream]
-    delegable_scopes: [chat:stream]
 
 clients:
   api-service:
@@ -252,7 +254,8 @@ clients:
 | `${user}` | the user id from the delegated `sub` (`user:42` → `42`) | delegated tokens only; templates containing `${user}` are **dropped** from non-delegated tokens |
 
 Startup fails if the policy references an undefined audience, scope, detail type, or action;
-uses an unknown variable; or has a location that doesn't start with a known bucket name.
+uses an unknown variable; or has a location outside its detail type's `location_roots`.
+Implementation: `python/services/auth-service/` (issuer) and `python/libs/service-auth/` (library).
 
 ## Credentials (how clients prove who they are)
 - **Client secret (phase 1).** Each client gets a 256-bit random secret, generated by the admin
@@ -387,8 +390,8 @@ URL-encoded JSON array) asks for **less** than the policy allows. If omitted, th
 everything the resolved templates allow.
 
 ### How a token's permissions are computed (all grants)
-1. `allowed_scopes` = the client's `grants[audience].scopes` (for delegated tokens, intersected
-   with the audience's `delegable_scopes`).
+1. `allowed_scopes` = the client's `grants[audience].scopes`. Delegated tokens get the same
+   scopes as direct ones; what they can touch is limited by the templates and `${user}`.
 2. `allowed_details` = the client's templates for that audience, with variables resolved; templates
    whose variables can't be resolved are dropped.
 3. If the request names `scope` / `authorization_details`, each requested item must be
@@ -424,7 +427,7 @@ grant_type=urn:ietf:params:oauth:grant-type:token-exchange
 &resource=file-management&scope=files:read files:list
 ```
 1. Authenticate the client; it must have `can_assert_users: true`.
-2. Compute permissions with `${user}=42` and delegable scopes only.
+2. Compute permissions with `${user}=42`.
 3. Mint: `sub=user:42`, `act={"sub": "service:api-service"}`.
 
 **Phase 3:** `subject_token_type=urn:ietf:params:oauth:token-type:id_token` with the user's
@@ -451,8 +454,7 @@ grant_type=urn:ietf:params:oauth:grant-type:token-exchange
    | `user:<id>` (chained delegation) | always | the **requesting client's** templates with `${user}=<id>`. A service acts for a user only where its own policy allows (gpu-server can write `users/42/outputs/`, nothing else). |
    | `service:<client>` (relay) | the requester has `can_relay_clients` (api-service only) | the **relayed client's** templates, with `${client}=<relayed client>`; `${user}` templates are dropped. api-service's own grants don't apply, so a relayed client never gets more than it would by calling directly. |
 
-4. Only the target audience's `delegable_scopes` are allowed; any requested `scope` /
-   `authorization_details` must be covered (same rules as above).
+4. Any requested `scope` / `authorization_details` must be covered (same rules as above).
 5. Chain depth after adding this hop ≤ `max_delegation_depth`.
 6. Mint: same `sub`; `act = {"sub": "service:<client>", "act": <subject_token.act>}`;
    `exp = min(now + ttl, subject_token.exp)`, so a chain never outlives the original token.
@@ -661,8 +663,9 @@ sandbox_token = await tokens.downscope("file-management",
   for the next refresh). Tokens signed with it then fail.
 
 ## Security notes
-- **Transport.** `/oauth2/token` carries client secrets, so it must use TLS even on the LAN. Use a
-  certificate from a small internal CA or Caddy. Service-to-service calls carry bearer tokens
+- **Transport.** `/oauth2/token` carries client secrets and JWKS decides which keys verifiers
+  trust, so auth-service is TLS-only, even on the LAN, with a publicly trusted certificate (see
+  Deployment) so no service needs a custom CA. Service-to-service calls carry bearer tokens
   and should move to TLS too; until then, short lifetimes and single audiences limit the damage
   of a sniffed token.
 - **Tokens in URLs.** Share links carry a downscoped token. RFC 6750 §2.3 discourages tokens in
@@ -690,8 +693,21 @@ sandbox_token = await tokens.downscope("file-management",
 | Clock skew > 30 s | Tokens rejected as not yet valid / expired; fix chrony. |
 
 ## Deployment
-- An LXC on pve01, `auth-service`: 1 core, 512 MB, 4 GB disk, fixed IP, **`startup order=0`**
-  so it comes up before every other service.
+- An LXC on pve01, `auth-service`: 1 core, 512 MB, 4 GB disk, **`startup order=0`** so it comes
+  up before every other service.
+- **Address:** a fixed IPv4, `192.168.50.21`, set as a DHCP reservation on the router (the LXC
+  keeps `ip=dhcp`; its MAC is fixed by Proxmox). A reservation rather than a static IP because
+  the router's DHCP pool covers the low range, so a static address could later be handed to
+  another device. No IPv6 (AAAA) record: services reach it over IPv4 only.
+- **Name:** Cloudflare `A auth.lan.liustev6.ca → 192.168.50.21`, **DNS only** (Cloudflare's
+  proxy cannot reach a private IP). Everyone can resolve it; only the LAN can reach it. Checked:
+  the router and 1.1.1.1 both return private-IP answers (no DNS rebind blocking), and pve01 and
+  its LXCs use the router for DNS. Trade-off: during an internet outage lookups fail once cached
+  answers expire, so new tokens can't be minted; verification keeps working on cached JWKS.
+- **Certificate:** Let's Encrypt via the **DNS-01** challenge with a Cloudflare API token
+  limited to `Zone:DNS:Edit` on `liustev6.ca`. Let's Encrypt checks a temporary TXT record and
+  never connects to the host, so nothing is exposed. Renewal is automatic (certbot or lego timer)
+  and reloads uvicorn. The certificate name appears in public Certificate Transparency logs.
 - FastAPI + uvicorn behind TLS, port 8443. Libraries: `pyjwt[crypto]` (ES256, JWKS client) and
   `cryptography`. Use the libraries for JWT/JWK work; don't hand-roll signing or parsing.
 - Files: `policy.yaml` (deployed from git), `/etc/auth-service/keys/`, `/etc/auth-service/clients/`
@@ -718,6 +734,9 @@ sandbox_token = await tokens.downscope("file-management",
   useless without the client's key.
 - Workload identity with SPIFFE/SPIRE, replacing client secrets with automatically rotated
   certificates.
+- Direct-only scopes: a per-audience `delegable_scopes` list, if a scope (e.g. gpu-server's
+  `sessions:admin`) should only ever be used by a client calling as itself, never through a
+  relay or on a user's behalf. Left out for now: every current scope is fine to delegate.
 - Relationship-based access (OpenFGA or SpiceDB) for user-to-user sharing and groups. These
   can't be written into a token at mint time, so resource services would also ask that service.
 - Validating the setup against an off-the-shelf issuer (e.g. Keycloak's client credentials and
@@ -728,19 +747,18 @@ need their own narrow credentials, a service's access must be revoked without re
 others, or keeping keys in sync across `.env` files becomes painful.
 
 ## Scope and detail catalog (initial)
-| Audience | Scope | Detail type | Meaning | Delegable |
-|---|---|---|---|---|
-| file-management | `files:read` / `files:write` / `files:delete` / `files:list` | `file_access` (actions `read write delete list`, locations `<bucket>/<prefix>`) | Object operations, limited to the detail's locations | yes |
-| gpu-server | `tasks:run` | — | Run predefined tasks | yes |
-| | `sessions:read` / `sessions:admin` | — | Inspect / kill GPU sessions | no |
-| stevenai-service | `chat:stream` | — | Chat with RAG | yes |
+| Audience | Scope | Detail type | Meaning |
+|---|---|---|---|
+| file-management | `files:read` / `files:write` / `files:delete` / `files:list` | `file_access` (actions `read write delete list`, locations `<bucket>/<prefix>`) | Object operations, limited to the detail's locations |
+| gpu-server | `tasks:run` | — | Run predefined tasks |
+| | `sessions:read` / `sessions:admin` | — | Inspect / kill GPU sessions |
+| stevenai-service | `chat:stream` | — | Chat with RAG |
 
 ## Open questions
 - Which identity provider will api-service use for users (needed for phase 3)?
 - Machine clients that are truly outside the LAN and tailnet: publish auth-service's
   `/oauth2/token` and `/.well-known/*` through api-service (e.g. `https://api.liustev6.ca/oauth2/token`,
   rate-limited), or require them to join the tailnet?
-- TLS: an internal CA (e.g. `step-ca`), Caddy with an internal issuer, or Tailscale certificates?
 - Share links longer than 1 hour: a stored share record in the gateway (revocable), or a
   separate long-lived detail type?
 - Do workers inside gpu-server's Docker containers ever call other services? If so, they get

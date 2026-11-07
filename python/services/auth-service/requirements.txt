@@ -1,0 +1,11 @@
+# FastAPI and server
+fastapi==0.115.12
+uvicorn[standard]==0.34.0
+
+# Configuration and policy
+pydantic-settings==2.8.1
+pyyaml==6.0.2
+
+# JWT signing (ES256) and keys
+pyjwt[crypto]==2.10.1
+cryptography==44.0.2

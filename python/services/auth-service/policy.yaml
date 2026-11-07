@@ -1,0 +1,46 @@
+# auth-service policy: which clients may get which permissions at which audiences.
+# Reviewed in git; no secrets. Deployed to /etc/auth-service/policy.yaml.
+# Validate with: auth-service-admin check-policy --file policy.yaml
+# Spec: docs/specs/auth-service.md ("Policy").
+#
+# Starting small: api-service, file-management and pi-server. Only relaying is enabled:
+# no users yet (no `${user}` grants, no `can_assert_users`) and nothing hands out narrow
+# tokens yet (no `can_downscope`; see the README before enabling it). Add audiences and clients (gpu-server,
+# stevenai-service, ...) as each service adopts service-auth; tests/fixtures/policy.yaml
+# shows the full multi-service shape.
+
+issuer: https://auth.lan.liustev6.ca
+token_ttl_seconds: 600                   # normal tokens: 10 minutes
+downscoped_max_ttl_seconds: 3600         # downscoped (grant 4) tokens: at most 1 hour
+max_delegation_depth: 3                  # longest `act` chain allowed (grant 3)
+
+audiences:
+  api-service:                           # the public edge; scopes its routes require from authenticated callers
+    scopes: [files:read, files:write, files:delete, files:list]
+  file-management:
+    scopes: [files:read, files:write, files:delete, files:list]
+    detail_types:
+      file_access:
+        actions: [read, write, delete, list]
+        location_syntax: prefix          # "<bucket>/<key prefix>"; subset = string prefix
+        location_roots: [models/, public/, users/, workspaces/, services/]
+
+clients:
+  api-service:
+    can_relay_clients: true              # may pass an outside machine client's own identity downstream (grant 3)
+    grants:
+      file-management:
+        scopes: [files:read, files:list]
+        authorization_details:
+          # what anonymous visitors may do, and nothing more
+          - {type: file_access, actions: [read, list], locations: ["public/"]}
+
+  pi-server:                             # Hey Pi's backend (BFF); the Flutter UI only talks to
+    grants:
+      api-service:
+        scopes: [files:read, files:write, files:delete, files:list]
+      file-management:
+        scopes: [files:read, files:write, files:delete, files:list]
+        authorization_details:
+          - {type: file_access, actions: [read, write, delete, list], locations: ["services/${client}/"]}
+          - {type: file_access, actions: [read, write, delete, list], locations: ["workspaces/${client}/"]}
