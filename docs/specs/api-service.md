@@ -64,6 +64,7 @@ async def my_file(path: str, caller: Caller = Depends(edge_auth(mode="user", sco
 | `user` (default) | Logged-in users only; 401 otherwise | Delegated token for the user (auth-service grant 2) |
 | `user` + `scopes` | Users or machine clients whose credential carries the scopes | Delegated (user) or relayed (client) token (grant 2 / grant 3) |
 | `client` | Machine clients only | Relayed token (grant 3) |
+| `proxy` | Whoever the downstream service accepts; api-service only pre-checks and rate-limits | The caller's own credential, forwarded unchanged (allowlisted paths only; today just `/deploy/*`) |
 
 Tests: one walks `app.routes` and fails if a route has no mode, or if the set of `public` routes
 differs from a reviewed list. Another checks that every non-public route returns 401 without
@@ -109,6 +110,14 @@ Middleware runs in this order:
 
 api-service builds the object key from the **verified** identity (`users/{user}/…`). A request
 can't name another user's prefix; file-management also enforces this through the token's grants.
+
+### Deploys (new; see [deployer.md](deployer.md))
+| Route | Mode | Downstream | Notes |
+|---|---|---|---|
+| `POST /deploy/v1/deployments` | `proxy` | deployer `POST /v1/deployments`, body and `Authorization` unchanged, response streamed | The caller is a GitHub Actions workflow with a GitHub OIDC token whose `aud` is the deployer. api-service is not the token's audience: it pre-checks `iss` = GitHub, rate-limits, and forwards. The deployer does the full verification. |
+
+`proxy` is the only mode that forwards a credential, and only on this allowlisted path. It does
+not conflict with E4, which is about tokens addressed to api-service itself.
 
 ## Caching
 - **Public content** (`/files/public/*`, public pages):
