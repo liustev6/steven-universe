@@ -248,7 +248,7 @@ served through the gateway.
 ### Config and deploy
 - Settings come from `.env` through pydantic-settings: storage endpoint and keys, `PUBLIC_SERVICE_URL`,
   the two auth keys, signed-URL expiry (default 1 h, max 24 h), `MAX_BUFFERED_CHUNKS`, and the bucket lists.
-- `scripts/deploy.sh` builds a Docker image and runs it in an LXC (`docker run -p 8000:8000
+- `infra/deployment/file-management.sh` builds a Docker image and runs it in an LXC (`docker run -p 8000:8000
   --env-file .env --restart unless-stopped`).
 
 ## Problems (current code)

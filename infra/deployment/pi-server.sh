@@ -2,7 +2,7 @@
 # Deploy pi-server to the Pi and (re)start it as a systemd service (run on
 # the Mac).
 #
-#   scripts/run_deploy.sh
+#   infra/deployment/pi-server.sh   (from the repo root, or any directory)
 #
 # PI_HOST picks the SSH host (default: the `panel` alias in ~/.ssh/config).
 # On the Pi: code in ~/pi-server, Python venv in ~/pi-server/.venv, settings
@@ -11,7 +11,7 @@
 set -euo pipefail
 
 PI_HOST="${PI_HOST:-panel}"
-SERVICE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SERVICE_DIR="$(cd "$(dirname "$0")/../../python/services/pi-server" && pwd)"
 
 step() { printf '\n==> %s\n' "$*"; }
 

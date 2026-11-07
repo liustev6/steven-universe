@@ -1,5 +1,5 @@
 #!/bin/bash
-# Deployment script - deploys StevenAI Service to LXC container via SSH
+# Deployment script - deploys to LXC container via SSH
 
 set -e
 
@@ -9,11 +9,12 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}🚀 Starting StevenAI Service Deployment to LXC${NC}"
+echo -e "${GREEN}🚀 Starting Deployment to LXC${NC}"
 
 # Get script directory and navigate to project root
+# Lives in infra/deployment/; works from any directory.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../../python/services/web-gateway" && pwd)"
 
 cd "$PROJECT_DIR"
 
@@ -27,17 +28,11 @@ else
     exit 1
 fi
 
-# Validate required variables
-if [ -z "$LXC_HOST" ]; then
-    echo -e "${RED}❌ Error: LXC_HOST not set in .env${NC}"
-    exit 1
-fi
-
 # Sync files to LXC
 echo -e "${YELLOW}📦 Syncing files to LXC...${NC}"
-DEPLOY_PATH="${LXC_DEPLOY_PATH:-~/stevenai-service}"
+DEPLOY_PATH="${LXC_DEPLOY_PATH:-~/web-server}"
 
-# Sync service directory (including .env and scripts for Docker build)
+# Sync service directory (including .env and status-config.yaml)
 rsync -avz --delete \
   --exclude '.git' \
   --exclude '.github' \
@@ -45,7 +40,7 @@ rsync -avz --delete \
   --exclude '*.pyc' \
   --exclude 'venv' \
   --exclude '.pytest_cache' \
-  --exclude 'app/data/faiss_indexes' \
+  --exclude 'scripts' \
   ./ "$LXC_HOST:$DEPLOY_PATH/"
 
 # Sync shared-schemas package (required dependency)
@@ -55,14 +50,6 @@ rsync -avz --delete \
   --exclude '*.pyc' \
   --exclude '.pytest_cache' \
   ../../libs/shared-schemas/ "$LXC_HOST:$DEPLOY_PATH/shared-schemas/"
-
-# Sync RAG document (from stevenai-service root)
-echo -e "${YELLOW}📦 Syncing RAG document...${NC}"
-if [ -f "rag_document.json" ]; then
-    scp rag_document.json "$LXC_HOST:$DEPLOY_PATH/rag_document.json"
-else
-    echo -e "${YELLOW}⚠️  Warning: rag_document.json not found${NC}"
-fi
 
 echo -e "${GREEN}✅ Files synced successfully${NC}"
 
@@ -76,33 +63,33 @@ echo "✅ Environment and config files synced"
 
 # Build Docker image
 echo "🔨 Building Docker image..."
-docker build -t stevenai-service:latest .
+docker build -t web-server:latest .
 
 # Stop and remove old container
 echo "🛑 Stopping old container..."
-docker stop stevenai-service 2>/dev/null || true
-docker rm stevenai-service 2>/dev/null || true
+docker stop web-server 2>/dev/null || true
+docker rm web-server 2>/dev/null || true
 
 # Run new container
 echo "🚀 Starting new container..."
 docker run -d \
-  --name stevenai-service \
+  --name web-server \
   -p 8000:8000 \
   --env-file .env \
   --restart unless-stopped \
-  stevenai-service:latest
+  web-server:latest
 
 # Wait for healthcheck
 echo "⏳ Waiting for service to be healthy..."
 sleep 10
 
 # Check container status
-if docker ps | grep -q stevenai-service; then
+if docker ps | grep -q web-server; then
   echo "✅ Service deployed successfully!"
-  docker logs --tail 20 stevenai-service
+  docker logs --tail 20 web-server
 else
   echo "❌ Service failed to start"
-  docker logs stevenai-service
+  docker logs web-server
   exit 1
 fi
 ENDSSH
@@ -133,6 +120,6 @@ fi
 
 echo -e "${GREEN}🎉 Deployment complete!${NC}"
 echo -e "${YELLOW}Useful commands:${NC}"
-echo -e "  View logs:    ssh $LXC_HOST 'docker logs -f stevenai-service'"
-echo -e "  Stop service: ssh $LXC_HOST 'docker stop stevenai-service'"
+echo -e "  View logs:    ssh $LXC_HOST 'docker logs -f web-server'"
+echo -e "  Stop service: ssh $LXC_HOST 'docker stop web-server'"
 echo -e "  SSH to host:  ssh $LXC_HOST"

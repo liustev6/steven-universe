@@ -66,7 +66,7 @@ Settings come from `PI_SERVER_*` environment variables or a `.env` file; see
 ## Deploy to the Pi
 
 ```sh
-scripts/run_deploy.sh
+infra/deployment/pi-server.sh   # from the repo root
 ```
 
 This copies the code to `~/pi-server`, installs packages into `~/pi-server/.venv`,

@@ -12,7 +12,7 @@
 # - NVIDIA drivers and CUDA installed on remote VM
 #
 # Usage:
-#   ./scripts/deploy-remote-build.sh
+#   infra/deployment/gpu-server.sh   (from the repo root, or any directory)
 ##############################################################################
 
 set -e  # Exit on error
@@ -24,9 +24,9 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Script directory
+# Script directory (infra/deployment/) and the service it deploys
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../python/services/gpu-server" && pwd)"
 
 # Load environment variables
 if [ -f "$PROJECT_ROOT/.env" ]; then

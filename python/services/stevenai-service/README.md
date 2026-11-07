@@ -220,8 +220,8 @@ INTERNAL_API_KEY=your-secure-key
 ### Deploy to LXC
 
 ```bash
-# Run deployment script
-./scripts/deploy.sh
+# Run deployment script (loads this directory's .env)
+infra/deployment/stevenai-service.sh   # from the repo root
 ```
 
 **What happens:**
@@ -264,8 +264,7 @@ python/services/stevenai-service/
 │       ├── rag_qa.json            # Generated Q&A pairs
 │       └── faiss_indexes/         # FAISS indexes (runtime)
 ├── scripts/
-│   ├── generate_rag_qa.py         # Build-time QA generation
-│   └── deploy.sh                  # Deployment script
+│   └── generate_rag_qa.py         # Build-time QA generation
 ├── requirements.txt
 ├── Dockerfile
 ├── .env.example

@@ -213,7 +213,7 @@ After completing all steps, verify your setup:
 - [ ] Docker Compose is available: `docker compose version`
 - [ ] SSH key authentication works from local machine
 - [ ] Container has proper LXC configuration for Docker
-- [ ] Deployment script can connect: `scripts/deploy.sh`
+- [ ] Deployment script can connect: `infra/deployment/<service>.sh`
 
 ---
 
@@ -250,7 +250,7 @@ After completing all steps, verify your setup:
 After completing this setup:
 
 1. Configure your `.env` file with all required environment variables (see `.env.example`)
-2. Run the deployment script: `cd python/services/web-server && scripts/deploy.sh`
+2. Run the deployment script from the repo root: `infra/deployment/web-gateway.sh`
 3. Access your service at `http://<LXC_IP>:8000`
 4. Check health endpoint: `curl http://<LXC_IP>:8000/health`
 

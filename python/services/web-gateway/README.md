@@ -200,9 +200,9 @@ nano .env
 # The deployment script will transfer these to the LXC
 ```
 
-**2. Run deployment script:**
+**2. Run deployment script** (from the repo root; loads this directory's `.env`):
 ```bash
-./scripts/deploy.sh
+infra/deployment/web-gateway.sh
 ```
 
 **What the deployment script does:**
@@ -305,10 +305,10 @@ python/services/web-server/
 ├── requirements-dev.txt
 ├── .env.example
 ├── Dockerfile
-├── README.md
-└── scripts/
-    └── deploy.sh
+└── README.md
 ```
+
+Deploy script: `infra/deployment/web-gateway.sh`.
 
 ## Tech Stack
 

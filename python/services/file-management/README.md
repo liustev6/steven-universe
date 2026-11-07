@@ -298,8 +298,8 @@ uvicorn app.main:app --reload
 cp .env.example .env
 # Edit .env with your LXC host, MinIO, and auth credentials
 
-# 2. Run deployment (script loads .env automatically)
-./scripts/deploy.sh
+# 2. Run deployment (script loads this directory's .env automatically)
+infra/deployment/file-management.sh   # from the repo root
 ```
 
 **Environment variables in `.env`:**

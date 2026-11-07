@@ -12,8 +12,9 @@ NC='\033[0m' # No Color
 echo -e "${GREEN}🚀 Starting Deployment to LXC${NC}"
 
 # Get script directory and navigate to project root
+# Lives in infra/deployment/; works from any directory.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../../python/services/file-management" && pwd)"
 
 cd "$PROJECT_DIR"
 
