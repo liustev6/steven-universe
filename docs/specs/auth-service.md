@@ -713,7 +713,8 @@ sandbox_token = await tokens.downscope("file-management",
   10001 with a read-only filesystem, no capabilities and `no-new-privileges`; `/etc/auth-service`
   is mounted read-only except `clients/` (last-mint stamps). The admin CLI runs in a one-off
   container with no network. Deployed by hand, not through the pipeline (root of trust).
-- FastAPI + uvicorn with TLS, port 8443. Libraries: `pyjwt[crypto]` (ES256, JWKS client) and
+- FastAPI + uvicorn with TLS, listening on 8443 inside the container and published on host port
+  **443**, because the issuer URL has no port and clients follow the discovery document to `:443`. Libraries: `pyjwt[crypto]` (ES256, JWKS client) and
   `cryptography`. Use the libraries for JWT/JWK work; don't hand-roll signing or parsing.
 - Files: `policy.yaml` (deployed from git), `/etc/auth-service/keys/`, `/etc/auth-service/clients/`
   (see "Client registration and credential lifecycle").

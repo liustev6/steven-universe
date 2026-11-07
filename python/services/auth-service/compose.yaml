@@ -25,7 +25,9 @@ services:
   auth-service:
     <<: [*hardening, *image]
     restart: unless-stopped
-    ports: ["8443:8443"]
+    # Host port 443 -> container 8443. The issuer is https://auth.lan.liustev6.ca (no port), so
+    # discovery sends clients to :443; the app itself listens on 8443 as a non-root user.
+    ports: ["443:8443"]
     environment:
       AUTH_SERVICE_LOG_LEVEL: ${AUTH_SERVICE_LOG_LEVEL:-INFO}
     volumes:
