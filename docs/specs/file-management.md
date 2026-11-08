@@ -2,7 +2,7 @@
 
 **Status:** live since 2026-11-08 · `https://files.lan.liustev6.ca` · CT 103 on pve01
 **Code:** `python/services/file-management-service/` (service id / token audience: `file-management`)
-· **Deploy:** `infra/deployment/file-management-service.sh` · Related: [auth-service.md](auth-service.md)
+· **Deploy:** `infra/deployment/deploy.sh file-management` · Related: [auth-service.md](auth-service.md)
 (tokens and policy), [api-service.md](api-service.md) (the public edge), [deployer.md](deployer.md),
 [secrets-manager.md](secrets-manager.md)
 
@@ -221,13 +221,15 @@ Files on CT 103:
 /opt/steven-universe                          checkout of the deployed commit
 ```
 
-**Deploying** (`infra/deployment/file-management-service.sh [ref]`, from the Mac): checks out a
-**pushed** commit on CT 103; checks the RustFS key files (present, owned by 10001; never read)
-and the certificate (warns under 21 days); refreshes the certbot hook; builds the image (labelled
-with the commit); starts the container and waits for Docker's health check (which also checks
-both buckets); calls `https://files.lan.liustev6.ca/health` with the certificate verified; runs
-the smoke test. Status lines with ✓/✗, a summary with the rollback command. First deploy:
-39 seconds.
+**Deploying** (`infra/deployment/deploy.sh file-management [ref]`, from the Mac; (log in to OpenBao first: `export BAO_TOKEN="$(bao login -method=userpass -token-only username=steven)"`)):
+the generic deploy reads `infra/services/file-management/deploy.yaml` at a **pushed** commit,
+fetches the declared secrets from OpenBao (the RustFS key, the shared smoke-test secret and
+Cloudflare token), and on CT 103 runs `infra/deployment/deploy-target.sh`: installs `config.env` and
+the secrets (atomically, reporting changed/unchanged), checks the certificate (warns under 21 days),
+refreshes the certbot hook, builds the image (labelled with the commit), starts the container and
+waits for Docker's health check (which also checks both buckets), calls
+`https://files.lan.liustev6.ca/health` with the certificate verified, and runs the smoke test.
+Status lines with ✓/✗, a summary with the rollback command. About 12 seconds.
 
 **Smoke test** (`scripts/smoke_test.py`, as `smoke-test`, through DNS and TLS on real RustFS):
 health and storage; no token → 401; PUT with matching SHA-256; GET returns the same bytes; byte
@@ -243,7 +245,7 @@ then the deploy script.
 ## Operations runbook
 | Task | How |
 |---|---|
-| Deploy / roll back | `infra/deployment/file-management-service.sh [ref]`; the summary prints the rollback command |
+| Deploy / roll back | `infra/deployment/deploy.sh file-management [ref]` (logged in to OpenBao); the summary prints the rollback command |
 | Give a service access | change its grant in auth-service's `policy.yaml` and deploy auth-service; nothing here |
 | Onboard a caller | its own auth-service client (`add-client.sh`), then it calls `https://files.lan.liustev6.ca` with `TokenClient.auth("file-management")` |
 | Rotate the RustFS key | create a new access key for the same policy in the RustFS console, replace the two files in `/etc/file-management/credentials/` (owner 10001, `read -rs`), redeploy, delete the old key |

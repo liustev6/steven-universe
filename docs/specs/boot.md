@@ -83,8 +83,9 @@ curl -s https://bao.lan.liustev6.ca:8200/v1/sys/seal-status        # OpenBao: "s
 curl -s -o /dev/null -w "%{http_code}\n" http://192.168.50.123:9000/   # RustFS: 403 = up (no credentials)
 ssh pve01 'pct list; pct exec 100 -- systemctl is-active cloudflared'
 ```
-The deeper check is the deploy scripts: re-running `infra/deployment/auth-service.sh` and
-`infra/deployment/file-management-service.sh` (no change, a few seconds each) runs their health
+The deeper check is the deploy: re-running `infra/deployment/deploy.sh auth-service` and
+`infra/deployment/deploy.sh file-management` (no change, a few seconds each; needs OpenBao
+unsealed and your login, since deploys deliver secrets from it) runs their health
 checks and smoke tests against the real services.
 
 ## Test reboot (to do once)

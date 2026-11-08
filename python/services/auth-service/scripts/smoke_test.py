@@ -1,6 +1,6 @@
 """Smoke test against the running auth-service, using the real service_auth library.
 
-Run by infra/deployment/auth-service.sh after every deploy, inside the just-built image (it has
+Run by infra/deployment/deploy-target.sh (the Smoke test step) after every deploy, inside the just-built image (it has
 service_auth + httpx) with host networking, so requests go through DNS, port 443 and TLS exactly
 like a real service's:
 

@@ -2,7 +2,7 @@
 
 **Status:** live since 2026-11-07 · `https://auth.lan.liustev6.ca` · CT 102 on pve01
 **Code:** `python/services/auth-service/` (the issuer), `python/libs/service-auth/` (the library every
-service uses) · **Deploy:** `infra/deployment/auth-service.sh` · Related: [file-management.md](file-management.md),
+service uses) · **Deploy:** `infra/deployment/deploy.sh auth-service` · Related: [file-management.md](file-management.md),
 [api-service.md](api-service.md), [deployer.md](deployer.md), [secrets-manager.md](secrets-manager.md)
 
 ## What it is
@@ -303,15 +303,18 @@ Files on CT 102 (owner 10001, mode 700/600, read by the container):
 /root/.secrets/smoke-test-client           smoke-test client secret (root-only)
 ```
 
-**Deploying** (`infra/deployment/auth-service.sh [ref]`, from the Mac): checks out a **pushed**
-commit on CT 102, checks the config directory and certificate (warns under 21 days), refreshes the
-admin CLI and certbot hook, builds the image (labelled with the commit), validates the policy and
-shows its diff before installing, creates the first signing key if none exists, starts the
-container and waits for health, calls `https://auth.lan.liustev6.ca/health` with the certificate
-verified, and runs the smoke test (`scripts/smoke_test.py`, as `smoke-test`: discovery, JWKS, a
-real mint verified against the live keys, wrong secret / wrong audience / no grant rejected). Each
-step prints ✓/✗; the summary shows the commit and a rollback command. A no-change redeploy takes
-about 5 seconds.
+**Deploying** (`infra/deployment/deploy.sh auth-service [ref]`, from the Mac; (log in to OpenBao first: `export BAO_TOKEN="$(bao login -method=userpass -token-only username=steven)"`)):
+the generic deploy reads `infra/services/auth-service/deploy.yaml` at a **pushed** commit, fetches
+the declared secrets from OpenBao (the shared smoke-test secret and Cloudflare token), and on CT 102
+runs `infra/deployment/deploy-target.sh`: installs `config.env` and the secrets, checks the
+host-only key and client folders and the certificate (warns under 21 days), refreshes the certbot
+hook, builds the image (labelled with the commit), runs auth-service's hook
+(`infra/services/auth-service/hooks/pre-start.sh`: admin CLI, policy validated and diffed before
+installing, first signing key if none exists), starts and waits for health, calls
+`https://auth.lan.liustev6.ca/health` with the certificate verified, and runs the smoke test
+(`scripts/smoke_test.py`, as `smoke-test`: discovery, JWKS, a real mint verified against the live
+keys, wrong secret / wrong audience / no grant rejected). Each step prints ✓/✗; the summary shows
+the commit and a rollback command. About 12 seconds.
 
 **First install** (done 2026-11-07): create the LXC, install Docker and certbot, reservation and
 DNS, Cloudflare token, `certbot certonly --dns-cloudflare -d auth.lan.liustev6.ca --deploy-hook
@@ -328,7 +331,7 @@ DNS, Cloudflare token, `certbot certonly --dns-cloudflare -d auth.lan.liustev6.c
 | Rotate the signing key | `new-key` (published, not signing) → wait ≥ 1 h for verifiers' JWKS caches → `promote-key <kid>` → after ≥ 2 h `retire-key <old kid>`. Every ~90 days, or immediately if compromised (then retire at once). |
 | Inspect | `auth-service-admin list-clients` (enabled, ages, rotation, last mint), `list-keys`, `explain <id> <audience>` (resolved permissions), `check-policy`. |
 | Logs and audit | `docker compose logs -f auth-service`; one JSON line per mint or denial on `auth_service.audit` (client, grant, aud, sub, act, scope, details, `jti`, `exp`, IP; never a secret or token). |
-| Roll back | `infra/deployment/auth-service.sh <previous sha>` (printed in every deploy summary). |
+| Roll back | `infra/deployment/deploy.sh auth-service <previous sha>` (printed in every deploy summary). |
 
 ## Security
 | Threat | Protection |

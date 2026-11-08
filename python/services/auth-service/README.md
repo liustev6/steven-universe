@@ -131,10 +131,12 @@ writable (last-mint stamps).
    `auth-service-admin new-key` and `auth-service-admin promote-key <kid>`.
 7. **Start:** `cd /opt/steven-universe/python/services/auth-service && docker compose up -d --build`.
 
-**Deploy / update from the Mac:** `infra/deployment/auth-service.sh [ref]` does steps 3–7 for a
-pushed commit (default `main`): checkout on the host, config dir, admin CLI, policy (validated
-first), first signing key if missing, build, start, health check over TLS. It stops if the TLS
-certificate is missing, so do step 5 once by hand first.
+**Deploy / update from the Mac:** `infra/deployment/deploy.sh auth-service [ref]` (log in to
+OpenBao first: `export BAO_TOKEN="$(bao login -method=userpass -token-only username=steven)"`). It
+deploys a pushed commit (default `main`) from `infra/services/auth-service/deploy.yaml`: secrets
+from OpenBao, `config.env`, build, the auth hook (admin CLI, policy validated first, first signing
+key if missing), start, health check over TLS, smoke test. It stops if the TLS certificate is
+missing, so do step 5 once by hand first.
 
 **By hand on the host:** `git pull`, then `docker compose up -d --build`. Policy-only changes need no restart:
 copy the new `policy.yaml` into `/etc/auth-service/` and it is reloaded (an invalid one is

@@ -237,10 +237,19 @@ high-value host either way; it gets the hardening in Security notes.
 - **Break-glass:** you can still run `deploy-target` by hand over SSH; it is the same allowlisted
   code path.
 
-## Current state and problems (manual `infra/deployment/<service>.sh`)
-Each service (file-management, gpu-server, stevenai-service, web-gateway) has its own
-script in `infra/deployment/` (`file-management-service.sh`, `gpu-server.sh`, `stevenai-service.sh`, `web-gateway.sh`; `pi-server.sh` for the Pi), run from the laptop: rsync the working copy to the LXC, `docker build` there,
-write a `.env` from the laptop's `.env`, `docker run --env-file`, `sleep 10`, curl `/health`.
+## Current state
+**auth-service and file-management** deploy with the generic, manifest-driven pair (phase 0b, done
+2026-11-08): `infra/deployment/deploy.sh <service> [ref]` on the Mac reads the pushed commit's
+`infra/services/<service>/deploy.yaml`, fetches the declared secrets from OpenBao with your login,
+and in one SSH session runs `infra/deployment/deploy-target.sh` on the host (the `deploy-target` of
+this spec, minus the forced-command key). What the deployer adds: being triggered by GitHub, its
+own auth-service identity for OpenBao, the host allowlist and forced-command keys, and GHCR images.
+
+**The other services** (gpu-server, stevenai-service, web-gateway, and pi-server on the Pi) still
+use their old per-service scripts in `infra/deployment/`, run from the laptop: rsync the working
+copy, `docker build` on the host, write a `.env` from the laptop's `.env`, `docker run --env-file`,
+`sleep 10`, curl `/health`. The problems below are theirs (P1–P6 are solved for the two migrated
+services).
 
 | ID | Problem |
 |---|---|
@@ -256,7 +265,7 @@ write a `.env` from the laptop's `.env`, `docker run --env-file`, `sleep 10`, cu
 | Phase | What ships |
 |---|---|
 | **0** (manual, now) | Keep manual deploys, but adopt the conventions: secrets as files in `/etc/<svc>/credentials/` mounted into containers (not `.env`), and a hardened `compose.yaml` next to each service (auth-service is the reference). |
-| **0b** | **`infra/` as source of truth (D12)**, still with the manual scripts (in progress 2026-11-08: policy moved, `config.env` and `deploy.yaml` for both services, policies generated from the manifests): (1) `infra/README.md`; move `policy.yaml` to `infra/services/auth-service/` (auth-service's deploy script, the real-policy test and docs follow), deploy, expect "policy unchanged"; (2) `infra/services/file-management/config.env` + `env_file:` in its compose, written by its deploy script, deploy, smoke test must pass; (3) `deploy.yaml` for auth-service and file-management describing what the scripts already check (host, health, secret names, smoke test); (4) point the secrets-manager spec at `infra/services/`. |
+| **0b** | **`infra/` as source of truth (D12)**, still manual (**done 2026-11-08** for auth-service and file-management: manifests, `config.env`, policy moved, OpenBao policies generated from the manifests, generic `deploy.sh` + `deploy-target.sh`, secrets delivered from OpenBao; rotation test pending): (1) `infra/README.md`; move `policy.yaml` to `infra/services/auth-service/` (auth-service's deploy script, the real-policy test and docs follow), deploy, expect "policy unchanged"; (2) `infra/services/file-management/config.env` + `env_file:` in its compose, written by its deploy script, deploy, smoke test must pass; (3) `deploy.yaml` for auth-service and file-management describing what the scripts already check (host, health, secret names, smoke test); (4) point the secrets-manager spec at `infra/services/`. |
 | **1** | GitHub builds and pushes images to GHCR per commit; hosts pull by digest (manual trigger). Fixes P2, P3, P7. |
 | **2** | deployer + `deploy-target`, triggered by the workflow through api-service with GitHub OIDC. Onboarded secrets only (checked, not managed). Fixes P4, P5, P6. |
 | **3** | secrets-manager; the deployer injects managed secrets. Fixes P1 for everything not onboarded. |

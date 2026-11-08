@@ -74,8 +74,9 @@ curl -X PUT --data-binary @README.md localhost:8000/objects/public/readme.md
 ## Deployment
 
 CT 103 `file-management` on pve01 (`192.168.50.66`, reserved), Docker Compose, deployed by hand
-from the Mac with `infra/deployment/file-management-service.sh [ref]`: it builds a **pushed** commit
-on the host, checks the RustFS key and certificate, starts the container, checks
+from the Mac with `infra/deployment/deploy.sh file-management [ref]` (logged in to OpenBao):
+it delivers the secrets declared in `infra/services/file-management/deploy.yaml` from OpenBao,
+builds a **pushed** commit on the host, starts the container, checks
 `https://files.lan.liustev6.ca/health` with the certificate verified, then runs the smoke test.
 
 One-time setup on the host (done 2026-11-08):
