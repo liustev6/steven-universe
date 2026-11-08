@@ -153,7 +153,7 @@ class Principal:
     def has_scopes(self, *scopes: str) -> bool: ...    # "*" (dev principal) = all
 ```
 
-## Policy (`python/services/auth-service/policy.yaml`)
+## Policy (`infra/services/auth-service/policy.yaml`)
 The deployed policy, deliberately small. The full multi-service design (users, gpu-server,
 sandboxes, downscoping) lives in `tests/fixtures/policy.yaml`, which the tests use.
 

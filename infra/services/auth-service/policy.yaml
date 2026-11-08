@@ -1,6 +1,8 @@
 # auth-service policy: which clients may get which permissions at which audiences.
-# Reviewed in git; no secrets. Deployed to /etc/auth-service/policy.yaml.
-# Validate with: auth-service-admin check-policy --file policy.yaml
+# Reviewed in git; no secrets. Lives in infra/ (deployer spec D12); every auth-service deploy
+# validates it, shows the diff and installs it as /etc/auth-service/policy.yaml.
+# Validate locally: cd python/services/auth-service &&
+#   .venv/bin/python -m app.admin --config-dir /tmp check-policy --file ../../../infra/services/auth-service/policy.yaml
 # Spec: docs/specs/auth-service.md ("Policy").
 #
 # Starting small: api-service, file-management and pi-server. Only relaying is enabled:

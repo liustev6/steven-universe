@@ -72,7 +72,8 @@ set -Eeuo pipefail   # -E: the ERR trap below also fires inside functions
 deploy() {
 REF="$1"; REPO_URL="$2"; COLOR="$3"
 SRC=/opt/steven-universe                      # git checkout of the whole repo
-SVC="$SRC/python/services/auth-service"       # Dockerfile, compose.yaml, policy.yaml, bin/, scripts/
+SVC="$SRC/python/services/auth-service"       # Dockerfile, compose.yaml, bin/, scripts/
+INFRA="$SRC/infra/services/auth-service"       # policy.yaml, config.env, deploy.yaml (deployer D12)
 CFG=/etc/auth-service                         # live config: policy, keys, clients, tls
 ISSUER_HOST=auth.lan.liustev6.ca              # DNS name -> 192.168.50.235; the certificate's name
 CONTAINER=auth-service-auth-service-1         # compose project "auth-service", service "auth-service"
@@ -138,6 +139,9 @@ step "Config directory and certificate"
 # Mode 700: no other user on the host can read the signing keys or client hashes.
 install -d -m 700 -o 10001 -g 10001 "$CFG" "$CFG/keys" "$CFG/clients" "$CFG/tls"
 ok "$CFG ready (owner 10001, mode 700)"
+# Non-secret settings from infra/ (compose.yaml loads them with env_file).
+install -m 600 -o 10001 -g 10001 "$INFRA/config.env" "$CFG/config.env"
+ok "config.env installed from infra/services/auth-service/"
 # The service only speaks HTTPS. certbot + its hook put the certificate here (README step 5).
 if [ ! -s "$CFG/tls/cert.pem" ] || [ ! -s "$CFG/tls/key.pem" ]; then
     die "No TLS certificate in $CFG/tls. Get it first: auth-service README, step 5."
@@ -185,12 +189,12 @@ ok "Built $IMAGE ($SIZE, revision $SHORT)"
 ##############################################################################
 # Step 5: Policy
 #
-# policy.yaml lives in git; the service reads the copy in $CFG. Copy it next
+# policy.yaml lives in git (infra/services/auth-service/); the service reads the copy in $CFG. Copy it next
 # to the live one, validate it with the new image's own checker, and only then
 # swap it in. A running service notices the change and reloads it by itself.
 ##############################################################################
 step "Policy (permissions)"
-install -m 600 -o 10001 -g 10001 "$SVC/policy.yaml" "$CFG/policy.yaml.new"
+install -m 600 -o 10001 -g 10001 "$INFRA/policy.yaml" "$CFG/policy.yaml.new"
 if ! CHECK="$(auth-service-admin check-policy --file "$CFG/policy.yaml.new" 2>&1)"; then
     rm -f "$CFG/policy.yaml.new"
     printf '%s\n' "$CHECK" | grep -v ' Container ' >&2 || true

@@ -17,9 +17,14 @@ resource "vault_policy" "admin" {
   policy = file("${path.module}/policies/admin.hcl")
 }
 
+# Generated from the service manifests (services.tf): read-only, exactly the secrets some
+# infra/services/*/deploy.yaml declares. No list, no write.
 resource "vault_policy" "deployer" {
-  name   = "deployer"
-  policy = file("${path.module}/policies/deployer.hcl")
+  name = "deployer"
+  policy = join("\n", concat(
+    ["# Generated from infra/services/*/deploy.yaml: every declared secret, read-only."],
+    [for p in local.all_secret_paths : "path \"${p}\" { capabilities = [\"read\"] }"],
+  ))
 }
 
 # ---- Your login ---------------------------------------------------------------------------------

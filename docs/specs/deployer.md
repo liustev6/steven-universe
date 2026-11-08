@@ -137,11 +137,11 @@ another environment, would this change?* Yes → `infra/`. No → the service fo
 ```
 infra/
   README.md                          the map: what lives where, how a change flows
-  auth-service/policy.yaml           moved from python/services/auth-service/policy.yaml
   secrets-manager/                   OpenBao: compose, openbao.hcl, tofu/ (policies, roles, auth)
   services/<service>/
-    deploy.yaml                      what to deploy where (read at the deployed sha)
+    deploy.yaml                      what to deploy where + which secrets (read at the deployed sha)
     config.env                       non-secret settings, written to the host on every deploy
+    policy.yaml                      auth-service only: the permissions (moved from python/services/auth-service/)
   deployment/                        manual deploy scripts now; deploy-target later
   tofu/                              later: Proxmox containers + Cloudflare DNS
 python/services/<service>/
@@ -149,20 +149,24 @@ python/services/<service>/
 ```
 
 ```yaml
-# infra/services/file-management/deploy.yaml
+# infra/services/file-management/deploy.yaml (the real file; abridged)
 service: file-management
-host: file-management                # a name from the deployer's host allowlist, not an address
-image: ghcr.io/liustev6/steven-universe/file-management
+host: files-host                       # SSH alias; the deployer maps it through its host allowlist
 compose: python/services/file-management-service/compose.yaml
-config: infra/services/file-management/config.env
-health: {url: "https://files.lan.liustev6.ca/health", timeout_seconds: 60}
-smoke: python/services/file-management-service/scripts/smoke_test.py
-secrets:
-  onboarded: []                      # placed by hand once; deploys only check they exist
-  managed:                           # read from the secrets manager, written on every deploy
-    - rustfs_access_key              #   kv/services/file-management/rustfs_access_key
-    - rustfs_secret_key
+config: infra/services/file-management/config.env     # -> /etc/file-management/config.env
+health: https://files.lan.liustev6.ca/health
+smoke_test: python/services/file-management-service/scripts/smoke_test.py
+secrets:                               # values in OpenBao at kv/<from>, written to <to> on every deploy
+  - from: services/file-management/rustfs_access_key
+    to: /etc/file-management/credentials/rustfs_access_key
+    owner: "10001:10001"
+  - from: shared/cloudflare_dns_token
+    to: /root/.secrets/cloudflare.ini
+    owner: "0:0"
+    format: "dns_cloudflare_api_token = {value}"
 ```
+The same `secrets` list feeds OpenTofu, which generates each service's read-only OpenBao policy and
+the deployer's (secrets-manager S15).
 ```sh
 # infra/services/file-management/config.env (non-secret; reviewed like code)
 SERVICE_AUTH_ISSUER=https://auth.lan.liustev6.ca
@@ -175,13 +179,13 @@ FILES_MAX_UPLOAD_BYTES=1073741824
 ```
 infra/services/<svc>/config.env           ──▶ /etc/<svc>/config.env              (non-secret, mode 644)
 secrets manager kv/services/<svc>/<name>  ──▶ /etc/<svc>/credentials/<name>      (owner = container user, 600)
-infra/auth-service/policy.yaml            ──▶ /etc/auth-service/policy.yaml      (auth-service deploys only;
+infra/services/auth-service/policy.yaml            ──▶ /etc/auth-service/policy.yaml      (auth-service deploys only;
                                                                                  validated, diff shown first)
 compose.yaml:  env_file: /etc/<svc>/config.env
                volumes:  /etc/<svc>/credentials:/run/secrets:ro
 ```
 A change can touch two folders (a new bucket: file-management's `config.env` **and**
-`infra/auth-service/policy.yaml`); that is intended: permission and environment changes are
+`infra/services/auth-service/policy.yaml`); that is intended: permission and environment changes are
 separate, small, reviewable diffs, and `infra/` answers "how is everything configured?" alone.
 
 The deployer's own config (`/etc/deployer/hosts.yaml`, not in the deployed commit) maps host
@@ -213,7 +217,7 @@ only (used for onboarding).
 | **Managed** | RustFS keys, third-party API keys, shared configuration | the secrets manager | fetches and writes them on every deploy |
 | **Build** | a private package token, if ever needed | GitHub secrets | n/a; avoid (D7) |
 
-Onboarding a new service: PR with code and `compose.yaml`, plus `infra/auth-service/policy.yaml` (its grant) and `infra/services/<svc>/` (`deploy.yaml`, `config.env`); the
+Onboarding a new service: PR with code and `compose.yaml`, plus `infra/services/auth-service/policy.yaml` (its grant) and `infra/services/<svc>/` (`deploy.yaml`, `config.env`); the
 first deploy fails `check-secrets` and lists the commands; run them once; redeploy.
 
 Why the deployer may read managed secrets for every service: whoever controls deploys already
@@ -252,7 +256,7 @@ write a `.env` from the laptop's `.env`, `docker run --env-file`, `sleep 10`, cu
 | Phase | What ships |
 |---|---|
 | **0** (manual, now) | Keep manual deploys, but adopt the conventions: secrets as files in `/etc/<svc>/credentials/` mounted into containers (not `.env`), and a hardened `compose.yaml` next to each service (auth-service is the reference). |
-| **0b** | **`infra/` as source of truth (D12)**, still with the manual scripts: (1) `infra/README.md`; move `policy.yaml` to `infra/auth-service/` (auth-service's deploy script, the real-policy test and docs follow), deploy, expect "policy unchanged"; (2) `infra/services/file-management/config.env` + `env_file:` in its compose, written by its deploy script, deploy, smoke test must pass; (3) `deploy.yaml` for auth-service and file-management describing what the scripts already check (host, health, secret names, smoke test); (4) point the secrets-manager spec at `infra/services/`. |
+| **0b** | **`infra/` as source of truth (D12)**, still with the manual scripts (in progress 2026-11-08: policy moved, `config.env` and `deploy.yaml` for both services, policies generated from the manifests): (1) `infra/README.md`; move `policy.yaml` to `infra/services/auth-service/` (auth-service's deploy script, the real-policy test and docs follow), deploy, expect "policy unchanged"; (2) `infra/services/file-management/config.env` + `env_file:` in its compose, written by its deploy script, deploy, smoke test must pass; (3) `deploy.yaml` for auth-service and file-management describing what the scripts already check (host, health, secret names, smoke test); (4) point the secrets-manager spec at `infra/services/`. |
 | **1** | GitHub builds and pushes images to GHCR per commit; hosts pull by digest (manual trigger). Fixes P2, P3, P7. |
 | **2** | deployer + `deploy-target`, triggered by the workflow through api-service with GitHub OIDC. Onboarded secrets only (checked, not managed). Fixes P4, P5, P6. |
 | **3** | secrets-manager; the deployer injects managed secrets. Fixes P1 for everything not onboarded. |

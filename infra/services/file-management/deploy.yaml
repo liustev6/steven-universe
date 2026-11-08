@@ -1,0 +1,31 @@
+# file-management: what to deploy where, and which secrets it needs (names only, never values).
+# Read by OpenTofu (infra/secrets-manager/tofu/services.tf: this service's read-only OpenBao
+# policy) and by the deploy (infra/deployment/; later the deployer).
+# Spec: docs/specs/deployer.md (D12), docs/specs/secrets-manager.md ("Inventory").
+service: file-management
+host: files-host                       # SSH alias; the deployer will map it through its host allowlist
+code: python/services/file-management-service
+compose: python/services/file-management-service/compose.yaml
+config: infra/services/file-management/config.env     # -> /etc/file-management/config.env
+url: https://files.lan.liustev6.ca
+health: https://files.lan.liustev6.ca/health
+smoke_test: python/services/file-management-service/scripts/smoke_test.py
+certificate:
+  name: files.lan.liustev6.ca
+  hook: python/services/file-management-service/scripts/cert-hook.sh  # -> /usr/local/sbin/file-management-cert-hook
+
+# Managed secrets: values in OpenBao at kv/<from>, written to <to> (mode 600) on every deploy.
+secrets:
+  - from: services/file-management/rustfs_access_key
+    to: /etc/file-management/credentials/rustfs_access_key
+    owner: "10001:10001"               # the container user
+  - from: services/file-management/rustfs_secret_key
+    to: /etc/file-management/credentials/rustfs_secret_key
+    owner: "10001:10001"
+  - from: shared/smoke_test_client_secret
+    to: /root/.secrets/smoke-test-client
+    owner: "0:0"
+  - from: shared/cloudflare_dns_token
+    to: /root/.secrets/cloudflare.ini
+    owner: "0:0"
+    format: "dns_cloudflare_api_token = {value}"   # certbot's credentials file

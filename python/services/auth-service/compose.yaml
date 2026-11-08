@@ -28,8 +28,9 @@ services:
     # Host port 443 -> container 8443. The issuer is https://auth.lan.liustev6.ca (no port), so
     # discovery sends clients to :443; the app itself listens on 8443 as a non-root user.
     ports: ["443:8443"]
-    environment:
-      AUTH_SERVICE_LOG_LEVEL: ${AUTH_SERVICE_LOG_LEVEL:-INFO}
+    # Settings for this environment come from infra/services/auth-service/config.env, installed by
+    # every deploy (deployer spec D12). Nothing environment-specific is hard-coded here.
+    env_file: ${AUTH_SERVICE_HOST_CONFIG:-/etc/auth-service}/config.env
     volumes:
       # policy.yaml, keys/, tls/: read-only. Directory mounts, so policy edits are seen live.
       - ${AUTH_SERVICE_HOST_CONFIG:-/etc/auth-service}:/etc/auth-service:ro

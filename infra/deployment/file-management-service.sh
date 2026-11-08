@@ -64,6 +64,7 @@ deploy() {
 REF="$1"; REPO_URL="$2"; COLOR="$3"
 SRC=/opt/steven-universe
 SVC="$SRC/python/services/file-management-service"
+INFRA="$SRC/infra/services/file-management"       # config.env, deploy.yaml (deployer D12)
 CFG=/etc/file-management                      # credentials/ and tls/, owner 10001
 NAME=files.lan.liustev6.ca                    # DNS -> 192.168.50.66; the certificate's name
 CONTAINER=file-management-file-management-1
@@ -123,6 +124,9 @@ for f in credentials/rustfs_access_key credentials/rustfs_secret_key; do
     [ "$(stat -c %u "$CFG/$f")" = 10001 ] || die "$CFG/$f must be owned by 10001 (the container user)."
 done
 ok "RustFS key present (owner 10001)"
+# Non-secret settings from infra/ (compose.yaml loads them with env_file).
+install -m 600 -o 10001 -g 10001 "$INFRA/config.env" "$CFG/config.env"
+ok "config.env installed from infra/services/file-management/"
 [ -s "$CFG/tls/cert.pem" ] && [ -s "$CFG/tls/key.pem" ] || die "No certificate in $CFG/tls (certbot; README, Deployment)."
 CERT_END="$(openssl x509 -in "$CFG/tls/cert.pem" -noout -enddate | cut -d= -f2)"
 CERT_DAYS=$(( ($(date -d "$CERT_END" +%s) - $(date +%s)) / 86400 ))

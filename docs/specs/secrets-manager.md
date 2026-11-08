@@ -20,7 +20,7 @@ secrets that never leave their host, stay as files on that host (see "What goes 
 deployer ──1───▶ │ auth/auth-service (JWT method)                                      │
   token from     │   trusts https://auth.lan.liustev6.ca/.well-known/jwks.json         │
   auth-service   │   role "deployer": aud=secrets-manager, sub=service:deployer        │
-  (aud=secrets-  │ policy "deployer": read kv/data/services/*                          │
+  (aud=secrets-  │ policy "deployer": read the secrets the manifests declare           │
    manager)      │ kv/ (KV v2, versioned)   audit log   integrated storage (Raft)      │
          ◀──2─── │ 10-minute OpenBao token → read kv/services/<svc>/<name>             │
                  └─────────────────────────────────────────────────────────────────────┘
@@ -44,18 +44,27 @@ deployer ──3──▶ ssh deploy-target: values on stdin → /etc/<svc>/cred
 | S12 | **OpenTofu state is encrypted** (OpenTofu's built-in state encryption, passphrase in your password manager); kept outside git, later in RustFS (S3 backend). | The state holds configuration details and the admin user's password hash. |
 | S13 | **Docker Compose** like every LXC service (deployer D11): the official image pinned to a version (`quay.io/openbao/openbao:2.7.2`), uid 10001, read-only filesystem, no capabilities, **no swap** (`memswap_limit` = `mem_limit`, 512 MB; OpenBao 2.x has no mlock). | Same model and hardening as the other services. |
 | S14 | **Not the community-scripts installer.** It initializes with one share, writes the unseal key **and the root token** in plain text into the file the server reads, auto-unseals from it, uses a self-signed certificate with verification turned off, and installs `latest` (reviewed 2026-11-08). | Each of these defeats S2, S5 or S6. |
+| S15 | **The service manifests declare which secrets each service needs** (`infra/services/<svc>/deploy.yaml`: `secrets[].from`, `to`, `owner`); OpenTofu **generates** the read-only policies from them (`service-<name>`, and `deployer` = the union). | One declaration per secret; a secret no manifest declares can't be read by deploys (least privilege kept up to date automatically). |
+| S16 | **Deliverable secrets of auth-service go into OpenBao too** (the shared smoke-test secret and Cloudflare token). Its **signing keys and client-secret hashes stay host-only** on CT 102. | One source for shared secrets; key material never travels. No circular dependency for manual deploys: you log in with userpass, which doesn't involve auth-service. auth-service stays manually deployed (the future deployer logs in *through* it). |
+| S17 | **Until the deployer exists, deploys read OpenBao with your admin login** (`bao login`, 1 hour). | The deployer identity belongs with the deployer; the role and policy for it already exist. |
 
-## What goes where
-| Secret | Lives | Why |
-|---|---|---|
-| auth-service client secrets | file on the client's host (`add-client.sh`) | it *is* the identity used to log in to OpenBao; storing it there would be circular |
-| auth-service signing keys | CT 102 only | never leave their host |
-| Secrets a service generates for itself | file on that host | nobody else needs them |
-| RustFS keys (file-management's) | **OpenBao** `kv/services/file-management/rustfs_*` | created once in RustFS, needed by deploys |
-| Third-party API keys (OpenAI, weather, …) | **OpenBao** `kv/services/<svc>/…` | central inventory, rotation, audit |
-| OpenBao unseal shares | your password manager + printed paper + one more place | never on CT 104 or in its backups |
-| OpenTofu state passphrase | your password manager | decrypts the state |
-| Image pushes / deploy identity | none (GitHub `GITHUB_TOKEN` / OIDC) | deployer D2 |
+## Inventory: every secret and where it lives
+| Secret | Kind | Source of truth | Delivered to | Used by |
+|---|---|---|---|---|
+| RustFS key: access key + secret | managed | **OpenBao** `kv/services/file-management/rustfs_access_key`, `rustfs_secret_key` | CT 103 `/etc/file-management/credentials/` (owner 10001) | file-management |
+| smoke-test client secret | managed, shared | **OpenBao** `kv/shared/smoke_test_client_secret` | CT 102 and CT 103 `/root/.secrets/smoke-test-client` | both deploys' smoke tests |
+| Cloudflare DNS token (certbot) | managed, shared | **OpenBao** `kv/shared/cloudflare_dns_token` | CT 102, CT 103 `/root/.secrets/cloudflare.ini` (certbot format); CT 104 keeps its own copy by hand (OpenBao can't deliver to itself on a rebuild) | certbot renewals |
+| auth-service signing keys | host-only | CT 102 `/etc/auth-service/keys/` | never travels | auth-service |
+| client secret hashes | host-only | CT 102 `/etc/auth-service/clients/` | never travels (only hashes) | auth-service |
+| client secrets (pi-server, api-service) | onboarded | the client's host, piped by `add-client.sh` | — | the client; *is* its identity, so never in OpenBao (circular) |
+| RustFS root key | host-only | CT 101 `/etc/default/rustfs` | — | RustFS console/admin only |
+| OpenBao unseal shares | — | your password manager + printed paper + one more place | never on CT 104 or in backups | unsealing |
+| OpenBao admin password | — | your password manager | — | your `bao login` |
+| OpenTofu state passphrase | — | your password manager | — | `tofu plan/apply` |
+| Image pushes / deploy identity | — | none (GitHub `GITHUB_TOKEN` / OIDC) | — | deployer D2 |
+
+Kinds: **managed** = value in OpenBao, written to the host on every deploy; **host-only** = created
+where it's used and never copied; **onboarded** = placed once on the client's host (its identity).
 
 ## Repository layout
 ```
@@ -69,7 +78,9 @@ infra/secrets-manager/
     versions.tf        OpenTofu + Vault provider versions; state encryption
     main.tf            kv-v2 at kv/, JWT auth trusting auth-service, roles, userpass (the admin
                        user and its password are created by hand, never in state)
-    policies/admin.hcl, deployer.hcl
+    services.tf        reads infra/services/*/deploy.yaml: per-service policies + the deployer
+                       policy, generated from the declared secrets
+    policies/admin.hcl
     variables.tf       address, admin user name (password comes from a prompt, not a file)
     .gitignore         *.tfstate*, .terraform/
 ```
@@ -119,19 +130,25 @@ resource "vault_jwt_auth_backend_role" "deployer" {
   token_ttl       = 600
   token_max_ttl   = 600
 }
-resource "vault_policy" "deployer" {
+resource "vault_policy" "deployer" {   # generated: every secret some deploy.yaml declares
   name   = "deployer"
-  policy = file("${path.module}/policies/deployer.hcl")
+  policy = join("\n", [for p in local.all_secret_paths : "path \"${p}\" { capabilities = [\"read\"] }"])
 }
 # + vault_policy.admin, vault_auth_backend "userpass" (the user itself is created by hand)
 ```
 
-### Policies (`tofu/policies/*.hcl`)
+### Policies
+Generated from the manifests (`tofu/services.tf`), e.g. with today's two manifests:
 ```hcl
-# deployer.hcl: read every service's managed secrets, nothing else
-path "kv/data/services/*" { capabilities = ["read"] }
-path "kv/data/shared/*"   { capabilities = ["read"] }
-
+# service-file-management
+path "kv/data/services/file-management/rustfs_access_key" { capabilities = ["read"] }
+path "kv/data/services/file-management/rustfs_secret_key" { capabilities = ["read"] }
+path "kv/data/shared/cloudflare_dns_token"                 { capabilities = ["read"] }
+path "kv/data/shared/smoke_test_client_secret"             { capabilities = ["read"] }
+# service-auth-service: the two shared ones. deployer: the union of all of them.
+```
+Written by hand (`tofu/policies/admin.hcl`):
+```hcl
 # admin.hcl: you
 path "kv/*"               { capabilities = ["create", "read", "update", "delete", "list"] }
 path "sys/policies/acl/*" { capabilities = ["create", "read", "update", "delete", "list"] }
@@ -148,8 +165,8 @@ KV v2 at `kv/`, one entry per secret, value in the field `value`:
 kv/services/<service>/<name>      e.g. kv/services/file-management/rustfs_secret_key
 kv/shared/<name>                  used by several services
 ```
-Names match the files in `/etc/<service>/credentials/` and the deployer manifest's
-`secrets.managed`. KV v2 keeps versions (`bao kv rollback`).
+Each path is declared in a service manifest (`secrets[].from`), together with where the deploy
+writes it. KV v2 keeps versions (`bao kv rollback`).
 
 ### Additions to auth-service's `policy.yaml` (with the deployer)
 ```yaml

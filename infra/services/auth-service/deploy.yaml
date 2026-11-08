@@ -1,0 +1,33 @@
+# auth-service: what to deploy where, and which secrets it needs (names only, never values).
+# Read by OpenTofu (infra/secrets-manager/tofu/services.tf: this service's read-only OpenBao
+# policy) and by the deploy (infra/deployment/). auth-service is deployed by hand only: it is the
+# root of trust, and the future deployer logs in to OpenBao through it.
+# Spec: docs/specs/deployer.md (D12), docs/specs/secrets-manager.md ("Inventory").
+service: auth-service
+host: auth-host
+code: python/services/auth-service
+compose: python/services/auth-service/compose.yaml
+config: infra/services/auth-service/config.env        # -> /etc/auth-service/config.env
+policy: infra/services/auth-service/policy.yaml       # validated, diffed, installed on every deploy
+url: https://auth.lan.liustev6.ca
+health: https://auth.lan.liustev6.ca/health
+smoke_test: python/services/auth-service/scripts/smoke_test.py
+certificate:
+  name: auth.lan.liustev6.ca
+  hook: python/services/auth-service/scripts/cert-hook.sh  # -> /usr/local/sbin/auth-service-cert-hook
+
+# Managed secrets: values in OpenBao at kv/<from>, written to <to> (mode 600) on every deploy.
+secrets:
+  - from: shared/smoke_test_client_secret
+    to: /root/.secrets/smoke-test-client
+    owner: "0:0"
+  - from: shared/cloudflare_dns_token
+    to: /root/.secrets/cloudflare.ini
+    owner: "0:0"
+    format: "dns_cloudflare_api_token = {value}"
+
+# Host-only: created on CT 102 and never copied anywhere, not even into OpenBao. The deploy only
+# checks they exist (signing keys: auth-service-admin new-key/promote-key; hashes: add-client).
+host_only:
+  - /etc/auth-service/keys             # private signing keys
+  - /etc/auth-service/clients          # client secret hashes

@@ -43,12 +43,14 @@ app/
   clients.py       client secret hashes (clients/<id>.sha256), rotation, enable/disable
   admin.py         auth-service-admin CLI
   validation.py    client-id, user-id, and location rules
-policy.yaml        the policy (reviewed in git; deployed to /etc/auth-service/policy.yaml)
 Dockerfile         image (build context: python/, so libs/service-auth is included)
 compose.yaml       how it runs: hardened service + a network-less `admin` one-off service
 bin/auth-service-admin   host wrapper: runs the CLI in the `admin` container
 scripts/add-client.sh    pipe a new secret from the auth host into a service's host
 ```
+
+Environment settings and permissions live in `infra/services/auth-service/` (deployer spec D12):
+`policy.yaml` (who may get what), `config.env` (non-secret settings, loaded by `compose.yaml`).
 
 ## Local development
 
@@ -63,7 +65,7 @@ Run it in-process against a scratch config directory (plain HTTP, local only):
 
 ```sh
 export AUTH_SERVICE_CONFIG_DIR=$PWD/.local-config
-mkdir -p $AUTH_SERVICE_CONFIG_DIR && cp policy.yaml $AUTH_SERVICE_CONFIG_DIR/
+mkdir -p $AUTH_SERVICE_CONFIG_DIR && cp ../../../infra/services/auth-service/policy.yaml $AUTH_SERVICE_CONFIG_DIR/
 .venv/bin/python -m app.admin promote-key "$(.venv/bin/python -m app.admin new-key | awk '{print $2}')"
 .venv/bin/python -m app.admin add-client pi-server --stdout > .local-config/pi-server.secret
 .venv/bin/uvicorn app.main:app --factory --port 8443
@@ -78,6 +80,7 @@ curl -s -u "pi-server:$(cat .local-config/pi-server.secret)" \
 Or run the real container locally (needs a cert in `tls/`; a self-signed one is fine):
 ```sh
 export AUTH_SERVICE_HOST_CONFIG=$PWD/.local-config           # instead of /etc/auth-service
+cp ../../../infra/services/auth-service/config.env $AUTH_SERVICE_HOST_CONFIG/   # compose.yaml requires it
 AUTH_SERVICE_COMPOSE=$PWD/compose.yaml sh bin/auth-service-admin list-clients
 docker compose up -d --build && docker compose logs -f
 ```
@@ -115,7 +118,7 @@ writable (last-mint stamps).
 4. **Config dir**, owned by the container user:
    ```sh
    install -d -m 700 -o 10001 -g 10001 /etc/auth-service /etc/auth-service/{keys,clients,tls}
-   install -m 600 -o 10001 -g 10001 /opt/steven-universe/python/services/auth-service/policy.yaml /etc/auth-service/
+   install -m 600 -o 10001 -g 10001 /opt/steven-universe/infra/services/auth-service/policy.yaml /etc/auth-service/
    ```
 5. **TLS:** Let's Encrypt via DNS-01 (certbot + Cloudflare API token limited to DNS edit on
    `liustev6.ca`). A deploy hook copies the files where the container can read them and restarts it:

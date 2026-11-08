@@ -23,12 +23,9 @@ services:
     tmpfs: ["/tmp"]
     # Host 443 -> container 8443: callers use https://files.lan.liustev6.ca (no port).
     ports: ["443:8443"]
-    environment:
-      SERVICE_AUTH_ISSUER: https://auth.lan.liustev6.ca
-      FILES_STORAGE_ENDPOINT: ${FILES_STORAGE_ENDPOINT:-http://192.168.50.123:9000}
-      FILES_BUCKETS: '["public", "private"]'
-      FILES_MAX_UPLOAD_BYTES: ${FILES_MAX_UPLOAD_BYTES:-1073741824}
-      FILES_LOG_LEVEL: ${FILES_LOG_LEVEL:-INFO}
+    # Settings for this environment come from infra/services/file-management/config.env, installed
+    # by every deploy (deployer spec D12). Nothing environment-specific is hard-coded here.
+    env_file: ${FILES_HOST_CONFIG:-/etc/file-management}/config.env
     volumes:
       - ${FILES_HOST_CONFIG:-/etc/file-management}/credentials:/run/secrets:ro
       - ${FILES_HOST_CONFIG:-/etc/file-management}/tls:/etc/file-management/tls:ro

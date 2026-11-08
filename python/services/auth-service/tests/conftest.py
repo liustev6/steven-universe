@@ -11,7 +11,7 @@ from app.clients import ClientStore
 from app.core.config import Settings
 from app.main import create_app
 
-REPO_POLICY = Path(__file__).resolve().parents[1] / "policy.yaml"  # deployed policy
+REPO_POLICY = Path(__file__).resolve().parents[4] / "infra/services/auth-service/policy.yaml"  # deployed policy
 FIXTURE_POLICY = Path(__file__).resolve().parent / "fixtures" / "policy.yaml"  # full test policy
 ISSUER = "https://auth.lan.liustev6.ca"
 CLIENTS = ["api-service", "hey-pi", "gpu-server", "stevenai-v2", "hey-pi-agent", "admin-cli", "stevenai-service"]
