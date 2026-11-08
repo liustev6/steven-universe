@@ -1,6 +1,6 @@
 # secrets-manager (OpenBao)
 
-**Status:** in setup (steps 2–3 done; 1 awaits approval in Tailscale; 6 written, awaiting review) · `https://bao.lan.liustev6.ca:8200` on CT 104 (`192.168.50.206`)
+**Status:** live since 2026-11-08 (setup steps 1–11 done; backups deferred) · `https://bao.lan.liustev6.ca:8200` on CT 104 (`192.168.50.206`)
 **Code:** `infra/secrets-manager/` (container, server config, OpenTofu configuration; no secret
 values) · Related: [deployer.md](deployer.md) (its main reader), [auth-service.md](auth-service.md)
 (how services prove who they are), [rustfs.md](rustfs.md)
@@ -178,7 +178,7 @@ OpenBao checks `aud` and `sub`; the scope documents intent.
 | 9 | Choose the **OpenTofu state passphrase** and save it in your password manager | **you** |
 | 10 | **First `tofu apply`** with the root token in your shell (`VAULT_TOKEN`): audit device, kv, JWT auth, policies, your admin login (password typed at the prompt). Then log in as admin and **revoke the root token**. | **you** run, I prepare and walk through |
 | 11 | **Verify:** audit log written; the root token no longer works; a `smoke` read with an auth-service token (once a reader client exists) | me |
-| 12 | **Backups:** a daily Raft snapshot (systemd timer on CT 104, using a snapshot-only policy), copied off the host; the shares are never stored with it | me |
+| 12 | **Backups: deferred (2026-11-08)**, for simplicity. Planned design when picked up: a `snapshot` policy + `raft-snapshot` token role in `tofu/`, a daily systemd timer on CT 104 saving the Raft snapshot over HTTPS, uploaded to a Cloudflare R2 bucket with retention (bucket lock), an R2 token limited to that bucket. | — |
 
 Afterwards, with the deployer (deployer phase 3): the `secrets-manager` audience and `deployer`
 client in auth-service, the RustFS keys into `kv/services/file-management/`, and managed-secret
@@ -197,6 +197,10 @@ injection in the deploy.
 | Monitoring | `/v1/sys/health` (sealed or not) on the status page later |
 
 ## Security notes
+- **No backups yet (deferred).** If CT 104's disk or the NVMe fails, everything stored in
+  OpenBao is lost. Acceptable while it only holds secrets that can be re-created at their
+  source (e.g. a new RustFS key); add step 12 before it holds anything that can't. Losing 2 of
+  the 3 unseal shares has the same effect, backups or not.
 - **Root on CT 104 or pve01** can read secrets from memory while OpenBao is unsealed. CT 104 runs
   nothing else; SSH key only; the container is read-only and unprivileged.
 - **Backups of CT 104** contain the encrypted storage; without 2 shares they reveal nothing.
@@ -210,7 +214,7 @@ injection in the deploy.
 ## Phases
 | Phase | What ships |
 |---|---|
-| **1** | Setup steps 1–12: OpenBao running, initialized, configured by OpenTofu; you move secrets out of `.env` files into it. |
+| **1** | Setup steps 1–11 (done; backups deferred): OpenBao running, initialized, configured by OpenTofu; you move secrets out of `.env` files into it. |
 | **2** | The deployer logs in with its auth-service token and injects managed secrets (deployer phase 3). |
 | **3** (optional) | Services fetch their own secrets at runtime with their own auth-service tokens (per-service roles). |
 | **4** (optional) | Dynamic secrets: credentials created per request with a lease (e.g. a database). |
