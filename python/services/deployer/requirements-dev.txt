@@ -1,0 +1,6 @@
+# Local development and tests
+-r requirements.txt
+-e ../../libs/service-auth[fastapi]   # TokenClient (OpenBao login), PyJWT
+
+pytest==9.2.0
+httpx==0.28.1          # FastAPI TestClient

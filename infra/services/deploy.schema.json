@@ -17,10 +17,10 @@
     "url": {"type": "string", "format": "uri"},
     "health": {"type": "string", "format": "uri", "description": "Checked by name over TLS after the container is healthy."},
     "smoke_test": {
-      "type": "object", "additionalProperties": false, "required": ["script", "secret"],
+      "type": "object", "additionalProperties": false, "required": ["script"],
       "properties": {
         "script": {"type": "string"},
-        "secret": {"type": "string", "description": "Host path of the smoke-test client secret (delivered from OpenBao)."}
+        "secret": {"type": "string", "description": "Optional: host path of a secret the test needs, mounted at /t/secret (e.g. the smoke-test client secret, delivered from OpenBao)."}
       }
     },
     "certificate": {

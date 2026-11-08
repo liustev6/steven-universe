@@ -1,0 +1,15 @@
+# The deployer's host allowlist (docs/specs/deployer.md D6): the only hosts it may deploy to, each
+# with its address and pinned SSH host key (public; read through pve01 and checked over the network
+# before pinning: `pct exec <id> -- cat /etc/ssh/ssh_host_ed25519_key.pub`).
+#
+# Installed as /etc/deployer/hosts.yaml ONLY by a hand deploy of the deployer
+# (infra/deployment/deploy.sh deployer, which shows the diff). A change merged to main does nothing
+# until then: the pipeline can never widen its own reach. The deployer reads the installed copy,
+# never this file at a deployed commit.
+#
+# Never listed (D13; the deploy refuses them): auth-host (CT 102), bao-host (CT 104), deployer-host.
+hosts:
+  files-host:                          # CT 103: runs file-management
+    address: 192.168.50.66
+    user: root
+    host_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFTFg1f4ffXCIyyiXpO51jqJuj5NeBQdFBNMKReN5H1a"

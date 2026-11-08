@@ -71,7 +71,7 @@ GitHub-hosted runner                                        LAN
 Two workflows. Phase 1 adds the build; phase 2 adds the deploy job.
 
 ```yaml
-# .github/workflows/deploy.yml: on push to main (path filters from each manifest's `code`),
+# .github/workflows/build.yml (one workflow: the deploy job is added to the build in 2.11): on push to main,
 # and workflow_dispatch (redeploy or roll back a chosen sha)
 permissions: {contents: read, packages: write, id-token: write}
 jobs:
@@ -135,7 +135,7 @@ RS256 only, 60 s leeway:
 | `repository_id`, `repository_owner_id` | the numeric ids of `liustev6/steven-universe` | names can be renamed or re-registered; ids can't (this repo was renamed from `Yuanxyyds/…`) |
 | `ref` | `refs/heads/main` | only `main` deploys |
 | `environment` | `production` | passed the required review |
-| `job_workflow_ref` | `liustev6/steven-universe/.github/workflows/deploy.yml@refs/heads/main` | only this workflow, as on `main` |
+| `job_workflow_ref` | `liustev6/steven-universe/.github/workflows/build.yml@refs/heads/main` | only this workflow, as on `main` |
 | `runner_environment` | `github-hosted` | not a self-hosted runner |
 | `sha` | the request's `sha` | D5 |
 | `jti` | not seen before (cache until `exp`) | no replay |
@@ -227,9 +227,13 @@ the deployer's (secrets-manager S15). A change can touch several places, and tha
 | a new bucket | file-management's `config.env`, and `infra/services/auth-service/policy.yaml` |
 | a new secret | the manifest (reviewed), `tofu apply` (policies), and `bao kv put` (the value, by hand) |
 
-The deployer's own config is `/etc/deployer/hosts.yaml`. It is not in the deployed commit, and it
-maps host aliases to an address and a pinned SSH host key. A manifest can only choose among those
-hosts, so a change merged to `main` can't point a deploy at an arbitrary machine, or at a D13 host.
+The host allowlist is `infra/services/deployer/hosts.yaml`: host aliases with their address and
+pinned SSH host key (public). It is in git like every other setting (D12), but it reaches the
+deployer only through a **hand** deploy of the deployer (D13), which shows the diff and refuses
+`auth-host`, `bao-host` and `deployer-host`. The deployer reads the installed copy
+(`/etc/deployer/hosts.yaml`), never the file at a deployed commit. So a change merged to `main`
+can't point a deploy at an arbitrary machine or widen the pipeline's reach until you redeploy the
+deployer yourself.
 
 ## deploy-target (on each host)
 **Today** `deploy.sh` (Mac) opens one SSH session. It:
@@ -368,8 +372,8 @@ still use their old per-service scripts in `infra/deployment/`, run from the lap
 | 2.3 | **The host wrapper (D6, D9, D10).** `infra/deployment/deploy-target-wrapper.sh` (reviewed in git), installed by hand on each host as `/usr/local/sbin/deploy-target`, with `/etc/deploy-target/services` listing that host's service. What it does: parse `SSH_ORIGINAL_COMMAND` (or its arguments, when you call it directly) → check it against the regexes and the services list → `flock` → fetch and check out the sha → exec that commit's `deploy-target.sh` with stdin passed through → append to the log; it prints `previous: <sha>` first. `deploy.sh` switches to it. | me write, you install on CT 102 and CT 103 |
 | 2.4 | **The deployer LXC.** CT 105 `deployer`: Debian 13, unprivileged, nesting on (Docker), DHCP reservation, `onboot` order 2 (after auth-service and OpenBao), `deploy.lan.liustev6.ca` in DNS, certbot DNS-01 like the others. `boot.md` updated. | you create, I prepare commands |
 | 2.5 | **Its identity (OpenBao).** `policy.yaml`: audience `secrets-manager` (scope `secrets:read`), client `deployer` granted it. Deploy auth-service by hand (the diff is shown). `add-client.sh deployer` puts the secret on CT 105 at `/etc/deployer/credentials/client_secret`, host-only. Test: mint a token and run `bao write auth/auth-service/login role=deployer jwt=…`. The resulting token reads a declared secret and is refused anything else. | me prepare, you run |
-| 2.6 | **Its SSH key.** An ed25519 key generated on CT 105 (host-only, never leaves it). Its public key is added to CT 103's root `authorized_keys` with `restrict,command="/usr/local/sbin/deploy-target"`. `/etc/deployer/hosts.yaml` gets `files-host: {address, host_key}`, with host keys pinned (read once from the host itself). | you run, I prepare |
-| 2.7 | **The service** (`python/services/deployer/`, FastAPI, hardened compose, uid 10001), in modules: `github_oidc` (JWKS cache, the claims table, a `jti` cache), `manifests` (a read-only clone of the public repo, `git show <sha>:…`, schema validation, `pipeline` check), `secrets` (`service_auth.TokenClient` → OpenBao login → read the declared paths), `ssh` (OpenSSH with a known_hosts file from `hosts.yaml`, payload on stdin), `api` (NDJSON stream, per-service lock, rollback on failure, audit log), and `cli` (D18). Tests use a fake GitHub JWKS and a fake host. | me |
+| 2.6 | **Its SSH key.** An ed25519 key generated on CT 105 (host-only, never leaves it). Its public key is added to CT 103's root `authorized_keys` with `restrict,command="/usr/local/sbin/deploy-target"`. The allowlist `infra/services/deployer/hosts.yaml` gets `files-host: {address, host_key}`, with host keys pinned (read once through pve01 and checked over the network); installed as `/etc/deployer/hosts.yaml` by the deployer's hand deploy. | you run, I prepare |
+| 2.7 | **The service** (`python/services/deployer/`, FastAPI, hardened compose, uid 10001), in modules: `github_oidc` (JWKS cache, the claims table, a `jti` cache), `repo` (a bare, partial, read-only clone of the public repo; `git show <sha>:…`), `deploys` (manifest + schema at that commit, `pipeline` check, host allowlist, lock, background task, rollback to the `previous:` sha deploy-target prints, audit log), `openbao` (`service_auth.TokenClient` → OpenBao login → read the declared paths → revoke), `ssh` (OpenSSH, pinned host key, payload on stdin, timeout), `main` (the API: token first, then body; NDJSON stream with heartbeats) and `cli` (D18). Tests use a fake GitHub signer, a real git origin in a temp dir, and a fake host. **Written 2026-11-08** (54 tests). | me |
 | 2.8 | **Its manifest and first deploy, by hand (D13).** `infra/services/deployer/` with `deploy.yaml` (`pipeline: false`, host-only key and client secret, the shared Cloudflare token) and `config.env`; `tofu apply`; `deploy.sh deployer`. | you run |
 | 2.9 | **Test on the LAN, before anything is public.** `docker exec … app.cli deploy file-management <sha>` → a real deploy through the deployer. Then a rollback drill: deploy a commit whose health check fails, and confirm it reports `rolled_back` with the previous version running. | you run, I watch |
 | 2.10 | **api-service, minimal.** `python/services/api-service/` with only `/health` and the `/deploy/*` proxy route. The route streams the request through to the deployer, caps the body at 4 KB, rejects requests without a GitHub-issued bearer token, and rate-limits. It gets its own LXC (CT 106) and manifest, and is deployed by hand. Then add the public hostname `api.liustev6.ca` → api-service to the Cloudflare tunnel (CT 100). | me write, you do LXC + tunnel |
@@ -396,6 +400,14 @@ in `deploy-target`, or a separate path (see Open questions).
   - A `kind: systemd` target in `deploy-target`: release folders, a `current` symlink and
     `systemctl restart`. The Pi isn't on pve01 and needs a forced-command key like any host.
   - Keep its own script.
+- **The deployer deploying itself** (as Argo CD and Flux can). Two problems to solve first:
+  - **Its own restart:** the host would have to run the deploy detached (`systemd-run`) and roll
+    back by itself, since the SSH session lives in the container being replaced.
+  - **The pipeline loosening its own rules:** it could change `config.env` (which GitHub tokens
+    are accepted) and `hosts.yaml` (where it may deploy).
+  
+  Likely shape: the pipeline may update the deployer's *code* only when those two files equal
+  what's installed; a rule change still needs a hand deploy. Until then, D13.
 - **Events from `deploy-target`:** today it prints human-readable status. The deployer could map
   `Step N/M` lines to NDJSON events, or `deploy-target` could gain a `--json` mode. Decide when
   building phase 2.

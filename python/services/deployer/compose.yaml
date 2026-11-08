@@ -1,0 +1,37 @@
+# deployer on its LXC (CT 105). Spec: docs/specs/deployer.md. Deployed by hand only (D13):
+#   infra/deployment/deploy.sh deployer
+# DEPLOYER_HOST_CONFIG overrides the host config dir (only for local testing).
+#
+# Host layout (owner 10001, mode 700 directories, 600 files):
+#   /etc/deployer/credentials/client_secret, ssh_key   -> /run/secrets/ (read-only; host-only, never delivered)
+#   /etc/deployer/hosts.yaml                            the host allowlist (from infra/services/deployer/, by the hand deploy)
+#   /etc/deployer/tls/cert.pem, key.pem                 certificate for deploy.lan.liustev6.ca
+#   /var/lib/deployer/                                  writable: the repository clone, audit.log
+name: deployer
+
+services:
+  deployer:
+    image: ghcr.io/liustev6/steven-universe/deployer:${IMAGE_TAG:-local}   # IMAGE_TAG: set by deploy-target.sh (deployer spec D1a)
+    build:
+      context: ../..                    # python/, so libs/service-auth is included
+      dockerfile: services/deployer/Dockerfile
+      args:
+        REVISION: ${REVISION:-unknown}  # commit sha, recorded as the image's revision label
+    restart: unless-stopped
+    read_only: true                     # whole container filesystem read-only
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]                     # HOME (ssh), temporary known_hosts files
+    # Host 443 -> container 8443: api-service calls https://deploy.lan.liustev6.ca (no port).
+    ports: ["443:8443"]
+    # A stop waits for a running deploy to finish (uvicorn waits up to 900 s).
+    stop_grace_period: 15m
+    env_file: ${DEPLOYER_HOST_CONFIG:-/etc/deployer}/config.env
+    volumes:
+      - ${DEPLOYER_HOST_CONFIG:-/etc/deployer}/credentials:/run/secrets:ro
+      - ${DEPLOYER_HOST_CONFIG:-/etc/deployer}:/etc/deployer:ro      # hosts.yaml, tls/ (a directory mount: edits are seen)
+      - /var/lib/deployer:/var/lib/deployer
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}

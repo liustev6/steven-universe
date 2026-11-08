@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=../deploy.schema.json
+# deployer: what to deploy where, and which secrets it needs (names only, never values).
+# Read by OpenTofu (infra/secrets-manager/tofu/services.tf) and by the deploy (infra/deployment/).
+# Deployed by hand only (deployer spec D13): it holds the keys to the other hosts, and must never
+# be able to replace itself. Spec: docs/specs/deployer.md.
+service: deployer
+host: deployer-host
+pipeline: false                        # by hand only (D13); also absent from its own host allowlist
+code: python/services/deployer
+compose: python/services/deployer/compose.yaml
+config: infra/services/deployer/config.env            # -> /etc/deployer/config.env
+url: https://deploy.lan.liustev6.ca
+health: https://deploy.lan.liustev6.ca/health
+smoke_test:
+  script: python/services/deployer/scripts/smoke_test.py   # no secret: it never deploys anything
+hooks:
+  pre_start: infra/services/deployer/hooks/pre-start.sh   # state dir, credentials check, host allowlist
+certificate:
+  name: deploy.lan.liustev6.ca
+  hook: python/services/deployer/scripts/cert-hook.sh     # -> /usr/local/sbin/deployer-cert-hook
+
+# Managed secrets: values in OpenBao at kv/<from>, written to <to> (mode 600) on every deploy.
+secrets:
+  - from: shared/cloudflare_dns_token
+    to: /root/.secrets/cloudflare.ini
+    owner: "0:0"
+    format: "dns_cloudflare_api_token = {value}\n"   # certbot's credentials file
+
+# Host-only: created on CT 105 and never copied anywhere, not even into OpenBao.
+host_only:
+  - /etc/deployer/credentials/client_secret   # auth-service client "deployer" (add-client.sh)
+  - /etc/deployer/credentials/ssh_key         # restricted on each target host (deployer spec D6)
+# The host allowlist is in git (hosts.yaml next to this file); the pre-start hook installs it.

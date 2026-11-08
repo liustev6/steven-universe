@@ -90,6 +90,7 @@ ok "$SHORT: $SUBJECT"
 if [ -z "$PREV" ]; then info "first deploy (nothing running yet)"
 elif [ "$PREV" = "$SHA" ]; then info "same commit as the running container (redeploy)"
 else info "running now: ${PREV:0:7}  ->  deploying: $SHORT"; fi
+[ -z "$PREV" ] || info "previous: $PREV"        # full sha: the deployer rolls back to it (spec D8)
 if [ "$IMAGE_SHA" = "$SHA" ]; then info "image: built from this commit"
 else info "image: ${IMAGE_SHA:0:7} (last change to $M_CODE or python/libs; this commit changes only config)"; fi
 
@@ -207,10 +208,13 @@ RUNNING="$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.r
 ##############################################################################
 step "Smoke test"
 if [ -n "$M_SMOKE_SCRIPT" ]; then
-    [ -s "$M_SMOKE_SECRET" ] || die "Missing $M_SMOKE_SECRET (it should have been delivered from OpenBao in step 2)."
+    SMOKE_MOUNTS=(-v "$SRC/$M_SMOKE_SCRIPT:/t/smoke.py:ro")
+    if [ -n "$M_SMOKE_SECRET" ]; then           # optional: a smoke test may need no credentials
+        [ -s "$M_SMOKE_SECRET" ] || die "Missing $M_SMOKE_SECRET (it should have been delivered from OpenBao in step 2)."
+        SMOKE_MOUNTS+=(-v "$M_SMOKE_SECRET:/t/secret:ro")
+    fi
     if SMOKE_OUT="$(docker run --rm --network host --read-only --user 0 --cap-drop ALL \
-            --security-opt no-new-privileges:true \
-            -v "$M_SMOKE_SECRET:/t/secret:ro" -v "$SRC/$M_SMOKE_SCRIPT:/t/smoke.py:ro" \
+            --security-opt no-new-privileges:true "${SMOKE_MOUNTS[@]}" \
             --entrypoint python "$IMAGE" /t/smoke.py 2>&1)"; then
         printf '%s\n' "$SMOKE_OUT" | grep -E '^(PASS|FAIL)' | sed 's/^/  /'
         ok "smoke test passed ($(printf '%s\n' "$SMOKE_OUT" | grep -c '^PASS') checks)"

@@ -1,0 +1,8 @@
+# deployer runtime dependencies (the image also installs ../../libs/service-auth: httpx, PyJWT)
+fastapi==0.162.2
+uvicorn[standard]==0.54.0
+pydantic-settings==2.16.2
+
+# Manifests: YAML, validated against infra/services/deploy.schema.json at the deployed commit
+PyYAML==6.0.3
+jsonschema==4.26.0
