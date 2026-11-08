@@ -25,8 +25,9 @@ COMMAND="add-client"
 [[ "${5:-}" == "--rotate" ]] && COMMAND="rotate-secret"
 AUTH_HOST="${AUTH_HOST:-auth-host}"
 
-# Quote for the remote shell.
-printf -v REMOTE_WRITE 'sudo sh -c %q' "
+# Quote for the remote shell. sudo only when the remote user isn't root (LXC hosts log in as root
+# and have no sudo; the Pi logs in as a normal user).
+printf -v REMOTE_WRITE 'S=; [ "$(id -u)" -eq 0 ] || S=sudo; $S sh -c %q' "
   umask 077
   tmp=\$(mktemp)
   cat > \"\$tmp\"

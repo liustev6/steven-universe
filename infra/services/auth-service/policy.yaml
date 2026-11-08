@@ -5,7 +5,7 @@
 #   .venv/bin/python -m app.admin --config-dir /tmp check-policy --file ../../../infra/services/auth-service/policy.yaml
 # Spec: docs/specs/auth-service.md ("Policy").
 #
-# Starting small: api-service, file-management and pi-server. Only relaying is enabled:
+# Starting small: api-service, file-management, pi-server, and the deployer (OpenBao logins). Only relaying is enabled:
 # no users yet (no `${user}` grants, no `can_assert_users`) and nothing hands out narrow
 # tokens yet (no `can_downscope`; see the README before enabling it). Add audiences and clients (gpu-server,
 # stevenai-service, ...) as each service adopts service-auth; tests/fixtures/policy.yaml
@@ -27,7 +27,18 @@ audiences:
         location_syntax: prefix          # "<bucket>/<key prefix>"; subset = string prefix
         location_roots: [public/, private/]   # file-management's buckets (its spec, D10); keep in sync
 
+  secrets-manager:                       # OpenBao: services log in with a token for this audience.
+                                         # What a login may read is OpenBao's policy (generated from the
+                                         # manifests, infra/secrets-manager/tofu/), not a scope here.
+    scopes: [secrets:read]
+
 clients:
+  deployer:                              # deploys services (docs/specs/deployer.md); logs in to OpenBao
+                                         # as role "deployer" (sub=service:deployer). Secret host-only on CT 105.
+    grants:
+      secrets-manager:
+        scopes: [secrets:read]
+
   api-service:
     can_relay_clients: true              # may pass an outside machine client's own identity downstream (grant 3)
     grants:
