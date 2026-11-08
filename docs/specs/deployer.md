@@ -1,66 +1,81 @@
 # Spec: deployer (CI/CD from GitHub Actions to the home lab)
 
-**Path**: `python/services/deployer/` (service), `deploy/` (per-service manifests and the
-target-side script), `.github/workflows/deploy.yml`. **Status**: not built; services are deployed
-by hand with the per-service scripts in `infra/deployment/` (see Current state). Related:
-[secrets-manager.md](secrets-manager.md) (where deploy-time secrets come from),
-[auth-service.md](auth-service.md) (internal tokens), [api-service.md](api-service.md) (the public
-edge GitHub's call comes through).
+**Path**: `python/services/deployer/` (service, not built yet), `infra/services/<service>/`
+(manifests), `infra/deployment/` (`deploy-target.sh`, the host side, already in use),
+`.github/workflows/`. **Status**: decisions locked 2026-11-08; phase 0b done: deploys are manifest-driven and get their secrets
+from OpenBao, but are started by hand from the Mac (`infra/deployment/deploy.sh`). The deployer
+replaces the Mac, not the host side. Related: [secrets-manager.md](secrets-manager.md),
+[auth-service.md](auth-service.md), [api-service.md](api-service.md) (the public edge GitHub's call
+comes through), [boot.md](boot.md).
 
 ## Scope
 The deployer turns "a commit on `main` passed CI" into "that exact build is running on the right
-host", without any deployment credential stored in GitHub and without letting a request run
-anything except a known deployment.
+host". It does this without any deployment credential stored in GitHub, and without letting a
+request run anything except a known deployment.
 
-- **GitHub Actions** (hosted runners) builds, tests, pushes an image to GHCR, then asks the
+- **GitHub Actions** (hosted runners) tests and builds the image, pushes it to GHCR, then asks the
   deployer to deploy it.
-- **deployer** (an LXC on pve01) checks who is asking, looks the service up, fetches deploy-time
-  secrets, and runs the deployment on the target host.
-- **deploy-target** (a small script on every target host) does the host-side work: pull the image,
-  install secrets, restart, health check, roll back.
+- **deployer** (its own LXC on pve01):
+  - checks who is asking;
+  - reads the service's manifest at that commit;
+  - fetches the declared secrets from OpenBao with its own identity;
+  - runs `deploy-target` on the host;
+  - rolls back if that fails.
+- **deploy-target** (on every target host) does the host-side work:
+  - checks out the commit;
+  - writes `config.env` and the secrets;
+  - starts the new image;
+  - runs the health check and the smoke test.
 
 ```
-GitHub-hosted runner                 Cloudflare tunnel        LAN
-┌──────────────────────────┐                            ┌─────────────┐
-│ test → build → push GHCR │                            │ api-service │ proxies /deploy/* only
-│ (GITHUB_TOKEN, built in) │──POST /deploy/v1/deployments──▶          │──┐
-│ request GitHub OIDC token│   Bearer <GitHub OIDC>     └─────────────┘  │
-└──────────────────────────┘                                             ▼
-                                   ┌──────────────── deployer ──────────────────────────┐
-                                   │ 1. verify GitHub OIDC (repo id, ref, env, workflow) │
-                                   │ 2. request sha == token sha; image built for sha    │
-                                   │ 3. manifest + compose.yaml at that sha              │
-                                   │ 4. managed secrets ◀── secrets-manager (OpenBao)    │
-                                   │ 5. ssh deploy@<host> (forced command) ──────────────┼─▶ deploy-target
-                                   └─────────────────────────────────────────────────────┘    pull, secrets,
-                                                                                               up, health,
-                                                                                               rollback
+GitHub-hosted runner                                        LAN
+┌──────────────────────────┐   Cloudflare tunnel      ┌─────────────┐
+│ test → build → push GHCR │──POST /deploy/v1/───────▶│ api-service │ forwards /deploy/* only
+│ GitHub OIDC token        │   deployments            └──────┬──────┘
+└──────────────────────────┘   Bearer <GitHub OIDC>          ▼
+          ┌──────────────────────── deployer ───────────────────────────────┐
+          │ 1. verify GitHub OIDC (repo id, ref, environment, workflow, sha) │
+          │ 2. infra/services/<svc>/deploy.yaml at that sha; host allowlist  │
+          │ 3. auth-service token (aud=secrets-manager) ─▶ OpenBao JWT login │
+          │ 4. read the manifest's secrets (read-only, generated policy)     │
+          │ 5. ssh root@<host> (forced command) ─────────────────────────────┼─▶ deploy-target
+          │ 6. failed? deploy the previous sha the same way                  │   checkout, secrets,
+          └──────────────────────────────────────────────────────────────────┘   pull, up, health,
+                                                                                  smoke test
 ```
 
 ## Locked decisions
 | ID | Decision |
 |---|---|
-| D1 | **Build in GitHub, run on the LAN.** Hosted runners build and test; images go to GHCR as `ghcr.io/liustev6/steven-universe/<service>:<sha>` and are deployed **by digest**. Target hosts never build from a working copy. |
+| D1 | **Build in GitHub, run on the LAN.** Hosted runners build and test. Images go to GHCR as `ghcr.io/liustev6/steven-universe/<service>:<image sha>` and are deployed **by digest**. Until phase 1, hosts build the image themselves, but only from a clean checkout of a *pushed* commit, never from a working copy. |
+| D1a | **An image is named by the commit that last changed its inputs.** The inputs are the manifest's `code` folder plus `python/libs/`. When deploying commit X, the image sha is `git log -1 --format=%H X -- <code> python/libs`. A commit that only changes `infra/services/<svc>/` (config, secrets list) redeploys the existing image with the new config, and nothing is rebuilt. The image's `revision` label is the image sha. The deployed sha is recorded in the host's deploy log (D10). |
 | D2 | **No deployment secrets in GitHub.** The workflow proves who it is with a **GitHub OIDC token** (`permissions: id-token: write`), a short-lived JWT signed by GitHub. Image pushes use the built-in `GITHUB_TOKEN`. There is nothing to store, rotate, or leak. |
 | D3 | **In through the single edge.** GitHub calls `https://api.liustev6.ca/deploy/v1/deployments`; api-service forwards that path, unchanged, to the deployer (api-service E1). The deployer, auth-service and the secrets manager have no tunnel hostname. |
-| D4 | **Requests name, they never command.** A request says *which service* at *which commit*. Everything else (host, image, how to run it, secrets, health check) comes from reviewed files in git at that commit plus the deployer's own host allowlist. No field is ever executed or used as a path. |
+| D4 | **Requests name, they never command.** A request says *which service* at *which commit*. Everything else (host, compose file, secrets, health check, smoke test) comes from that commit's `infra/services/<service>/deploy.yaml`, plus the deployer's own host allowlist. No field is ever executed or used as a path. |
 | D5 | **The token is bound to the request.** The `sha` in the body must equal the token's `sha` claim, so a valid token for one commit can't deploy another. |
-| D6 | **Least privilege to hosts.** The deployer reaches each target over SSH with a key that can only run `deploy-target` (`authorized_keys`: `restrict,command="/usr/local/bin/deploy-target"`). `deploy-target` accepts three verbs: `deploy`, `rollback`, `check-secrets`. |
-| D7 | **Secrets never in images, git, GitHub, or environment variables.** Each secret is a root-owned file in `/etc/<service>/credentials/<name>` (mode 600), mounted read-only into the container (Compose `secrets:` → `/run/secrets/<name>`). Onboarded secrets are placed once by hand and only *checked* by deploys; managed secrets are written by the deployer on every deploy (see Secrets). |
-| D8 | **Health-checked with automatic rollback.** A deploy succeeds only when the service's health check passes; otherwise the previous digest is restored and the deploy reports `rolled_back`. |
-| D9 | **One deploy per service at a time; idempotent.** A per-service lock; deploying the digest already running is a no-op success. |
-| D10 | **Audited.** One log line per request (GitHub run id, actor, sha, digest, result) and a per-service history used for rollback. |
+| D6 | **Least privilege to hosts.** The deployer reaches each host as `root` with a key that can only run the installed wrapper. That key's `authorized_keys` line is `restrict,command="/usr/local/sbin/deploy-target" ssh-ed25519 …`. The restriction is per key: sshd stays at `PermitRootLogin prohibit-password`, so your own key keeps a normal shell for `deploy.sh` and break-glass. It is root because the deploy writes `/etc/<svc>`, chowns secrets and installs certbot hooks. A `docker` group member would be root-equivalent anyway, so the LXC is the boundary (D11). The wrapper accepts one form, `deploy <service> <40-hex sha> [<digest>]`, each part checked against a regex. It also refuses any service not listed in the host's `/etc/deploy-target/services`, so a host only ever runs its own service. |
+| D7 | **Secrets never in images, git, GitHub, or environment variables.** Each secret is a file (mode 600, owned as the manifest says), mounted read-only into the container or read by a host tool such as certbot. **Managed** secrets come from OpenBao and are written on every deploy. **Host-only** files (e.g. auth-service's signing keys) are created on the host and only checked (see Secrets). |
+| D8 | **Health-checked with automatic rollback.** A deploy succeeds only when the container is healthy, the health URL answers by name over TLS with the right revision, and the smoke test passes. Otherwise the deployer deploys the previously running sha the same way and reports `rolled_back`. Manual deploys print the rollback command instead. |
+| D9 | **One deploy per service at a time; idempotent.** There is a per-service lock: `flock` in the wrapper, and `409` at the deployer. Redeploying the running sha is safe: it rewrites nothing that is unchanged and reports "same commit". |
+| D10 | **Audited.** The deployer logs one line per request (GitHub run id, actor, sha, digest, result). Each host appends to `/var/lib/deploy-target/<service>.log` (time, sha, result), which is also where the previous sha for a rollback comes from. OpenBao's audit log records every secret read. |
 | D11 | **Docker Compose everywhere on LXCs, one service per LXC.** The image is the unit of deployment; the LXC is the security boundary (Docker group membership is root-equivalent inside it). Each service's `compose.yaml` lives next to its code and carries the hardening (`read_only`, non-root `user`, `cap_drop: [ALL]`, `no-new-privileges`, secrets mounted read-only). The only exception is the Pi (pi-server: hardware access, not an LXC), which runs under systemd. |
 | D12 | **`infra/` is the source of truth for how every service is configured and deployed**; `python/services/<svc>/` owns only code, the `Dockerfile` and the *shape* of the container (`compose.yaml`). Policies, per-environment settings, deployment manifests and (later) hosts and DNS live in `infra/`; secret **values** never do (only their names). One place per fact. |
+| D13 | **The roots of trust deploy by hand only:** auth-service, the secrets manager and the deployer itself. The deployer logs in to OpenBao through auth-service, so neither may depend on it. The deployer's host allowlist does not contain their hosts; `deploy.sh` from the Mac stays their path, and the break-glass path for everything else. |
+| D14 | **One host-side script for every path.** The Mac (`deploy.sh`) and the deployer both run the same `deploy-target.sh`, with the same stdin payload. The deployer replaces the caller, never the host logic, so a manual deploy tests exactly what the pipeline runs. |
+| D15 | **Push through the edge, not pull.** GitHub calls the deployer through api-service (D3). The deployer has no public hostname: it is LAN-only and reachable from outside only through api-service's `/deploy/*` route, where GitHub's OIDC token is the gate. Polling GitHub (pull) is not planned. |
+| D16 | **The manifest says who may deploy a service: `pipeline: true` or `false`** (default false). The workflow deploys only `pipeline: true` services. The deployer refuses the others with `403` and has no host entry for them either. D13 services stay `false`. |
+| D17 | **The gate is approval per deploy, not pull requests** (one maintainer who pushes straight to `main`). The `production` environment requires your approval on every deploy and accepts only `main`. A ruleset on `main` blocks force pushes and deletion. Pull requests stay optional. |
+| D18 | **LAN break-glass on the deployer:** `docker exec deployer python -m app.cli deploy <service> <sha>` runs a deploy without a GitHub token. Only someone already root on the deployer LXC can do this, and that person already holds all its power. It is used to test the deployer before the edge exists, and when GitHub is down. |
 
 ## GitHub side
-`.github/workflows/deploy.yml`, triggered on push to `main` (path filters per service) and
-`workflow_dispatch` (redeploy or roll back a chosen sha):
+Two workflows. Phase 1 adds the build; phase 2 adds the deploy job.
 
 ```yaml
+# .github/workflows/deploy.yml: on push to main (path filters from each manifest's `code`),
+# and workflow_dispatch (redeploy or roll back a chosen sha)
 permissions: {contents: read, packages: write, id-token: write}
 jobs:
-  build:    # per changed service (matrix): test, docker buildx (amd64; arm64 for the Pi), push :<sha>
+  build:    # per changed service (matrix): test, docker buildx (amd64), push :<sha>, label revision
   deploy:
     needs: build
     environment: production          # required reviewer: you
@@ -75,29 +90,37 @@ jobs:
                -d '{"service": "file-management", "sha": "${{ github.sha }}", "image_digest": "sha256:…"}'
 ```
 
-Repository settings this design relies on (the repo is public):
-- **Branch protection on `main`:** pull requests required, no force pushes.
-- **Environment `production`:** required reviewer (you), deployments only from `main`.
+Repository settings this design relies on (the repo is public; set by hand before phase 2):
+- **Ruleset on `main`:** block force pushes and deletion. Pull requests aren't required (D17).
+- **Environment `production`:** required reviewer (you), with "prevent self-review" off, since
+  you approve your own pushes. Deployments only from `main`.
 - **Fork pull requests** never get `id-token: write` or the `production` environment, so they
   can't obtain a deploy token.
 - **GHCR packages public.** The code is public and images contain no secrets (D7), so hosts pull
-  without credentials. If a package must be private, the host needs a read-only pull token
-  (an onboarded secret).
+  without credentials. A private package would need a read-only pull token on the host, as a
+  managed secret.
 
 ## Deployer API
 `POST /v1/deployments` (reached as `/deploy/v1/deployments` through api-service)
 ```json
 {"service": "file-management", "sha": "827eb54…(40 hex)", "image_digest": "sha256:…"}
 ```
-Response: `200`, streamed as NDJSON (one event per line) so the workflow log shows progress; the
-last line is the result, and the workflow fails unless it is `succeeded` or `unchanged`.
+The response is `200`, streamed as NDJSON (one event per line), so the workflow log shows
+`deploy-target`'s progress. The last line is the result. The workflow fails unless it is
+`succeeded`.
 ```json
-{"event": "step", "step": "pull", "message": "…"}
-{"event": "result", "status": "succeeded|unchanged|failed|rolled_back", "digest": "sha256:…"}
+{"event": "step", "step": "Smoke test", "message": "…"}
+{"event": "result", "status": "succeeded|failed|rolled_back", "sha": "…", "previous": "…"}
 ```
-Errors before anything runs: `401` (token invalid), `403` (claims don't match), `404` (unknown
-service), `409` (a deploy for this service is running), `422` (bad body, sha mismatch, image not
-built for that sha).
+Errors before anything runs:
+
+| Status | Meaning |
+|---|---|
+| `401` | token invalid |
+| `403` | claims don't match, or the service is hand-deployed only (D13) |
+| `404` | no manifest at that sha |
+| `409` | a deploy for this service is running |
+| `422` | bad body, sha mismatch, or the image wasn't built for that sha |
 
 `GET /health`: liveness only.
 
@@ -121,6 +144,27 @@ The image is accepted only if its OCI label `org.opencontainers.image.revision` 
 Later: verify GitHub's build provenance attestation (`actions/attest-build-provenance`, SLSA)
 instead of trusting the label.
 
+### The deployer's identity (OpenBao access)
+The deployer has no static OpenBao token. Per deploy:
+1. It requests a client credentials token from auth-service as client `deployer`, with
+   `aud=secrets-manager`. Its client secret is host-only on the deployer LXC, created with
+   `add-client.sh`.
+2. It logs in to OpenBao at `auth/auth-service/login`, role `deployer`. That gives a 10-minute,
+   read-only token with the **generated** `deployer` policy: exactly the secrets some manifest
+   declares (secrets-manager S15).
+3. It reads the manifest's `secrets[].from`, then forgets the token.
+
+**Already in place:**
+- the OpenBao JWT auth method trusting auth-service's JWKS;
+- role `deployer` (`bound_audiences secrets-manager`, `bound_subject service:deployer`);
+- the generated policy (`infra/secrets-manager/tofu/`).
+
+**Still to add (phase 2):**
+- In `infra/services/auth-service/policy.yaml`:
+  - an audience `secrets-manager` (scope `secrets:read`);
+  - a client `deployer` granted it.
+- The client's secret, on the deployer LXC.
+
 ## Configuration source of truth: `infra/` (D12)
 Application code and environment configuration are kept apart, as in GitOps environment
 repositories or Helm values next to charts. The rule for each value: *if the service moved to
@@ -128,159 +172,236 @@ another environment, would this change?* Yes → `infra/`. No → the service fo
 
 | Owned by the service (`python/services/<svc>/`) | Owned by `infra/` |
 |---|---|
-| code, tests, `Dockerfile` | **policies**: auth-service's `policy.yaml`, OpenBao policies (`infra/secrets-manager/tofu/`) |
+| code, tests, `Dockerfile`, smoke test, certbot hook script | **policies**: auth-service's `policy.yaml`, OpenBao policies (`infra/secrets-manager/tofu/`, generated from the manifests) |
 | `compose.yaml` as the container's *shape*: image name, hardening, mounts, health check | **per-environment settings**: issuer URL, storage endpoint, buckets, limits, log level (`config.env`) |
-| defaults in the service's settings class | **deployment manifests**: host, health URL, secret names (`deploy.yaml`) |
+| defaults in the service's settings class | **deployment manifests**: host, health URL, secret names, smoke test, hooks (`deploy.yaml`) |
 | | later, as OpenTofu: Proxmox containers, Cloudflare DNS (`infra/tofu/`) |
-| | secret **values**: never; they live in the secrets manager (only their names are listed here) |
+| | secret **values**: never; they live in OpenBao (only their names are listed here) |
 
 ```
 infra/
-  README.md                          the map: what lives where, how a change flows
-  secrets-manager/                   OpenBao: compose, openbao.hcl, tofu/ (policies, roles, auth)
-  services/<service>/
-    deploy.yaml                      what to deploy where + which secrets (read at the deployed sha)
-    config.env                       non-secret settings, written to the host on every deploy
-    policy.yaml                      auth-service only: the permissions (moved from python/services/auth-service/)
-  deployment/                        manual deploy scripts now; deploy-target later
+  services/
+    deploy.schema.json               the manifest format (additionalProperties: false)
+    <service>/
+      deploy.yaml                    what to deploy where + which secrets (read at the deployed sha)
+      config.env                     non-secret settings, written to the host on every deploy
+      hooks/pre-start.sh             optional service-specific steps (auth-service: admin CLI, policy, key)
+      policy.yaml                    auth-service only: the permissions
+  secrets-manager/                   OpenBao: compose, openbao.hcl, tofu/ (auth, roles, generated policies)
+  deployment/
+    deploy.sh                        Mac: resolve a pushed sha, fetch secrets with your login, ssh
+    deploy-target.sh, lib.sh         host: the deploy itself (also run by the deployer, D14)
+    gpu-server.sh, …                 older per-service scripts, until phase 3
   tofu/                              later: Proxmox containers + Cloudflare DNS
-python/services/<service>/
-  Dockerfile, compose.yaml           how it builds and runs; compose reads config.env and /run/secrets
 ```
 
 ```yaml
 # infra/services/file-management/deploy.yaml (the real file; abridged)
 service: file-management
-host: files-host                       # SSH alias; the deployer maps it through its host allowlist
+host: files-host                       # an SSH alias; the deployer maps it through its host allowlist
+code: python/services/file-management-service       # also the build workflow's path filter
 compose: python/services/file-management-service/compose.yaml
-config: infra/services/file-management/config.env     # -> /etc/file-management/config.env
+config: infra/services/file-management/config.env   # -> /etc/file-management/config.env
 health: https://files.lan.liustev6.ca/health
-smoke_test: python/services/file-management-service/scripts/smoke_test.py
+smoke_test:
+  script: python/services/file-management-service/scripts/smoke_test.py
+  secret: /root/.secrets/smoke-test-client
+certificate:
+  name: files.lan.liustev6.ca
+  hook: python/services/file-management-service/scripts/cert-hook.sh
 secrets:                               # values in OpenBao at kv/<from>, written to <to> on every deploy
   - from: services/file-management/rustfs_access_key
     to: /etc/file-management/credentials/rustfs_access_key
-    owner: "10001:10001"
+    owner: "10001:10001"               # the container user
   - from: shared/cloudflare_dns_token
     to: /root/.secrets/cloudflare.ini
     owner: "0:0"
-    format: "dns_cloudflare_api_token = {value}"
+    format: "dns_cloudflare_api_token = {value}\n"   # wrapped into the file a tool expects
+# host_only: [paths]                   # created on the host, never delivered; the deploy checks they exist
 ```
-The same `secrets` list feeds OpenTofu, which generates each service's read-only OpenBao policy and
-the deployer's (secrets-manager S15).
-```sh
-# infra/services/file-management/config.env (non-secret; reviewed like code)
-SERVICE_AUTH_ISSUER=https://auth.lan.liustev6.ca
-FILES_STORAGE_ENDPOINT=http://192.168.50.123:9000
-FILES_BUCKETS=["public", "private"]
-FILES_MAX_UPLOAD_BYTES=1073741824
-```
+The same `secrets` list feeds OpenTofu. It generates each service's read-only OpenBao policy and
+the deployer's (secrets-manager S15). A change can touch several places, and that is intended:
 
-**How a deploy uses it** (the manual scripts first, the deployer later):
-```
-infra/services/<svc>/config.env           ──▶ /etc/<svc>/config.env              (non-secret, mode 644)
-secrets manager kv/services/<svc>/<name>  ──▶ /etc/<svc>/credentials/<name>      (owner = container user, 600)
-infra/services/auth-service/policy.yaml            ──▶ /etc/auth-service/policy.yaml      (auth-service deploys only;
-                                                                                 validated, diff shown first)
-compose.yaml:  env_file: /etc/<svc>/config.env
-               volumes:  /etc/<svc>/credentials:/run/secrets:ro
-```
-A change can touch two folders (a new bucket: file-management's `config.env` **and**
-`infra/services/auth-service/policy.yaml`); that is intended: permission and environment changes are
-separate, small, reviewable diffs, and `infra/` answers "how is everything configured?" alone.
+| Change | Places it touches |
+|---|---|
+| a new bucket | file-management's `config.env`, and `infra/services/auth-service/policy.yaml` |
+| a new secret | the manifest (reviewed), `tofu apply` (policies), and `bao kv put` (the value, by hand) |
 
-The deployer's own config (`/etc/deployer/hosts.yaml`, not in the deployed commit) maps host
-names to SSH addresses and host keys. A manifest can only choose among those hosts, so a change
-merged to `main` can't point a deploy at an arbitrary machine.
+The deployer's own config is `/etc/deployer/hosts.yaml`. It is not in the deployed commit, and it
+maps host aliases to an address and a pinned SSH host key. A manifest can only choose among those
+hosts, so a change merged to `main` can't point a deploy at an arbitrary machine, or at a D13 host.
 
 ## deploy-target (on each host)
-Runs as user `deploy` (in the `docker` group, which is root-equivalent on that host; the host is
-the blast radius). Reads the verb and arguments from `SSH_ORIGINAL_COMMAND`, validates them
-against `^[a-z][a-z0-9-]{1,62}$` and `^sha256:[0-9a-f]{64}$`, and reads secret values from stdin.
+**Today** `deploy.sh` (Mac) opens one SSH session. It:
+1. clones `/opt/steven-universe` if it's missing;
+2. fetches the repository and checks out the sha (detached);
+3. runs that commit's `infra/deployment/deploy-target.sh <service> <sha>`.
 
-`deploy <service> <digest>`:
-1. `check-secrets`: `config.env` and managed values from stdin are written first (atomic; secrets
-   mode 600, owned by the container user); then every
-   onboarded and managed name must exist and be non-empty in `/etc/<service>/credentials/`.
-   A missing onboarded secret fails the deploy with the command that creates it.
-2. `docker pull <image>@<digest>`; keep the currently running digest as `previous`.
-3. `docker compose up -d` with the new digest (compose file sent by the deployer).
-4. Poll the health URL until healthy or timeout.
-5. Healthy: record the digest. Not healthy: `compose up` with `previous`, report `rolled_back`.
+**stdin** carries the secrets, one per line:
+```
+<destination path> TAB <owner uid:gid> TAB <base64 of the formatted value>
+```
+The script reads stdin into memory first, then closes it.
 
-`rollback <service>`: redeploy the previous recorded digest. `check-secrets <service>`: step 1
-only (used for onboarding).
+**Steps** (from the manifest; status output from `lib.sh`, and the failed step is named):
+1. **Commit:** the running revision (from the container's label) → the new one.
+2. **Config and secrets:**
+   - `config.env` → `/etc/<svc>/`;
+   - each secret written atomically, mode 600, with its owner, reported as written or unchanged;
+   - every `host_only` path must exist;
+   - the certificate must be present (expiry warned at 21 days).
+3. **certbot hook:** installed from this commit.
+4. **Build the image:** labelled `revision=<sha>`. Phase 1 replaces this with a **pull by digest**.
+5. **Service hook** (`hooks.pre_start`, optional; auth-service: policy validate, diff and install).
+6. **Start:** `compose up -d`, then wait for Docker's health check (60 s).
+7. **Health by name over TLS:** `curl` the manifest's `health` URL. The running revision must equal
+   the sha; from phase 1, the image sha (D1a).
+8. **Smoke test:** the service's script runs in the new image, with host networking, read-only.
+
+**What phase 2 adds on the host:** a fixed wrapper `/usr/local/sbin/deploy-target`. It is
+installed once by hand (it is the only thing a deployer key can run, D6) and does the following:
+1. Parses `SSH_ORIGINAL_COMMAND` (D6 regexes) and refuses anything else.
+2. Takes `flock /run/deploy-target/<service>.lock` (D9).
+3. Checks out the sha, as `deploy.sh`'s command does today.
+4. Execs that commit's `deploy-target.sh` with stdin passed through.
+5. Appends the result to `/var/lib/deploy-target/<service>.log` (D10).
+
+`deploy.sh` then calls the same wrapper, so both paths are identical (D14). Running the deployed
+commit's script as root is no new power: deploying a commit already means running its code.
 
 ## Secrets
-| Kind | Examples | Source | Deploy does |
-|---|---|---|---|
-| **Onboarded** | auth-service client secret; keys generated on the host | `scripts/add-client.sh`, `scripts/secret-set.sh`, or generated on the host | checks they exist; never reads or moves them |
-| **Managed** | RustFS keys, third-party API keys, shared configuration | the secrets manager | fetches and writes them on every deploy |
-| **Build** | a private package token, if ever needed | GitHub secrets | n/a; avoid (D7) |
+| Kind | Examples | Declared as | Source | Deploy does |
+|---|---|---|---|---|
+| **Managed** | RustFS keys, the smoke-test client secret, the Cloudflare token (shared) | `secrets:` in the manifest | OpenBao `kv/services/<svc>/…`, `kv/shared/…` | fetches and writes them on every deploy |
+| **Host-only** | auth-service signing keys and client hashes; the deployer's own client secret | `host_only:` | generated on the host | checks they exist; never reads or moves them |
+| **Build** | a private package token, if ever needed | n/a | GitHub secrets | avoid (D7) |
 
-Onboarding a new service: PR with code and `compose.yaml`, plus `infra/services/auth-service/policy.yaml` (its grant) and `infra/services/<svc>/` (`deploy.yaml`, `config.env`); the
-first deploy fails `check-secrets` and lists the commands; run them once; redeploy.
+Onboarding a new service:
+1. A PR with the code, `compose.yaml`, and its grant in `infra/services/auth-service/policy.yaml`.
+2. In the same PR, `infra/services/<svc>/` with `deploy.yaml` and `config.env`.
+3. After the merge, run `tofu apply` (it generates the policies), `bao kv put` the values, and run
+   the auth-service deploy (the policy).
+4. Deploy. If step 3 was skipped, the deploy fails before touching the host. OpenBao answers 403 for
+   a secret that isn't in the generated policy yet, and the error names the `tofu apply`.
 
-Why the deployer may read managed secrets for every service: whoever controls deploys already
+Why the deployer may read every service's managed secrets: whoever controls deploys already
 controls the code that reads those secrets, so this adds little power. The deployer is a
 high-value host either way; it gets the hardening in Security notes.
 
 ## Security notes
 - **What a stolen GitHub OIDC token can do:** deploy the one commit it was minted for, once,
   within ~5 minutes. Nothing else.
-- **What a compromised deployer can do:** deploy any image and read managed secrets. Mitigations:
-  LAN only, no tunnel hostname, minimal packages, SSH keys usable only for `deploy-target`, its
-  secrets-manager access read-only and audited.
+- **What a compromised deployer can do:**
+  - deploy any commit to the allowlisted hosts;
+  - read the managed secrets that manifests declare (for 10 minutes per login, audited).
+  
+  **What it can't do:** touch auth-service, OpenBao or itself (D13).
+
+  **Mitigations:**
+  - LAN only, no tunnel hostname;
+  - minimal packages;
+  - SSH keys usable only for the wrapper;
+  - its OpenBao access is read-only and generated from the manifests.
 - **What a compromised target can do:** only that host; it has no key to other hosts.
 - **E4 (no token passthrough) in api-service** concerns tokens *addressed to api-service*. The
   GitHub token is addressed to the deployer; api-service forwards that one path as a plain
   reverse proxy, never consumes the token, and can pre-check `iss` and rate-limit.
-- **Break-glass:** you can still run `deploy-target` by hand over SSH; it is the same allowlisted
-  code path.
+- **Break-glass:** `infra/deployment/deploy.sh` from the Mac with your OpenBao login. It is the same
+  host-side code path (D14). On the LAN there is also the deployer's own CLI (D18).
 
 ## Current state
 **auth-service and file-management** deploy with the generic, manifest-driven pair (phase 0b, done
-2026-11-08): `infra/deployment/deploy.sh <service> [ref]` on the Mac reads the pushed commit's
-`infra/services/<service>/deploy.yaml`, fetches the declared secrets from OpenBao with your login,
-and in one SSH session runs `infra/deployment/deploy-target.sh` on the host (the `deploy-target` of
-this spec, minus the forced-command key). What the deployer adds: being triggered by GitHub, its
-own auth-service identity for OpenBao, the host allowlist and forced-command keys, and GHCR images.
+2026-11-08). `infra/deployment/deploy.sh <service> [ref]` on the Mac:
+1. reads the pushed commit's `infra/services/<service>/deploy.yaml`;
+2. fetches the declared secrets from OpenBao with your login;
+3. runs `deploy-target.sh` on the host in one SSH session.
 
-**The other services** (gpu-server, stevenai-service, web-gateway, and pi-server on the Pi) still
-use their old per-service scripts in `infra/deployment/`, run from the laptop: rsync the working
-copy, `docker build` on the host, write a `.env` from the laptop's `.env`, `docker run --env-file`,
-`sleep 10`, curl `/health`. The problems below are theirs (P1–P6 are solved for the two migrated
-services).
+Rollback is a deploy of the older sha. Both deploys pass their smoke tests. The certbot renewal
+dry-run on CT 103 passed using the OpenBao-delivered Cloudflare file.
 
-| ID | Problem |
-|---|---|
-| P1 | Secrets sit in a plain-text `.env` on the laptop and are copied into a plain-text `.env` on the host, then passed as environment variables (visible in `docker inspect`, inherited by child processes). |
-| P2 | Images are built on the host from an rsynced working copy: uncommitted changes can ship, and nothing records which commit is running. |
-| P3 | `:latest` only; no rollback. |
-| P4 | The old container is removed before the new one is proven healthy (downtime, no recovery). |
-| P5 | Deploys need the laptop and leave no record. |
-| P6 | Four copies of the same script drift apart. |
-| P7 | Shared libraries are rsynced separately (`shared-schemas`). |
+**The other services** (gpu-server, stevenai-service and web-gateway, plus pi-server on the Pi)
+still use their old per-service scripts in `infra/deployment/`, run from the laptop. These:
+- rsync the working copy;
+- `docker build` on the host;
+- write a `.env` from the laptop's `.env`;
+- `docker run --env-file`;
+- `sleep 10`, then curl `/health`.
+
+| ID | Problem | Status |
+|---|---|---|
+| P1 | Secrets sit in a plain-text `.env` on the laptop and are copied into a plain-text `.env` on the host, then passed as environment variables (visible in `docker inspect`, inherited by child processes). | fixed for the two migrated services; phase 3 for the rest |
+| P2 | Images are built on the host from an rsynced working copy: uncommitted changes can ship, and nothing records which commit is running. | fixed for the two (pushed sha, revision label); phase 1 moves builds to GitHub |
+| P3 | `:latest` only; no rollback. | rollback = redeploy an older sha (a rebuild); phase 1 makes it a pull |
+| P4 | The old container is removed before the new one is proven healthy (downtime, no recovery). | health + smoke test now gate success; automatic rollback in phase 2 |
+| P5 | Deploys need the laptop and leave no record. | phase 2 |
+| P6 | Four copies of the same script drift apart. | fixed for the two; phase 3 for the rest |
+| P7 | Shared libraries are rsynced separately (`shared-schemas`). | phase 1 (built in GitHub from the repo) |
 
 ## Phases
-| Phase | What ships |
-|---|---|
-| **0** (manual, now) | Keep manual deploys, but adopt the conventions: secrets as files in `/etc/<svc>/credentials/` mounted into containers (not `.env`), and a hardened `compose.yaml` next to each service (auth-service is the reference). |
-| **0b** | **`infra/` as source of truth (D12)**, still manual (**done 2026-11-08** for auth-service and file-management: manifests, `config.env`, policy moved, OpenBao policies generated from the manifests, generic `deploy.sh` + `deploy-target.sh`, secrets delivered from OpenBao; rotation test pending): (1) `infra/README.md`; move `policy.yaml` to `infra/services/auth-service/` (auth-service's deploy script, the real-policy test and docs follow), deploy, expect "policy unchanged"; (2) `infra/services/file-management/config.env` + `env_file:` in its compose, written by its deploy script, deploy, smoke test must pass; (3) `deploy.yaml` for auth-service and file-management describing what the scripts already check (host, health, secret names, smoke test); (4) point the secrets-manager spec at `infra/services/`. |
-| **1** | GitHub builds and pushes images to GHCR per commit; hosts pull by digest (manual trigger). Fixes P2, P3, P7. |
-| **2** | deployer + `deploy-target`, triggered by the workflow through api-service with GitHub OIDC. Onboarded secrets only (checked, not managed). Fixes P4, P5, P6. |
-| **3** | secrets-manager; the deployer injects managed secrets. Fixes P1 for everything not onboarded. |
-| **4** (optional) | GitHub token exchanged at auth-service for an internal `aud=deployer` token (federation), so the deployer trusts one issuer; build provenance verification. |
+| Phase | What ships | Status |
+|---|---|---|
+| **0** | Manual deploys with the conventions: secrets as files mounted into containers (not `.env`), and a hardened `compose.yaml` next to each service. | done |
+| **0b** | `infra/` as source of truth (D12): manifests, `config.env`, the policy moved there, OpenBao policies generated from the manifests, the generic `deploy.sh` + `deploy-target.sh`, and managed secrets delivered from OpenBao (this absorbed the old "phase 3, secrets injection"). | **done 2026-11-08**; rotation test pending |
+| **1** | **Images from GitHub.** | next |
+| **2** | **The deployer.** | after 1 |
+| **3** | **Migrate the remaining Docker services** (stevenai-service, web-gateway, gpu-server). | |
+| **4** | **The Pi** (pi-server). | later |
+| **5** (optional) | **Federation and provenance.** | |
+
+**Phase 1: images from GitHub** (still triggered by hand; fixes P2, P3, P7)
+
+| # | Step | Who |
+|---|---|---|
+| 1.1 | **Unify the image tag variable.** Both composes use `${IMAGE_TAG:-local}` (today `FILES_TAG`, `AUTH_SERVICE_TAG`). `build:` stays for local development. | me |
+| 1.2 | **`.github/workflows/build.yml`.** On push to `main` and `workflow_dispatch`: (a) a `plan` job lists every manifest whose image inputs changed (D1a: `code` + `python/libs/`), reading names and build settings from `docker compose config`, so nothing is duplicated; (b) a `build` matrix job for each changed service runs its tests, then `docker/build-push-action` with context `python/`, `REVISION=<sha>`, the GitHub Actions cache, and a push of `:<sha>`. It also runs `actions/attest-build-provenance` (free now, verified in phase 5). Actions are pinned by commit sha; permissions are `contents: read, packages: write, id-token: write, attestations: write`. | me |
+| 1.3 | **First push, then make the GHCR packages public** (package settings → visibility; once per package, D7 allows it). Check that an anonymous `docker pull` works from a host. | you |
+| 1.4 | **`deploy-target.sh` step 4 becomes "Pull image".** Compute the image sha (D1a); `docker compose pull` with `IMAGE_TAG=<image sha>`; check the pulled image's revision label; record its digest; `compose up --no-build`. Step 7 compares the running label with the image sha. The previous deploy comes from `/var/lib/deploy-target/<service>.log` (D10), which this step starts writing. | me |
+| 1.5 | **`deploy.sh` waits for the build.** If the image sha's `build` run is still in progress (`gh run list --commit`), wait for it. If it failed, or the image doesn't exist, stop with a clear message before connecting to the host. | me |
+| 1.6 | **Verify.** Deploy auth-service and file-management by hand (both pulled now), then roll file-management back one commit and forward again (seconds, no build). Push a config-only change and check that nothing is built and the deploy reuses the image. | you run, I watch |
+
+**Phase 2: the deployer** (fixes P4, P5)
+
+| # | Step | Who |
+|---|---|---|
+| 2.1 | **Repository settings (D17).** Ruleset on `main`: block force pushes and deletion. Environment `production`: you as required reviewer, "prevent self-review" off, deployment branches `main` only. | you |
+| 2.2 | **Manifest field `pipeline` (D16).** Schema plus `pipeline: false` for auth-service. file-management stays `false` until 2.11. | me |
+| 2.3 | **The host wrapper (D6, D9, D10).** `infra/deployment/deploy-target-wrapper.sh` (reviewed in git), installed by hand on each host as `/usr/local/sbin/deploy-target`, with `/etc/deploy-target/services` listing that host's service. What it does: parse `SSH_ORIGINAL_COMMAND` (or its arguments, when you call it directly) → check it against the regexes and the services list → `flock` → fetch and check out the sha → exec that commit's `deploy-target.sh` with stdin passed through → append to the log; it prints `previous: <sha>` first. `deploy.sh` switches to it. | me write, you install on CT 102 and CT 103 |
+| 2.4 | **The deployer LXC.** CT 105 `deployer`: Debian 13, unprivileged, nesting on (Docker), DHCP reservation, `onboot` order 2 (after auth-service and OpenBao), `deploy.lan.liustev6.ca` in DNS, certbot DNS-01 like the others. `boot.md` updated. | you create, I prepare commands |
+| 2.5 | **Its identity (OpenBao).** `policy.yaml`: audience `secrets-manager` (scope `secrets:read`), client `deployer` granted it. Deploy auth-service by hand (the diff is shown). `add-client.sh deployer` puts the secret on CT 105 at `/etc/deployer/credentials/client_secret`, host-only. Test: mint a token and run `bao write auth/auth-service/login role=deployer jwt=…`. The resulting token reads a declared secret and is refused anything else. | me prepare, you run |
+| 2.6 | **Its SSH key.** An ed25519 key generated on CT 105 (host-only, never leaves it). Its public key is added to CT 103's root `authorized_keys` with `restrict,command="/usr/local/sbin/deploy-target"`. `/etc/deployer/hosts.yaml` gets `files-host: {address, host_key}`, with host keys pinned (read once from the host itself). | you run, I prepare |
+| 2.7 | **The service** (`python/services/deployer/`, FastAPI, hardened compose, uid 10001), in modules: `github_oidc` (JWKS cache, the claims table, a `jti` cache), `manifests` (a read-only clone of the public repo, `git show <sha>:…`, schema validation, `pipeline` check), `secrets` (`service_auth.TokenClient` → OpenBao login → read the declared paths), `ssh` (OpenSSH with a known_hosts file from `hosts.yaml`, payload on stdin), `api` (NDJSON stream, per-service lock, rollback on failure, audit log), and `cli` (D18). Tests use a fake GitHub JWKS and a fake host. | me |
+| 2.8 | **Its manifest and first deploy, by hand (D13).** `infra/services/deployer/` with `deploy.yaml` (`pipeline: false`, host-only key and client secret, the shared Cloudflare token) and `config.env`; `tofu apply`; `deploy.sh deployer`. | you run |
+| 2.9 | **Test on the LAN, before anything is public.** `docker exec … app.cli deploy file-management <sha>` → a real deploy through the deployer. Then a rollback drill: deploy a commit whose health check fails, and confirm it reports `rolled_back` with the previous version running. | you run, I watch |
+| 2.10 | **api-service, minimal.** `python/services/api-service/` with only `/health` and the `/deploy/*` proxy route. The route streams the request through to the deployer, caps the body at 4 KB, rejects requests without a GitHub-issued bearer token, and rate-limits. It gets its own LXC (CT 106) and manifest, and is deployed by hand. Then add the public hostname `api.liustev6.ca` → api-service to the Cloudflare tunnel (CT 100). | me write, you do LXC + tunnel |
+| 2.11 | **The deploy job.** Add `deploy` to the workflow (environment `production`, `concurrency` per service, OIDC token, `curl` the stream). Services: `pipeline: true` and whose image inputs or `infra/services/<svc>/` changed. Flip file-management to `pipeline: true`. | me |
+| 2.12 | **First pipeline deploy.** Push a small file-management change → approve in GitHub → watch the stream in the Actions log → smoke test passes. Then `workflow_dispatch` an older sha (a rollback through the pipeline). | you |
+
+**Phase 3: migrate the remaining Docker services** (stevenai-service, web-gateway, gpu-server):
+- each one gets a manifest, `config.env` and a hardened `compose.yaml`;
+- its secrets go into OpenBao;
+- its old script is deleted.
+
+This fixes P1 and P6 everywhere.
+
+**Phase 4: the Pi** (pi-server). Its CI/CD gets designed later: arm64 build plus a systemd target
+in `deploy-target`, or a separate path (see Open questions).
+
+**Phase 5 (optional): federation and provenance.**
+- The GitHub token is exchanged at auth-service for an internal `aud=deployer` token, so the
+  deployer trusts one issuer.
+- Build provenance (SLSA) is verified instead of the revision label.
 
 ## Open questions
-- The Pi (pi-server, systemd per D11): a `kind: systemd` target in `deploy-target` (release
-  folders + a `current` symlink + `systemctl restart`), or deployed by hand?
-- Pull (the deployer polls GHCR/GitHub for approved builds; nothing inbound) as a fallback if the
-  edge is down?
-- Deploying the deployer itself: by hand only, or by a second deployer path?
-- Deploys of auth-service: allowed through the pipeline, or by hand only (it is the root of trust)?
+- **The Pi** (pi-server, systemd per D11): two options.
+  - A `kind: systemd` target in `deploy-target`: release folders, a `current` symlink and
+    `systemctl restart`. The Pi isn't on pve01 and needs a forced-command key like any host.
+  - Keep its own script.
+- **Events from `deploy-target`:** today it prints human-readable status. The deployer could map
+  `Step N/M` lines to NDJSON events, or `deploy-target` could gain a `--json` mode. Decide when
+  building phase 2.
 
 ## Non-goals
 - Kubernetes, Argo CD/Flux, or a general-purpose CI system on the LAN.
 - Self-hosted GitHub runners (unsafe on a public repo).
-- Building images on target hosts.
+- Building images on target hosts once phase 1 ships.
 - Running arbitrary commands from a deploy request.

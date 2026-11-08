@@ -197,9 +197,10 @@ OpenBao checks `aud` and `sub`; the scope documents intent.
 | 11 | **Verify:** audit log written; the root token no longer works; a `smoke` read with an auth-service token (once a reader client exists) | me |
 | 12 | **Backups: deferred (2026-11-08)**, for simplicity. Planned design when picked up: a `snapshot` policy + `raft-snapshot` token role in `tofu/`, a daily systemd timer on CT 104 saving the Raft snapshot over HTTPS, uploaded to a Cloudflare R2 bucket with retention (bucket lock), an R2 token limited to that bucket. | — |
 
-Afterwards, with the deployer (deployer phase 3): the `secrets-manager` audience and `deployer`
-client in auth-service, the RustFS keys into `kv/services/file-management/`, and managed-secret
-injection in the deploy.
+Done since (deployer phase 0b, 2026-11-08): the RustFS keys, the smoke-test client secret and the
+Cloudflare token are in OpenBao and delivered by every manual deploy. Still to come with the
+deployer (deployer phase 2): the `secrets-manager` audience and `deployer` client in auth-service,
+so the deployer logs in with its own identity instead of your login.
 
 ## Operations
 | Task | How |
@@ -232,7 +233,7 @@ injection in the deploy.
 | Phase | What ships |
 |---|---|
 | **1** | Setup steps 1–11 (done; backups deferred): OpenBao running, initialized, configured by OpenTofu; you move secrets out of `.env` files into it. |
-| **2** | The deployer logs in with its auth-service token and injects managed secrets (deployer phase 3). |
+| **2** | Managed secrets delivered on every deploy: done for manual deploys (your login, deployer phase 0b); the deployer logs in with its own auth-service token in deployer phase 2. |
 | **3** (optional) | Services fetch their own secrets at runtime with their own auth-service tokens (per-service roles). |
 | **4** (optional) | Dynamic secrets: credentials created per request with a lease (e.g. a database). |
 
