@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/liustev6/steven-universe/infra/services/deploy.schema.json",
+  "title": "Service deploy manifest (infra/services/<service>/deploy.yaml)",
+  "description": "What to deploy where, and which secrets it needs. Read by infra/deployment/deploy.sh, deploy-target.sh and OpenTofu (infra/secrets-manager/tofu/services.tf). Spec: docs/specs/deployer.md (D12).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["service", "host", "compose", "health"],
+  "properties": {
+    "service": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,62}$", "description": "Must equal the folder name."},
+    "host": {"type": "string", "description": "SSH alias of the target host (~/.ssh/config)."},
+    "code": {"type": "string", "description": "The service's code folder."},
+    "compose": {"type": "string", "pattern": "compose\\.ya?ml$", "description": "Compose file; its service name must equal `service`."},
+    "config": {"type": "string", "pattern": "^infra/services/.+/config\\.env$", "description": "Non-secret settings, installed as /etc/<service>/config.env."},
+    "policy": {"type": "string", "description": "auth-service only: the permissions file."},
+    "url": {"type": "string", "format": "uri"},
+    "health": {"type": "string", "format": "uri", "description": "Checked by name over TLS after the container is healthy."},
+    "smoke_test": {
+      "type": "object", "additionalProperties": false, "required": ["script", "secret"],
+      "properties": {
+        "script": {"type": "string"},
+        "secret": {"type": "string", "description": "Host path of the smoke-test client secret (delivered from OpenBao)."}
+      }
+    },
+    "certificate": {
+      "type": "object", "additionalProperties": false, "required": ["name", "hook"],
+      "properties": {
+        "name": {"type": "string"},
+        "hook": {"type": "string", "description": "certbot deploy hook, installed as /usr/local/sbin/<service>-cert-hook."}
+      }
+    },
+    "hooks": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "pre_start": {"type": "string", "description": "Sourced by deploy-target.sh after the build, before the start."}
+      }
+    },
+    "secrets": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["from", "to"],
+        "properties": {
+          "from": {"type": "string", "pattern": "^(services/[a-z0-9-]+|shared)/[a-z0-9_]+$", "description": "Path under kv/ in OpenBao."},
+          "to": {"type": "string", "pattern": "^/", "description": "Absolute path on the host; written with mode 600."},
+          "owner": {"type": "string", "pattern": "^[0-9]+:[0-9]+$", "default": "0:0"},
+          "format": {"type": "string", "pattern": "\\{value\\}", "default": "{value}", "description": "Text written to the file; {value} is replaced by the secret."}
+        }
+      }
+    },
+    "host_only": {
+      "type": "array", "items": {"type": "string", "pattern": "^/"},
+      "description": "Paths created on the host and never delivered or copied (checked to exist)."
+    }
+  }
+}

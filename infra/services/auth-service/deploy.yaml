@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../deploy.schema.json
 # auth-service: what to deploy where, and which secrets it needs (names only, never values).
 # Read by OpenTofu (infra/secrets-manager/tofu/services.tf: this service's read-only OpenBao
 # policy) and by the deploy (infra/deployment/). auth-service is deployed by hand only: it is the
@@ -11,7 +12,11 @@ config: infra/services/auth-service/config.env        # -> /etc/auth-service/con
 policy: infra/services/auth-service/policy.yaml       # validated, diffed, installed on every deploy
 url: https://auth.lan.liustev6.ca
 health: https://auth.lan.liustev6.ca/health
-smoke_test: python/services/auth-service/scripts/smoke_test.py
+smoke_test:
+  script: python/services/auth-service/scripts/smoke_test.py
+  secret: /root/.secrets/smoke-test-client   # delivered from kv/shared/smoke_test_client_secret
+hooks:
+  pre_start: infra/services/auth-service/hooks/pre-start.sh   # admin CLI, policy, first signing key
 certificate:
   name: auth.lan.liustev6.ca
   hook: python/services/auth-service/scripts/cert-hook.sh  # -> /usr/local/sbin/auth-service-cert-hook

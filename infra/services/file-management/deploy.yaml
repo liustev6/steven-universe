@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../deploy.schema.json
 # file-management: what to deploy where, and which secrets it needs (names only, never values).
 # Read by OpenTofu (infra/secrets-manager/tofu/services.tf: this service's read-only OpenBao
 # policy) and by the deploy (infra/deployment/; later the deployer).
@@ -9,7 +10,9 @@ compose: python/services/file-management-service/compose.yaml
 config: infra/services/file-management/config.env     # -> /etc/file-management/config.env
 url: https://files.lan.liustev6.ca
 health: https://files.lan.liustev6.ca/health
-smoke_test: python/services/file-management-service/scripts/smoke_test.py
+smoke_test:
+  script: python/services/file-management-service/scripts/smoke_test.py
+  secret: /root/.secrets/smoke-test-client   # delivered from kv/shared/smoke_test_client_secret
 certificate:
   name: files.lan.liustev6.ca
   hook: python/services/file-management-service/scripts/cert-hook.sh  # -> /usr/local/sbin/file-management-cert-hook
