@@ -169,12 +169,13 @@ not conflict with E4, which is about tokens addressed to api-service itself.
    (G3), `/health` minimal and `/status` behind the API key (G6).
 3. **Edge auth skeleton:** `Caller`, `edge_auth(mode=…)`, deny by default, the route-mode tests.
    Until a user login exists, `user` routes stay closed and `client` routes use auth-service
-   tokens (or phase 0 static client keys).
+   tokens (auth-service is live; relaying with `can_relay_clients` is already in its policy).
 4. **service-auth client:** replace the per-service keys (G5) with one auth-service client;
    anonymous routes use the own token.
 5. **File routes:** public files with caching, then `files/me`, share links, multipart.
 6. **User login:** pick the identity provider, add the OIDC login (Backend-for-Frontend), sessions,
-   and CSRF; then `user` routes open up and auth-service phase 2/3 apply.
+   and CSRF; then `user` routes open up, using auth-service's grant 2 (users asserted by
+   api-service, later verified identity-provider tokens).
 7. **Move Proxmox access out** of api-service (G4).
 
 ## Open questions

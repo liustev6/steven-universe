@@ -1,91 +1,157 @@
-# Spec: secrets-manager (OpenBao)
+# secrets-manager (OpenBao)
 
-**Path**: `infra/secrets-manager/` (server config, policies, bootstrap script; no secret values).
-**Status**: not built. Related: [deployer.md](deployer.md) (the main reader),
-[auth-service.md](auth-service.md) (how services prove who they are).
+**Status:** planned (setup steps below) · will run at `https://bao.lan.liustev6.ca:8200` on CT 104
+**Code:** `infra/secrets-manager/` (container, server config, OpenTofu configuration; no secret
+values) · Related: [deployer.md](deployer.md) (its main reader), [auth-service.md](auth-service.md)
+(how services prove who they are), [rustfs.md](rustfs.md)
 
-## Scope
-One private, audited place for secrets that are **managed centrally** (RustFS keys, third-party API
-keys, shared configuration), so they stop living in `.env` files on the laptop and on hosts. The
-deployer reads them at deploy time and writes them to the target host as files.
+## What it is
 
-It is **not** where every secret lives. Secrets used to authenticate *to* the secrets manager,
-and secrets that never need to leave their host, stay as files on that host (see "What goes
-where").
+One private, audited place for secrets that are **managed centrally**: RustFS keys, third-party API
+keys, shared configuration. Today these live in `.env` files on the laptop and in files placed by
+hand on each host. With the secrets manager, they are stored once, encrypted, with every read
+logged, and the deployer writes them to the target host as files at deploy time.
+
+It is **not** where every secret lives. Secrets used to authenticate *to* the secrets manager, and
+secrets that never leave their host, stay as files on that host (see "What goes where").
 
 ```
-                 ┌─────────── secrets-manager (OpenBao, LXC, LAN only) ───────────┐
-deployer ──1───▶ │ auth/auth-service (JWT method)                                  │
-  token from     │   trusts https://auth.lan.liustev6.ca/.well-known/jwks.json     │
-  auth-service   │   role "deployer": aud=secrets-manager, sub=service:deployer    │
-  (aud=secrets-  │ policy "deployer": read kv/data/services/*                      │
-   manager)      │ kv/ (KV v2, versioned)   audit log   integrated storage (Raft)  │
-         ◀──2─── │ short-lived OpenBao token → read kv/services/<svc>/<name>        │
-                 └─────────────────────────────────────────────────────────────────┘
-deployer ──3──▶ ssh deploy-target: values on stdin → /etc/<svc>/credentials/<name> (600)
+                 ┌──────────── secrets-manager (OpenBao, CT 104, LAN only) ───────────┐
+deployer ──1───▶ │ auth/auth-service (JWT method)                                      │
+  token from     │   trusts https://auth.lan.liustev6.ca/.well-known/jwks.json         │
+  auth-service   │   role "deployer": aud=secrets-manager, sub=service:deployer        │
+  (aud=secrets-  │ policy "deployer": read kv/data/services/*                          │
+   manager)      │ kv/ (KV v2, versioned)   audit log   integrated storage (Raft)      │
+         ◀──2─── │ 10-minute OpenBao token → read kv/services/<svc>/<name>             │
+                 └─────────────────────────────────────────────────────────────────────┘
+deployer ──3──▶ ssh deploy-target: values on stdin → /etc/<svc>/credentials/<name> (mode 600)
 ```
 
-## Locked decisions
-| ID | Decision |
-|---|---|
-| S1 | **OpenBao.** The open-source (MPL-2.0) fork of HashiCorp Vault, with the same API, CLI concepts, auth methods and policy language. Vault is the industry reference; OpenBao keeps that knowledge transferable without Vault's Business Source License. |
-| S2 | **Private.** LXC on pve01, LAN only, no tunnel hostname. Address `https://bao.lan.liustev6.ca:8200`, Let's Encrypt certificate via DNS-01, same pattern as auth-service. |
-| S3 | **Identity comes from auth-service.** Clients log in with an auth-service access token (`aud=secrets-manager`) through OpenBao's JWT auth method, which verifies it against auth-service's JWKS. No separate OpenBao credentials exist for services; the auth-service client secret is each service's only secret zero. |
-| S4 | **Values only in OpenBao; names and policies in git.** `infra/secrets-manager/policies/*.hcl` and the role definitions are reviewed in git. Values are written by you with the CLI and never committed. |
-| S5 | **Delivered as files at deploy time.** The deployer injects managed secrets into `/etc/<svc>/credentials/` (deployer D7). Services read files and don't talk to OpenBao, so a sealed or down OpenBao blocks **deploys only**; running and restarting services keep working. |
-| S6 | **Sealed on restart.** Shamir unseal: 3 key shares, any 2 unseal. After a reboot you unseal it by hand. The initial root token is revoked after bootstrap. |
-| S7 | **Audited.** A file audit device is on from the start; every request is logged with secret values HMAC'd (never in plain text). |
-| S8 | **Least privilege by path.** Each reader gets a policy for exactly the paths it needs; the deployer's is read-only. |
+## Design decisions
+| ID | Decision | Why |
+|---|---|---|
+| S1 | **OpenBao**, the open-source (MPL-2.0) fork of HashiCorp Vault: same API, CLI, auth methods and policy language. | Vault is the industry reference; OpenBao keeps the knowledge transferable without Vault's Business Source License. |
+| S2 | **Private:** CT 104 on pve01, LAN only, no tunnel. `https://bao.lan.liustev6.ca:8200` with a Let's Encrypt certificate (DNS-01), like auth-service and file-management. | Services and the CLI verify the certificate; no `skip verify` anywhere. |
+| S3 | **Services log in with auth-service tokens** (`aud=secrets-manager`) through OpenBao's JWT auth method, which trusts auth-service's JWKS. | No separate OpenBao credentials for services: the auth-service client secret stays each service's only "secret zero". |
+| S4 | **Delivered as files at deploy time.** The deployer reads managed secrets and writes them to `/etc/<svc>/credentials/` (deployer D7); services never talk to OpenBao. | A sealed or down OpenBao blocks **deploys only**; running and restarting services keep working. |
+| S5 | **Sealed on restart, unsealed by hand:** Shamir 3 key shares, any 2 unseal; shares kept in three separate places, never on CT 104 or in its backups. | Sealing makes a copy of the disk or a backup useless. Storing the key next to the data (as the community script does) would undo that. |
+| S6 | **The initial root token is revoked** after setup; an emergency root token is generated only with 2 shares (`bao operator generate-root`). | No permanent all-powerful credential exists. |
+| S7 | **Audited:** a file audit device from the start; values are HMAC'd in the log, never stored in plain text. | Who read which secret, when. |
+| S8 | **Least privilege by path:** each reader's policy covers exactly its paths; the deployer's is read-only. | |
+| S9 | **Install and initialization are manual runbooks** (one-time, like RustFS); initialization is never scripted. | The unseal shares must only ever appear in your terminal. |
+| S10 | **Configuration as code with OpenTofu:** audit device, secrets engine, auth methods, roles and policies are declared in `infra/secrets-manager/tofu/` and applied with `tofu plan` / `tofu apply`. | Reviewed in git like auth-service's `policy.yaml`; `plan` shows changes before they happen and detects drift. OpenTofu is the open-source Terraform; its Vault provider works with OpenBao. |
+| S11 | **Secret values are never managed by OpenTofu.** They are written with `bao kv put` (stdin). | Anything OpenTofu manages lands in its state file. |
+| S12 | **OpenTofu state is encrypted** (OpenTofu's built-in state encryption, passphrase in your password manager); kept outside git, later in RustFS (S3 backend). | The state holds configuration details and the admin user's password hash. |
+| S13 | **Docker Compose** like every LXC service (deployer D11): the official image pinned to a version (`quay.io/openbao/openbao:2.7.2`), uid 10001, read-only filesystem, no capabilities, `disable_mlock = true` (recommended with Raft; swap stays small). | Same model and hardening as the other services. |
+| S14 | **Not the community-scripts installer.** It initializes with one share, writes the unseal key **and the root token** in plain text into the file the server reads, auto-unseals from it, uses a self-signed certificate with verification turned off, and installs `latest` (reviewed 2026-11-08). | Each of these defeats S2, S5 or S6. |
 
 ## What goes where
 | Secret | Lives | Why |
 |---|---|---|
 | auth-service client secrets | file on the client's host (`add-client.sh`) | it *is* the identity used to log in to OpenBao; storing it there would be circular |
-| auth-service signing keys | auth-service host only | never leave their host |
-| Secrets a service generates for itself (session keys) | file on that host | nobody else needs them |
-| RustFS access keys | **OpenBao** `kv/services/<svc>/rustfs_*` | created once in RustFS, needed by deploys |
-| Third-party API keys (OpenAI, weather, …) | **OpenBao** | central inventory, rotation, audit |
-| OpenBao unseal key shares | password manager + printed paper + one more place | never on the OpenBao host or in its backups |
+| auth-service signing keys | CT 102 only | never leave their host |
+| Secrets a service generates for itself | file on that host | nobody else needs them |
+| RustFS keys (file-management's) | **OpenBao** `kv/services/file-management/rustfs_*` | created once in RustFS, needed by deploys |
+| Third-party API keys (OpenAI, weather, …) | **OpenBao** `kv/services/<svc>/…` | central inventory, rotation, audit |
+| OpenBao unseal shares | your password manager + printed paper + one more place | never on CT 104 or in its backups |
+| OpenTofu state passphrase | your password manager | decrypts the state |
 | Image pushes / deploy identity | none (GitHub `GITHUB_TOKEN` / OIDC) | deployer D2 |
 
-Example: file-management's current `.env` holds `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`,
-`INTERNAL_SECRET_KEY` and `FRONTEND_API_KEY`. The first two become managed secrets in OpenBao; the
-last two disappear, replaced by auth-service tokens (file-management spec).
-
-## Layout
-KV v2 engine at `kv/`, one entry per secret, value in the field `value`:
+## Repository layout
 ```
-kv/services/<service>/<name>      e.g. kv/services/file-management/rustfs_access_key
-kv/shared/<name>                  used by several services (listed in their manifests)
+infra/secrets-manager/
+  README.md            install, initialization and unseal runbooks; operations
+  compose.yaml         the OpenBao container (pinned image, hardened)
+  openbao.hcl          server config: Raft storage, TLS listener, UI, disable_mlock
+  cert-hook.sh         certbot deploy hook: copy the certificate for uid 10001, restart
+  tofu/
+    versions.tf        OpenTofu + Vault provider versions; state encryption
+    main.tf            audit device, kv-v2 at kv/, JWT auth trusting auth-service, roles,
+                       userpass for the admin
+    policies/admin.hcl, deployer.hcl
+    variables.tf       address, admin user name (password comes from a prompt, not a file)
+    .gitignore         *.tfstate*, .terraform/
 ```
-Names match the file names in `/etc/<service>/credentials/` and the deployer manifest's
-`secrets.managed` list. KV v2 keeps versions, so a bad change can be rolled back
-(`bao kv rollback`).
 
-## Policies (in git)
+### Server config (`openbao.hcl`, sketch)
 ```hcl
-# infra/secrets-manager/policies/deployer.hcl
+ui            = true
+disable_mlock = true
+api_addr      = "https://bao.lan.liustev6.ca:8200"
+cluster_addr  = "https://bao.lan.liustev6.ca:8201"
+
+storage "raft" {
+  path    = "/openbao/data"
+  node_id = "bao-1"
+}
+listener "tcp" {
+  address       = "0.0.0.0:8200"
+  tls_cert_file = "/openbao/tls/cert.pem"
+  tls_key_file  = "/openbao/tls/key.pem"
+}
+```
+
+### OpenTofu configuration (`tofu/main.tf`, sketch)
+```hcl
+resource "vault_audit" "file" {
+  type    = "file"
+  options = { file_path = "/openbao/logs/audit.log" }
+}
+resource "vault_mount" "kv" {
+  path    = "kv"
+  type    = "kv"
+  options = { version = "2" }
+}
+resource "vault_jwt_auth_backend" "auth_service" {
+  path               = "auth-service"
+  jwks_url           = "https://auth.lan.liustev6.ca/.well-known/jwks.json"
+  bound_issuer       = "https://auth.lan.liustev6.ca"
+  jwt_supported_algs = ["ES256"]
+}
+resource "vault_jwt_auth_backend_role" "deployer" {
+  backend         = vault_jwt_auth_backend.auth_service.path
+  role_name       = "deployer"
+  role_type       = "jwt"
+  bound_audiences = ["secrets-manager"]
+  bound_subject   = "service:deployer"
+  user_claim      = "sub"
+  token_policies  = [vault_policy.deployer.name]
+  token_ttl       = 600
+  token_max_ttl   = 600
+}
+resource "vault_policy" "deployer" {
+  name   = "deployer"
+  policy = file("${path.module}/policies/deployer.hcl")
+}
+# + vault_policy.admin, vault_auth_backend "userpass", the admin user
+```
+
+### Policies (`tofu/policies/*.hcl`)
+```hcl
+# deployer.hcl: read every service's managed secrets, nothing else
 path "kv/data/services/*" { capabilities = ["read"] }
 path "kv/data/shared/*"   { capabilities = ["read"] }
 
-# infra/secrets-manager/policies/admin.hcl   (you)
+# admin.hcl: you
 path "kv/*"               { capabilities = ["create", "read", "update", "delete", "list"] }
 path "sys/policies/acl/*" { capabilities = ["create", "read", "update", "delete", "list"] }
+path "sys/mounts*"        { capabilities = ["create", "read", "update", "delete", "list", "sudo"] }
+path "sys/audit*"         { capabilities = ["create", "read", "update", "delete", "list", "sudo"] }
 path "auth/*"             { capabilities = ["create", "read", "update", "delete", "list", "sudo"] }
+path "sys/auth*"          { capabilities = ["create", "read", "update", "delete", "list", "sudo"] }
+path "sys/storage/raft/snapshot" { capabilities = ["read"] }
 ```
 
-## Authentication
-**Services (via auth-service).** JWT auth method mounted at `auth/auth-service`:
+### Secrets layout
+KV v2 at `kv/`, one entry per secret, value in the field `value`:
 ```
-bao write auth/auth-service/config \
-    jwks_url="https://auth.lan.liustev6.ca/.well-known/jwks.json" \
-    bound_issuer="https://auth.lan.liustev6.ca" jwt_supported_algs="ES256"
-bao write auth/auth-service/role/deployer role_type=jwt \
-    bound_audiences="secrets-manager" user_claim="sub" bound_subject="service:deployer" \
-    token_policies="deployer" token_ttl=10m token_max_ttl=10m
+kv/services/<service>/<name>      e.g. kv/services/file-management/rustfs_secret_key
+kv/shared/<name>                  used by several services
 ```
-The deployer gets an auth-service token with `TokenClient` (`aud=secrets-manager`), logs in, and
-receives a 10-minute OpenBao token. Additions to auth-service's `policy.yaml`:
+Names match the files in `/etc/<service>/credentials/` and the deployer manifest's
+`secrets.managed`. KV v2 keeps versions (`bao kv rollback`).
+
+### Additions to auth-service's `policy.yaml` (with the deployer)
 ```yaml
 audiences:
   secrets-manager:
@@ -96,61 +162,66 @@ clients:
       secrets-manager:
         scopes: [secrets:read]
 ```
-OpenBao checks `aud` and `sub`, not `scope`; the scope documents intent and keeps the grant
-explicit in auth-service's policy.
+OpenBao checks `aud` and `sub`; the scope documents intent.
 
-**You (admin).** `userpass` with TOTP MFA, reachable on the LAN or tailnet only. The root token is
-generated only for emergencies (`bao operator generate-root`, needs 2 unseal shares) and revoked
-after use.
+## Setup steps (proposed)
+| # | Step | Who |
+|---|---|---|
+| 1 | **Tailscale subnet route** on pve01 (`192.168.50.0/24`), approved in the Tailscale admin, so the Mac reaches `bao.lan…:8200` directly for `tofu apply` and the UI | me + **you** (approve) |
+| 2 | **OpenTofu on the Mac** (`brew install opentofu`) | **you** or me |
+| 3 | **CT 104 `secrets-manager`** like CT 103: Debian 13, unprivileged, Docker, certbot, autologin, SSH alias `bao-host`; 1 core, 1 GB RAM, 8 GB disk, `startup order=1` | me |
+| 4 | Router reservation for CT 104; Cloudflare `A bao.lan.liustev6.ca → <its IP>` (DNS only) | **you** |
+| 5 | Cloudflare token on CT 104 (copy from CT 103 via pve01, or a new one); `certbot certonly --dns-cloudflare -d bao.lan.liustev6.ca` with the hook | me |
+| 6 | Write `infra/secrets-manager/` (compose, `openbao.hcl`, hook, `tofu/`, README); review, commit, push | me → **you** review |
+| 7 | **Start OpenBao** on CT 104 (`docker compose up -d`): running, sealed, not initialized | me |
+| 8 | **Initialize** in your terminal: `bao operator init -key-shares=3 -key-threshold=2`. Save the 3 shares in 3 places and keep the root token for step 10 only. Unseal with 2 shares. | **you** (never through chat) |
+| 9 | Choose the **OpenTofu state passphrase** and save it in your password manager | **you** |
+| 10 | **First `tofu apply`** with the root token in your shell (`VAULT_TOKEN`): audit device, kv, JWT auth, policies, your admin login (password typed at the prompt). Then log in as admin and **revoke the root token**. | **you** run, I prepare and walk through |
+| 11 | **Verify:** audit log written; the root token no longer works; a `smoke` read with an auth-service token (once a reader client exists) | me |
+| 12 | **Backups:** a daily Raft snapshot (systemd timer on CT 104, using a snapshot-only policy), copied off the host; the shares are never stored with it | me |
+
+Afterwards, with the deployer (deployer phase 3): the `secrets-manager` audience and `deployer`
+client in auth-service, the RustFS keys into `kv/services/file-management/`, and managed-secret
+injection in the deploy.
 
 ## Operations
-- **Writing a secret:** `bao kv put kv/services/file-management/rustfs_access_key value=-`
-  (reads stdin; nothing in shell history). The next deploy installs it.
-- **Rotation:** put a new version, redeploy the services that use it, then revoke the old value at
-  its source (e.g. delete the old RustFS key).
-- **Unseal after reboot:** `bao operator unseal` twice, with two of the three shares. Until then
-  deploys that need managed secrets fail with a clear error; services keep running (S5).
-- **Backups:** daily `bao operator raft snapshot save` (systemd timer), copied to RustFS
-  (`services/secrets-manager/backups/`) and off-site. A snapshot is encrypted and useless without
-  the unseal shares, which are never stored with it.
-- **Monitoring:** `/v1/sys/health` (sealed or not) checked by the status page.
-
-## Deployment
-- LXC `secrets-manager`: 1 core, 1 GB RAM, 8 GB disk, DHCP reservation, `startup order=1`
-  (after auth-service, before services that deploy).
-- OpenBao with integrated storage (Raft, single node), listener on 8200 with the Let's Encrypt
-  certificate, audit log to `/var/log/openbao/audit.log` (rotated, shipped to journald).
-- `infra/secrets-manager/bootstrap.sh`: init (3 shares, threshold 2), enable the audit device,
-  `kv-v2` at `kv/`, the JWT auth method and roles, `userpass` + MFA, apply policies, revoke the
-  root token. Idempotent where possible; policies re-applied on every run.
+| Task | How |
+|---|---|
+| Unseal after a reboot | `bao operator unseal` twice, with two of the three shares. Until then deploys needing managed secrets fail clearly; services keep running (S4). |
+| Write or change a secret | `bao kv put kv/services/<svc>/<name> value=-` (reads stdin; nothing in shell history); the next deploy installs it |
+| Change policies, roles, mounts | edit `tofu/`, `tofu plan` (review the diff), `tofu apply` as admin; commit |
+| Check for drift | `tofu plan` should show no changes |
+| Rotate a managed secret | put a new version, redeploy the services that use it, revoke the old value at its source |
+| Emergency root access | `bao operator generate-root` (needs 2 shares); revoke the token afterwards |
+| Backups | daily `bao operator raft snapshot save`; snapshots are encrypted and useless without the shares |
+| Monitoring | `/v1/sys/health` (sealed or not) on the status page later |
 
 ## Security notes
-- **Root on the OpenBao LXC or pve01** can read secrets from memory while it is unsealed. The
-  host gets the same hardening as auth-service and nothing else runs on it.
-- **Proxmox backups** of the LXC contain the encrypted storage; without unseal shares they reveal
-  nothing. Keep the shares out of every backup.
-- **If auth-service is compromised,** an attacker can mint a token for `sub=service:deployer` and
-  read managed secrets. auth-service is already the root of trust for every service; it gets the
-  strictest hardening, and its deploys stay manual (deployer open question).
-- **The deployer's read access is broad by design** (deployer spec, "Secrets"): whoever deploys
-  code already controls what reads these secrets.
+- **Root on CT 104 or pve01** can read secrets from memory while OpenBao is unsealed. CT 104 runs
+  nothing else; SSH key only; the container is read-only and unprivileged.
+- **Backups of CT 104** contain the encrypted storage; without 2 shares they reveal nothing.
+- **If auth-service is compromised**, an attacker can mint a token for `sub=service:deployer` and
+  read managed secrets. auth-service is already the root of trust; it gets the strictest hardening
+  and is deployed by hand.
+- **The deployer's read access is broad by design**: whoever deploys code already controls what
+  reads these secrets.
+- **The OpenTofu state** is encrypted and never committed; secret values are never in it (S11).
 
 ## Phases
 | Phase | What ships |
 |---|---|
-| **1** | OpenBao LXC, bootstrap, KV layout, admin login; you move secrets out of laptop `.env` files into it. |
-| **2** | JWT auth trusting auth-service; the deployer injects managed secrets (deployer phase 3). |
-| **3** (optional) | Services fetch their own secrets at runtime with their own auth-service token (per-service roles and policies), for secrets that change often. |
-| **4** (optional) | Dynamic secrets: credentials created per request with a lease (e.g. a database engine), once a service needs them. |
+| **1** | Setup steps 1–12: OpenBao running, initialized, configured by OpenTofu; you move secrets out of `.env` files into it. |
+| **2** | The deployer logs in with its auth-service token and injects managed secrets (deployer phase 3). |
+| **3** (optional) | Services fetch their own secrets at runtime with their own auth-service tokens (per-service roles). |
+| **4** (optional) | Dynamic secrets: credentials created per request with a lease (e.g. a database). |
 
 ## Open questions
-- Auto-unseal (transit seal on a second instance, or a cloud KMS) vs. unsealing by hand after
-  every reboot?
-- Should GitHub Actions ever read from OpenBao directly (JWT auth trusting GitHub's OIDC), e.g.
-  for a build-time secret? Default: no (deployer D7).
-- Which third-party keys move first: a list per service from the current `.env` files.
+- Unsealing by hand after every reboot, or later an automatic unseal that doesn't keep the key on
+  the same host (a transit seal on a second instance, or a cloud KMS)?
+- Move Cloudflare DNS records and the Proxmox containers into the same OpenTofu setup (Cloudflare
+  and `bpg/proxmox` providers)?
+- MFA (TOTP) on the admin login from the start, or later?
 
 ## Non-goals
-- High availability (multi-node Raft): one node is enough for a home lab; backups cover loss.
-- Storing auth-service client secrets or signing keys (see "What goes where").
-- Services reading OpenBao at runtime in phases 1–2.
+High availability (multi-node Raft); storing auth-service client secrets or signing keys; services
+reading OpenBao at runtime in phases 1–2; GitHub Actions reading OpenBao directly.

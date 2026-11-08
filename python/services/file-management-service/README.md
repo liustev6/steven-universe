@@ -97,5 +97,5 @@ and other buckets).
 client (only grant: `private/smoke-test/`), PUT/GET/Range/LIST/DELETE on real RustFS, then four
 requests outside its folder that must get 403. Real clients are never used.
 
-## Not implemented yet (spec migration step 6)
+## Not implemented yet
 - Per-client quotas (507), multipart routes for uploads over one request's limit.
