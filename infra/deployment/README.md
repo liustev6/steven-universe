@@ -6,14 +6,14 @@ and reads that service's `.env` (copy `python/services/<service>/.env.example`).
 | Script | Deploys | To |
 |---|---|---|
 | `auth-service.sh [ref]` | `python/services/auth-service` at a **pushed** commit (default `main`) | CT 102 `auth-host` (Docker Compose, built on the host from a clean checkout) |
-| `file-management.sh` | `python/services/file-management` | its LXC (Docker) |
+| `file-management-service.sh` | `python/services/file-management-service` | **outdated, refuses to run** until rewritten like `auth-service.sh` (file-management spec, migration step 4) |
 | `gpu-server.sh` | `python/services/gpu-server` (+ `python/workers/gpu-server`) | the GPU VM (Docker, built on the VM) |
 | `stevenai-service.sh` | `python/services/stevenai-service` | its LXC (Docker) |
 | `web-gateway.sh` | `python/services/web-gateway` | its LXC (Docker) |
 | `pi-server.sh` | `python/services/pi-server` | the Pi (systemd; `PI_HOST`, default `panel`) |
 
 ```sh
-infra/deployment/file-management.sh
+infra/deployment/auth-service.sh
 ```
 
 `auth-service.sh` differs from the others: it never copies your working copy. The host checks out

@@ -1,6 +1,13 @@
 #!/bin/bash
 # Deployment script - deploys to LXC container via SSH
 
+# OUTDATED: this deploys the pre-rewrite layout (a .env with MinIO keys, `docker run` on port
+# 8000). The rewritten service uses compose.yaml, secrets as files and TLS on 443, and will be
+# deployed like infra/deployment/auth-service.sh once its LXC exists (spec: file-management.md,
+# migration step 4). Refuse to run rather than deploy a broken configuration.
+echo "infra/deployment/file-management-service.sh is outdated: see docs/specs/file-management.md, migration step 4" >&2
+exit 1
+
 set -e
 
 # Colors for output
@@ -14,7 +21,7 @@ echo -e "${GREEN}🚀 Starting Deployment to LXC${NC}"
 # Get script directory and navigate to project root
 # Lives in infra/deployment/; works from any directory.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/../../python/services/file-management" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../../python/services/file-management-service" && pwd)"
 
 cd "$PROJECT_DIR"
 

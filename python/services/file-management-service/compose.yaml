@@ -1,0 +1,37 @@
+# file-management on its LXC. Spec: docs/specs/file-management.md (D8, D9, "Deployment and secrets").
+# On the host, from this directory:   docker compose up -d --build
+# FILES_HOST_CONFIG overrides the host config dir (only for local testing).
+#
+# Host layout (owner 10001, mode 700 directories, 600 files):
+#   /etc/file-management/credentials/rustfs_access_key, rustfs_secret_key   -> /run/secrets/ (read-only)
+#   /etc/file-management/tls/cert.pem, key.pem                               -> certificate (read-only)
+name: file-management
+
+services:
+  file-management:
+    image: ghcr.io/liustev6/steven-universe/file-management:${FILES_TAG:-local}
+    build:
+      context: ../..                    # python/, so libs/service-auth is included
+      dockerfile: services/file-management-service/Dockerfile
+      args:
+        REVISION: ${REVISION:-unknown}  # commit sha, recorded as the image's revision label
+    restart: unless-stopped
+    read_only: true                     # whole container filesystem read-only
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    # Host 443 -> container 8443: callers use https://files.lan.liustev6.ca (no port).
+    ports: ["443:8443"]
+    environment:
+      SERVICE_AUTH_ISSUER: https://auth.lan.liustev6.ca
+      FILES_STORAGE_ENDPOINT: ${FILES_STORAGE_ENDPOINT:-http://192.168.50.123:9000}
+      FILES_BUCKETS: '["public", "private"]'
+      FILES_MAX_UPLOAD_BYTES: ${FILES_MAX_UPLOAD_BYTES:-1073741824}
+      FILES_LOG_LEVEL: ${FILES_LOG_LEVEL:-INFO}
+    volumes:
+      - ${FILES_HOST_CONFIG:-/etc/file-management}/credentials:/run/secrets:ro
+      - ${FILES_HOST_CONFIG:-/etc/file-management}/tls:/etc/file-management/tls:ro
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}

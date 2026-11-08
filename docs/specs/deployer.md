@@ -133,7 +133,7 @@ python/services/<service>/
 service: file-management
 host: file-management                # a name from the deployer's host allowlist, not an address
 image: ghcr.io/liustev6/steven-universe/file-management
-compose: python/services/file-management/compose.yaml
+compose: python/services/file-management-service/compose.yaml
 health: {url: "http://127.0.0.1:8000/health", timeout_seconds: 60}
 secrets:
   onboarded:                         # placed by hand once; deploys only check they exist
@@ -192,7 +192,7 @@ high-value host either way; it gets the hardening in Security notes.
 
 ## Current state and problems (manual `infra/deployment/<service>.sh`)
 Each service (file-management, gpu-server, stevenai-service, web-gateway) has its own
-script in `infra/deployment/` (`file-management.sh`, `gpu-server.sh`, `stevenai-service.sh`, `web-gateway.sh`; `pi-server.sh` for the Pi), run from the laptop: rsync the working copy to the LXC, `docker build` there,
+script in `infra/deployment/` (`file-management-service.sh`, `gpu-server.sh`, `stevenai-service.sh`, `web-gateway.sh`; `pi-server.sh` for the Pi), run from the laptop: rsync the working copy to the LXC, `docker build` there,
 write a `.env` from the laptop's `.env`, `docker run --env-file`, `sleep 10`, curl `/health`.
 
 | ID | Problem |

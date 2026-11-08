@@ -1,19 +1,27 @@
 # Spec: file-management (file service)
 
-**Path**: `python/services/file-management/`. **Status**: the current code is described below; a
-rewrite is planned (gpu-server, its main caller, is temporarily shut down, so the API can change
-freely). This document records the current design, its known problems, and the target design.
+**Path**: `python/services/file-management-service/` (audience and service id: `file-management`). **Status**: **rewritten** on `service_auth` (target API,
+`public`/`private` buckets, 66 tests including S3 against moto); **not deployed yet** (migration
+step 4). "Before the rewrite" below records the old code and its problems. auth-service is **live**
+(`https://auth.lan.liustev6.ca`, CT 102), so the rewrite goes straight to issued tokens. gpu-server,
+the old main caller, is shut down, so the API can change freely. Related:
+[auth-service.md](auth-service.md) (tokens and policy), [api-service.md](api-service.md) (the
+edge), [deployer.md](deployer.md) and [secrets-manager.md](secrets-manager.md) (how it is deployed
+and gets its secrets).
 
 ## Locked decisions
 | # | Decision |
 |---|---|
 | D1 | **file-management is internal only.** It has no public hostname and no unauthenticated routes except `/health`. Every internet-facing file operation (public images, user uploads, downloads, share links) goes through **api-service**, the only edge. |
-| D2 | **Only services call file-management**, using service tokens from [auth-service.md](auth-service.md) (phase 0: static per-service keys behind the same `Principal`). Browsers never hold a file-service credential. |
+| D2 | **Only services call file-management**, each with its own access token from auth-service (audience `file-management`), verified locally with the `service_auth` library. Browsers never hold a file-service credential. |
 | D3 | **Storage is never exposed outside the LAN.** No storage presigned URLs are handed to browsers; the gateway streams bytes. |
-| D4 | **No access tiers.** The old internal / signed / public split mixed up *who may do what* (authorization) with *how bytes are delivered*. Permissions are now **grants of actions on resource prefixes**, carried in the caller's token. "Public", "share link", and "sandbox" are just particular grants. |
+| D4 | **No access tiers.** The old internal / signed / public split mixed up *who may do what* (authorization) with *how bytes are delivered*. Permissions are **grants of actions on resource prefixes**, carried in the caller's token. "Public", "share link", and "sandbox" are just particular grants. |
 | D5 | **One generic object API.** No separate routes per permission level; every route calls the same `authorize(principal, action, bucket, key)`. |
 | D6 | **Buckets are for storage behaviour, prefixes are for access.** A small fixed set of buckets, each with its own retention / quota rules; all access decisions are made on `bucket/key` prefixes. |
-| D7 | **auth-service decides, file-management enforces.** Grants are computed when the token is minted and travel in the token (`authorization_details`, RFC 9396). file-management checks them locally and never calls auth-service per request. |
+| D7 | **auth-service decides, file-management enforces.** Grants are computed when the token is minted and travel in the token (`authorization_details`, RFC 9396). file-management checks them locally and never calls auth-service per request. Changing who may access what is a `policy.yaml` change in auth-service, never a file-management change. |
+| D8 | **Managed like every other service.** Docker Compose on its own LXC with the hardening from auth-service (deployer D11); secrets are files readable only by the container user (uid 10001, mode 600), mounted read-only, never `.env` or environment variables (deployer D7); deployed from a pushed commit, by hand now and by the deployer later. |
+| D9 | **TLS on the LAN.** Callers send bearer tokens, so file-management serves HTTPS as `https://files.lan.liustev6.ca`, with a Let's Encrypt certificate obtained like auth-service's (DNS-01). |
+| D10 | **Two buckets for now: `public` and `private`.** There is no user concept yet, so no `users` bucket; each service's files live under `private/<client>/`. More buckets (`models`, `users`, `workspaces` with expiry) are added only when a caller needs them, as a config + policy change (see "Later buckets"). |
 
 ## Scope
 file-management is the only service that talks to object storage (S3 API). Other services never
@@ -24,48 +32,98 @@ hold storage credentials; they call file-management, which:
 - enforces, on every request, that the caller's token grants the action on that object or prefix;
 - enforces size limits and per-namespace quotas, and keeps an audit log.
 
-Its main consumer is **gpu-server** (model weights). Next come **api-service** (public files, user
-files, share links) and **agent sandboxes** (the next steven-ai, the Hey Pi agent), each confined
-to its own workspace prefix.
+**Callers, in rollout order:** **pi-server** (Hey Pi's backend) for its own files under
+`private/pi-server/`; **api-service** for public files and for relaying outside machine clients;
+then **gpu-server** (model weights) when it comes back; later **users** through api-service (once
+there is an identity provider) and **agent sandboxes** confined to one folder (once downscoping is
+fixed in auth-service). gpu-server and users each bring a new bucket (D10).
 
 ### System context (target)
 ```
-internet ── Cloudflare Tunnel ──▶ api-service ──(token for a user)──────────┐
-                                  (the only edge: user auth, size limits,   │
-                                   public-file caching, share links)        ▼
-gpu-server ─────────(token: read models/)─────────────────────────▶ file-management ──S3──▶ storage (RustFS)
-stevenai-v2 / hey-pi-agent ──(token: workspaces/<client>/)────────▶   (LAN only)            (LAN only)
-   └─ sandbox ws-7f3 ──(downscoped token: workspaces/stevenai-v2/ws-7f3/ only)──▶
+internet ── Cloudflare Tunnel ──▶ api-service ──(own token: public/ │ relayed client │ later: user)──┐
+                                  (the only edge)                                                    ▼
+pi-server (LAN) ───────────(token: private/pi-server/)────────────────────────────▶ file-management ──S3──▶ RustFS
+gpu-server (later) ────────(token: read models/, a later bucket)──────────────────▶   (LAN only, TLS)      (CT 101)
+orchestrator sandboxes (later) ──(downscoped token: one workspace)──────────────────▶
+                                                         ▲
+                          auth-service (CT 102) ── mints tokens; publishes JWKS ──┘ (fetched + cached)
 ```
 
 | Component | Owns | Does not do |
 |---|---|---|
-| **auth-service** | Who may get which grants (policy), minting and narrowing tokens | Touching files |
-| **api-service** | Internet routes, end-user login, upload limits, cache headers, share-link URLs | Storage access, holding storage credentials |
+| **auth-service** | Who may get which grants (`policy.yaml`), minting and narrowing tokens, signing keys | Touching files |
+| **api-service** | Internet routes, end-user login (later), upload limits, cache headers, share-link URLs | Storage access, holding storage credentials |
 | **file-management** | Enforcing grants, key rules, quotas, streaming, the only storage credentials | Deciding policy; being reachable from the internet; user login |
 | **Storage (RustFS)** | Bytes; per-bucket lifecycle rules | Any per-caller access logic |
-| **Orchestrators** (stevenai-v2, hey-pi-agent) | Creating workspaces, handing sandboxes downscoped tokens | Giving sandboxes credentials |
+| **Orchestrators** (pi-server's agent, later stevenai-v2) | Creating workspaces, handing sandboxes downscoped tokens | Giving sandboxes credentials |
 
 ### Storage backend
 The community edition of MinIO is archived. The replacement is **RustFS**, running in LXC CT 101
-`rustfs` on pve01, with the API on `:9000` and the console at `:9001/rustfs/console/`. The service
-only uses standard S3 calls through boto3, so switching backends is a configuration change: set
-the storage endpoint and keys. Under D3/D4 every bucket is **private** in storage, so
-`put_bucket_policy` is no longer needed.
+`rustfs` on pve01 (currently `192.168.50.123` by DHCP; it needs a reservation like CT 102), with
+the API on `:9000` and the console at `:9001/rustfs/console/`. The service only uses standard S3
+calls, so switching backends is a configuration change. Under D3/D4 every bucket is **private**
+in storage, so `put_bucket_policy` is no longer needed.
+
+## Integration with auth-service (as deployed)
+file-management is a **resource server** (audience `file-management`). It is **not** an
+auth-service client: it calls no other service, so it has no client secret. Configuration:
+
+```sh
+SERVICE_AUTH_ISSUER=https://auth.lan.liustev6.ca     # the only auth setting it needs
+```
+```python
+auth = ServiceAuth.from_env("file-management")        # service_auth.fastapi_auth
+
+@router.put("/objects/{bucket}/{key:path}")
+async def put_object(bucket: str, key: str, p: Principal = Depends(auth.require("files:write"))):
+    authorize(p, "write", bucket, key)                # level 2: the location
+```
+- **Verification is local** (`service_auth`): ES256 only, `typ: at+jwt`, issuer, `aud` =
+  `file-management`, expiry, required claims. Public keys come from auth-service's JWKS, cached
+  5 minutes, refreshed early for an unknown `kid`, kept up to 24 h if auth-service is down. If no
+  keys can be obtained at all, requests get 503.
+- **What arrives in a token**, today (auth-service `policy.yaml`):
+
+  | Caller | Token | `Principal` | Grants |
+  |---|---|---|---|
+  | pi-server (direct, on the LAN) | its own token | `service=pi-server` | `read write delete list` on `private/pi-server/` |
+  | pi-server through api-service (from outside) | relayed (grant 3) | `service=api-service`, `on_behalf_of=service:pi-server` | the same as pi-server direct; never api-service's own |
+  | api-service, public route (anonymous visitors) | its own token | `service=api-service` | `read list` on `public/` |
+
+  `authorize()` looks only at the grants, so a relayed request is handled exactly like a direct
+  one; the actor chain is logged.
+- **Detail type contract.** auth-service's policy defines `file_access` with `actions: [read,
+  write, delete, list]` and `location_roots: [public/, private/]`.
+  Those roots **must equal** file-management's bucket list. Adding a bucket means changing both
+  (file-management config, then the policy), in that order.
+- **Verified end to end** against the live auth-service (2026-11-07, with the real
+  `service_auth` library): pi-server's grants, api-service's relay of pi-server, api-service's own
+  `public/` token, and the rejections (wrong secret, wrong audience, exchanging someone else's
+  token). Every auth-service deploy now repeats the core of this as the `smoke-test` client
+  (`python/services/auth-service/scripts/smoke_test.py`), whose only grant is `private/smoke-test/`.
 
 ## Permission model (target)
 
 ### Buckets and namespaces
 | Bucket | Namespace layout | Holds | Storage behaviour |
 |---|---|---|---|
-| `models` | `models/<model_id>.tar.gz` | Model weights | Versioning on; no expiry |
-| `public` | `public/<path>` | Files anyone may read through the gateway | No expiry; cacheable |
-| `users` | `users/<user_id>/<path>` (e.g. `users/42/outputs/…`) | A user's own files, including model outputs | Per-user quota |
-| `workspaces` | `workspaces/<client>/<workspace_id>/<path>` | Agent sandbox files (stevenai-v2, hey-pi-agent) | **Lifecycle expiry** (e.g. 7 days after last write); per-workspace quota |
-| `services` | `services/<client>/<path>` | A service's private scratch / state | Per-service quota |
+| `public` | `public/<path>` | Files anyone may read through api-service (images, downloads on the website) | No expiry; cacheable; versioning on |
+| `private` | `private/<client>/<path>` (e.g. `private/pi-server/notes.txt`, `private/pi-server/workspaces/<ws>/…`) | Each service's own files; a service's agent workspaces are sub-folders of its own folder | Per-client quota; versioning on |
 
-Adding a namespace means adding a bucket (or a prefix inside one) and grant templates in
-auth-service's policy. file-management code doesn't change.
+Everything in `private` belongs to exactly one client, named by the first path segment, and the
+policy grants each client only `private/${client}/`. Both buckets keep old versions, because
+`write` can overwrite (see Actions).
+
+#### Later buckets (not created now)
+| Bucket | Added when | Holds | Storage behaviour |
+|---|---|---|---|
+| `models` | gpu-server returns | `models/<model_id>.tar.gz`, model weights | Versioning on; no expiry |
+| `users` | an identity provider exists | `users/<user_id>/<path>`, a user's own files and model outputs | Per-user quota |
+| `workspaces` | sandboxes need automatic expiry | `workspaces/<client>/<ws>/<path>` | **Lifecycle expiry** (e.g. 7 days after last write) |
+
+Adding a bucket means: add it to file-management's bucket list and create it in RustFS, then add
+it to the policy's `location_roots` and grant it in `policy.yaml`. file-management code doesn't
+change.
 
 ### Actions
 | Action | Covers |
@@ -78,14 +136,15 @@ auth-service's policy. file-management code doesn't change.
 ### Grants
 A grant is an RFC 9396 authorization detail of type `file_access`:
 ```json
-{"type": "file_access", "actions": ["read", "write", "list"], "locations": ["workspaces/stevenai-v2/ws-7f3/"]}
+{"type": "file_access", "actions": ["read", "write", "list"], "locations": ["private/pi-server/workspaces/run-7/"]}
 ```
 - `locations` are `<bucket>/<prefix>` and end in `/`, or name one exact object
-  (`users/42/report.pdf`).
-- Grants arrive **already concrete** in the token. Templates such as `users/${user}/` are
+  (`public/brochure.pdf`).
+- Grants arrive **already concrete** in the token. Templates such as `private/${client}/` are
   resolved by auth-service when the token is minted.
 - The token's `scope` must also include the matching coarse scope (`files:read` for `read`, and
-  so on). Both levels must allow the operation.
+  so on). Both levels must allow the operation: the route's `require(...)` checks the scope, then
+  `authorize()` checks the location.
 
 ### The authorization check
 Every route calls one function; nothing else decides access:
@@ -101,38 +160,40 @@ def authorize(p: Principal, action: Action, bucket: str, key_or_prefix: str) -> 
     raise Forbidden()                                        # deny by default
 ```
 - For `list`, the requested prefix itself must start with a granted location. Listing
-  `workspaces/stevenai-v2/` with a grant on `workspaces/stevenai-v2/ws-7f3/` is denied.
-- Every decision (allow and deny) is logged with `jti`, `client_id`, `sub`, actor chain,
-  action, resource, and the detail `identifier` (e.g. the workspace id).
+  `private/pi-server/` with a grant on `private/pi-server/workspaces/run-7/` is denied.
+- Every decision (allow and deny) is logged with `jti`, `client_id`, `sub`, `on_behalf_of`, the
+  actor chain, action, resource, and the detail `identifier` (e.g. the workspace id).
 
 ### Key hygiene (enforced before `authorize`)
-S3 treats keys as literal strings, so `users/42/../43/x` really is a key inside `users/42/`.
+S3 treats keys as literal strings, so `private/pi-server/../api-service/x` really is a key inside
+`private/pi-server/`.
 Anything that later mounts or normalizes paths (FUSE, proxies, the gateway) could disagree, so
 keys are rejected (400) if they contain empty segments (`//`), `.` or `..` segments, `\`,
 control characters, a leading `/`, or are longer than 1024 bytes. Buckets must be one of the
-configured buckets.
+configured buckets. (auth-service applies the same rules to policy locations.)
 
 ### Quotas and limits
 - **Per-request size limit** (configurable per bucket; e.g. 50 GB for `models`, 1 GB elsewhere),
   checked against `Content-Length` and enforced on the stream.
-- **Byte quotas per namespace root**: per user (`users/<id>/`), per workspace
-  (`workspaces/<client>/<ws>/`), per service. Usage is tracked by file-management (a small
+- **Byte quotas per client** (`private/<client>/`), and a total for `public/`. Usage is tracked by file-management (a small
   counter store, rebuilt from listings if lost); writes over quota get 507.
 - These matter most for sandboxes (agents write a lot) and because a full LVM thin pool causes
   I/O errors on every guest.
 
 ### How each caller gets its access
-| Caller | Token | Grant(s) in the token |
-|---|---|---|
-| gpu-server (load weights) | service token | `read` on `models/` |
-| gpu-server writing a user's output | delegated token for user 42 (chained) | `write` on `users/42/outputs/` |
-| api-service, public route (anonymous visitors) | service token | `read, list` on `public/` |
-| api-service, logged-in user 42 | delegated token | `read, write, delete, list` on `users/42/` |
-| Share link for one file | downscoped from the user's token | `read` on `users/42/report.pdf`, ≤ 1 h |
-| stevenai-v2 (orchestrator) | service token | everything on `workspaces/stevenai-v2/` |
-| Sandbox `ws-7f3` | downscoped by stevenai-v2 | `read, write, list` on `workspaces/stevenai-v2/ws-7f3/`, ≤ 1 h, renewed by the orchestrator |
-| hey-pi-agent sandbox | downscoped by hey-pi-agent | its own `workspaces/hey-pi-agent/<ws>/` |
-| admin-cli | service token | everything on `models/`, `public/` |
+| Caller | When | Token | Grant(s) in the token |
+|---|---|---|---|
+| pi-server | **now** | its own token | `read write delete list` on `private/pi-server/` |
+| pi-server from outside, via api-service | **now** | relayed by api-service | the same |
+| api-service, public route (anonymous visitors) | **now** | its own token | `read list` on `public/` |
+| admin tooling (uploading public files) | when needed | its own token | `read write delete list` on `public/` |
+| Sandbox of pi-server's agent | after the downscoping fix | downscoped by pi-server | `read write list` on `private/pi-server/workspaces/<ws>/`, ≤ 1 h |
+| gpu-server (load weights) | when it returns (+ `models` bucket) | its own token | `read` on `models/` |
+| api-service, logged-in user 42 | with users (+ `users` bucket, identity provider) | delegated token | `read write delete list` on `users/42/` |
+| Share link for one user file | with users, after the downscoping fix | downscoped from the user's token | `read` on `users/42/report.pdf`, ≤ 1 h |
+
+"When" rows that aren't **now** need a `policy.yaml` change (and, for users and downscoping, the
+auth-service features noted), never a file-management change.
 
 ### What this model can't express (and the upgrade path)
 Grants are written into tokens when they're minted, so they cover ownership, sandboxes, and
@@ -156,31 +217,48 @@ additionally asks that service when no token grant matches. All decisions alread
 Status codes: 400 bad key/bucket, 401 missing/invalid token (`WWW-Authenticate: Bearer
 error="invalid_token"`), 403 not granted (`error="insufficient_scope"`), 404 not found (only
 returned *after* authorization, so callers can't probe for keys they can't read), 413 too large,
-507 over quota. Error bodies are generic; details go to logs.
+503 token keys unavailable, 507 over quota. Error bodies are generic; details go to logs. The
+401/403/503 responses come from `service_auth` and follow RFC 6750.
 
 Removed from the current API: the `/internal`, `/signed`, `/public` route families, the frontend
 key, the URL rewriting that depended on token type, the `/signed/download` proxy, `…/url`
 endpoints, and public-read bucket policies.
 
+## Deployment and secrets (target, D8/D9)
+Same model as auth-service (its README is the reference):
+
+| Item | Value |
+|---|---|
+| Host | its own unprivileged LXC on pve01 (`nesting=1,keyctl=1` for Docker), DHCP reservation, `startup order` after auth-service and RustFS |
+| Name | `files.lan.liustev6.ca` → that IP (Cloudflare, DNS only) |
+| Runtime | `python/services/file-management-service/compose.yaml`: read-only filesystem, non-root user, `cap_drop: [ALL]`, `no-new-privileges`; published on 443 → container port, so callers use `https://files.lan.liustev6.ca` |
+| TLS | Let's Encrypt via DNS-01 (its own Cloudflare token limited to DNS edit on `liustev6.ca`), certbot hook copies the certificate for the container user |
+| Non-secret config | environment in `compose.yaml`: `SERVICE_AUTH_ISSUER`, storage endpoint, bucket list, size limits |
+| Secrets | `/etc/file-management/credentials/rustfs_access_key`, `rustfs_secret_key` (owner 10001, the container user; mode 600), mounted read-only at `/run/secrets/`; the app reads files and refuses `FILES_STORAGE_*_KEY` env vars |
+| Storage credential scope | a RustFS user and policy limited to the `public` and `private` buckets, so a file-management bug can't reach anything else in storage |
+| Deploy now | `infra/deployment/file-management-service.sh`, rewritten like `auth-service.sh`: build from a **pushed** commit on the host, health-checked, readable status |
+| Deploy later | deployer manifest `deploy/services/file-management/deploy.yaml`; the RustFS keys become **managed** secrets in the secrets manager (`kv/services/file-management/rustfs_*`), injected on each deploy |
+
+Secrets that disappear in the rewrite: `INTERNAL_SECRET_KEY` and `FRONTEND_API_KEY` (replaced by
+auth-service tokens) and `PUBLIC_SERVICE_URL` (no more URL rewriting).
+
 ## api-service responsibilities (requirements this design puts on it)
-- **Public files:** `GET /files/public/{path}`, no login. The gateway calls file-management with
-  its own service token (`read` on `public/`) and sets `Cache-Control`, so Cloudflare caches
+- **Public files (now):** `GET /files/public/{path}`, no login. The gateway calls file-management
+  with its own token (`read list` on `public/`) and sets `Cache-Control`, so Cloudflare caches
   popular files.
-- **User files:** upload, download, list, and delete routes for a logged-in user. The gateway
-  gets a delegated token for that user (auth-service grant 2) and forwards it.
-- **Share links:** the gateway downscopes the user's token to `read` on one object
-  (auth-service grant 4) and returns `/files/s/{token}`. That route forwards the token as an
-  `Authorization` header; it never logs these URLs and sets `Referrer-Policy: no-referrer`.
+- **Relayed machine clients (now):** a client such as pi-server calling from outside gets its
+  request relayed (auth-service grant 3), so file-management sees pi-server's own grants.
+- **User files (with an identity provider):** upload, download, list, and delete routes for a
+  logged-in user, with a delegated token for that user (auth-service grant 2).
+- **Share links (after the downscoping fix):** the gateway downscopes the user's token to `read`
+  on one object (grant 4) and returns `/files/s/{token}`. That route forwards the token as an
+  `Authorization` header, never logs these URLs, and sets `Referrer-Policy: no-referrer`.
 - **Upload limits:** enforce a size limit before streaming. Cloudflare limits a proxied request
   body to **100 MB** on the free plan, so larger uploads use the multipart routes in parts of up
   to ~95 MB, or come in over the LAN or Tailscale.
-- **Known gateway gaps to fix first:** its auth is one shared `API_KEY` (`X-API-Key`, compared
-  with `!=`), the same weakness as the old frontend key; it needs real per-user login before it
-  serves anyone's files. A failed key check also logs the first 10 characters of the submitted
-  key.
 
-## Current design (code as it is today)
-This predates D1–D7.
+## Before the rewrite (for reference)
+The old code, replaced by the rewrite; kept because the problems below explain the design.
 
 ### Bucket tiers (`app/core/config.py`)
 Buckets are configured lists; a bucket's tier decides which router may touch it. Each route
@@ -248,10 +326,11 @@ served through the gateway.
 ### Config and deploy
 - Settings come from `.env` through pydantic-settings: storage endpoint and keys, `PUBLIC_SERVICE_URL`,
   the two auth keys, signed-URL expiry (default 1 h, max 24 h), `MAX_BUFFERED_CHUNKS`, and the bucket lists.
-- `infra/deployment/file-management.sh` builds a Docker image and runs it in an LXC (`docker run -p 8000:8000
+- `infra/deployment/file-management-service.sh` (before the rewrite) rsyncs the working copy to the LXC, writes a `.env` there
+  from the laptop's `.env`, builds the image on the host, and runs it (`docker run -p 8000:8000
   --env-file .env --restart unless-stopped`).
 
-## Problems (current code)
+## Problems (old code)
 In priority order. P1–P6 are reachable from the internet only through file-management's tunnel
 hostname, so **removing that hostname (migration step 1) takes them off the internet at once**.
 They still get fixed in the rewrite, because the LAN and the tailnet aren't trusted either.
@@ -260,8 +339,8 @@ They still get fixed in the rewrite, because the LAN and the tailnet aren't trus
 |---|---|---|---|
 | **P1** | `DELETE /signed/delete` and `DELETE /public/delete` have **no auth** | `signed.py` `delete_from_signed_bucket`, `public.py` `delete_from_public_bucket` | Anyone who can reach the service can delete any user upload, model output, or public file. Root cause: auth is added per route (fails open); the `router_auth` name implies protection it doesn't give. |
 | **P2** | The frontend key is a shared secret shipped to browsers, so it is effectively public | `auth.py` `verify_api_access` | Anyone can upload to or overwrite `public`, list `user-uploads`, and mint a signed URL for **any** user's file. No user identity, so no per-user ownership. Removed by D2. |
-| **P3** | One internal secret for all services | `auth.py` | No caller identity in logs. No scoping (gpu-server only needs to read `models` but can delete). Rotation means changing every service at once. |
-| **P4** | Tokens compared with `==` / `!=` | `auth.py` | Not timing-safe; use `hmac.compare_digest`. |
+| **P3** | One internal secret for all services | `auth.py` | No caller identity in logs. No scoping (gpu-server only needs to read `models` but can delete). Rotation means changing every service at once. Removed by D2. |
+| **P4** | Tokens compared with `==` / `!=` | `auth.py` | Not timing-safe. Gone with the static keys (D2). |
 | **P5** | CORS `allow_origins=["*"]` with `allow_credentials=True`; `PUT` missing from `allow_methods` | `main.py` | Too permissive. Under D1 file-management needs no CORS at all. |
 | P6 | Error details sent to clients (`str(e)`, the storage response text); `/docs` public | all routers, `main.py` | Leaks internals. |
 | P7 | No upload size limit: `MAX_FILE_SIZE` is defined but never used | `app/s3/config.py` | With P2, anyone can fill the disk. A full LVM thin pool causes I/O errors on every guest. |
@@ -271,43 +350,54 @@ They still get fixed in the rewrite, because the LAN and the tailnet aren't trus
 | P11 | `list_files` has no pagination; `file_exists` treats every error as "not found" | `client.py` | Listing stops at 1,000 objects; a 403 or an outage looks like a missing file. |
 | P12 | Access tiers are hard-coded into three routers that repeat the same handlers | `app/api/*`, `config.py` | Copies drift (P1 is such a drift), and any new permission shape (a sandbox, a per-user area) would need a new router. Replaced by D4/D5. |
 | P13 | Small issues: `ensure_bucket_exists` on every upload; `Content-Disposition` built by concatenating the key; `MAX_BUFFERED_CHUNKS: int = 50` in `.env.example` isn't valid `.env` syntax | various | Extra requests, header safety, config confusion. |
+| P14 | Secrets live in a plain-text `.env` on the laptop and on the host and reach the app as environment variables | `.env`, deploy script | Visible in `docker inspect`, inherited by child processes. Replaced by D8. |
+| P15 | Plain HTTP on the LAN, and the image is built on the host from an rsynced working copy as `:latest` | deploy script, `docker run` | Tokens (today: the static keys) cross the LAN unencrypted; no record of which commit runs, no rollback. Replaced by D8/D9. |
 
 ## Implementation notes (rewrite)
-- **Deny by default.** Auth is a dependency on the whole app; `/health` is the only exception. A
-  test walks `app.routes` and fails if any other route answers without a token, and a table-driven
-  test runs `authorize()` against the caller table above (including the denials: a sandbox
-  listing its parent, `users/42/` touching `users/43/`, `..` keys).
+- **Deny by default.** Auth is a dependency on the whole app (`ServiceAuth.require(...)` per
+  route); `/health` is the only exception. A test walks `app.routes` and fails if any other route
+  answers without a token, and a table-driven test runs `authorize()` against the caller table
+  above (including the denials: a sandbox listing its parent folder, `private/pi-server/`
+  touching `private/api-service/`, writing to `public/` with a read-only grant, `..` keys).
+- **Tests with real tokens.** Use the `FakeIssuer` pattern from `service_auth`'s tests (an
+  in-process issuer with its own JWKS) rather than mocking `Principal`, so the verifier path is
+  exercised too.
 - **Async storage I/O** (`aioboto3`, or boto3 in a sized thread pool) with timeouts.
-- **No CORS middleware** (browsers never call file-management). `/docs` off, or LAN only.
-- **Network:** bind to the LAN; the Proxmox firewall on the container allows only the gateway,
-  gpu-server, orchestrators, and sandbox networks.
-- **Storage credentials:** file-management's RustFS key is limited (RustFS policy) to these
-  buckets, so a bug in file-management can't reach anything else in storage.
+- **No CORS middleware** (browsers never call file-management). `/docs` off.
+- **Network:** LAN only; the Proxmox firewall on the container allows only api-service, the Pi,
+  and later gpu-server and orchestrators.
 - **Dev bypass:** the `service-auth` dev principal, which refuses to start unless `ENV=local`.
 
 ## Migration order
 1. **Now:** remove file-management's public hostname from the Cloudflare tunnel (D1). That takes
    P1–P6 off the internet with no code change.
-2. `service-auth` phase 0 (static per-service keys → `Principal` with scopes and grants), the
-   deny-by-default dependency, `authorize()`, key hygiene, and the route-coverage and
-   authorization tests.
-3. The `/objects` API on RustFS: create the buckets (all private, with lifecycle and versioning
-   as in the bucket table) and copy `models` over (`rclone sync`). Restart gpu-server against it
-   with a `read models/` key.
-4. Size limits, quotas, pagination, multipart routes, async I/O.
-5. auth-service phase 1–2: issued tokens with `authorization_details`, user delegation; the
-   gateway's per-user routes and public file serving.
-6. auth-service phase 2b: downscoped tokens for share links and agent sandboxes (stevenai-v2,
-   hey-pi-agent).
+2. **Rewrite on `service_auth`:** `ServiceAuth.from_env("file-management")`, `require()` per
+   route, `authorize()`, key hygiene, the route-coverage and authorization tests. Drop the static
+   keys.
+3. **`/objects` API on RustFS:** create the `public` and `private` buckets (both private in
+   storage, versioning on) and a RustFS user limited to them. The old `models` data stays where
+   it is until gpu-server returns and the `models` bucket is added.
+4. **Deploy like auth-service (D8/D9):** LXC, `files.lan.liustev6.ca` + certificate,
+   `compose.yaml`, secrets as files, `infra/deployment/file-management-service.sh` rewritten to deploy a
+   pushed commit. Verify with a smoke test: pi-server writes and reads `private/pi-server/`,
+   is denied elsewhere.
+5. **pi-server as the first caller** (its client secret via `scripts/add-client.sh --rotate`),
+   then **api-service**'s public and relayed routes.
+6. Size limits, quotas, pagination, multipart routes, async I/O.
+7. **Later, each a bucket and/or policy change plus the noted auth-service work:** gpu-server
+   (`models` bucket, `read models/`), users (`users` bucket, identity provider, grant 2), share
+   links and sandboxes (downscoping fix, grant 4).
 
 ## Open questions
 - What does api-service use for user login (an identity provider such as Authentik, or
-  something else)? Everything for user files depends on it.
-- Does RustFS support the lifecycle (expiry) and versioning rules the bucket table assumes? If
-  not, file-management runs a nightly cleanup for `workspaces`.
+  something else)? User files depend on it.
+- RustFS **accepts** versioning and lifecycle rules (checked 2026-11-07): `public` and `private`
+  have versioning on, old versions expire after 30 days, abandoned multipart uploads after 1 day.
+  Still to confirm that expiry actually runs (look again after 30 days); if not, file-management
+  runs a nightly cleanup.
 - Should end users write to `public`, or only admins and internal services?
-- Where do quota counters live: a small SQLite file in the container, or recomputed from
-  listings on startup?
+- Where do quota counters live: a small SQLite file in the container (would need one writable
+  volume), or recomputed from listings on startup?
 - When does user-to-user sharing (OpenFGA / SpiceDB) become worth adding?
 
 ## Non-goals

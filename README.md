@@ -42,16 +42,17 @@ Portfolio website showcasing my projects, skills, and experience.
 
 ### File Management Service
 
-Centralized file management microservice with three-tier bucket architecture for MinIO/S3 operations.
+The only service that talks to object storage (RustFS, S3 API). LAN only; other services call it
+with auth-service tokens.
 
 **Main Features:**
-- Type 1: Private + Internal only (ML models, backend-only data)
-- Type 2: Private + Signed URLs (user uploads, time-limited access)
-- Type 3: Public buckets (AI-generated photos, direct URL access)
-- Dual token authentication (internal + frontend)
-- Docker + LXC deployment
+- One generic `/objects/{bucket}/{key}` API (PUT, GET, HEAD, DELETE, list)
+- Access from the caller's token: a scope plus a `file_access` grant on a prefix, checked by one `authorize()`
+- Buckets `public` and `private` (`private/<client>/…` per service)
+- Streaming uploads (multipart, SHA-256) and downloads (`Range`, `If-None-Match`)
+- Hardened Docker Compose, secrets as files, TLS (`files.lan.liustev6.ca`)
 
-**Path:** `python/services/file-management/`
+**Path:** `python/services/file-management-service/`
 
 ### Web gateway (API Gateway)
 

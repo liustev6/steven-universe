@@ -1,0 +1,8 @@
+# Build context is python/; send only what the image needs.
+**
+!services/file-management-service/requirements.txt
+!services/file-management-service/app/**
+!libs/service-auth/pyproject.toml
+!libs/service-auth/service_auth/**
+**/__pycache__
+**/*.pyc

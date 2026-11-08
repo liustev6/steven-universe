@@ -1,0 +1,7 @@
+# Local development and tests
+-r requirements.txt
+-e ../../libs/service-auth[fastapi]   # token verification (Principal, ServiceAuth)
+
+pytest==9.2.0
+httpx==0.28.1          # FastAPI TestClient
+moto[server]==5.2.5    # local S3 server for the S3Storage tests
