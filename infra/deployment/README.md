@@ -14,6 +14,7 @@ infra/deployment/deploy.sh <service> <ref>    # a pushed branch, tag or sha (als
 | File | Runs on | Does |
 |---|---|---|
 | `deploy.sh` | the Mac | resolves a **pushed** commit, reads that commit's `infra/services/<service>/deploy.yaml`, checks that the service's image is in GHCR (waits for a running build), fetches the secrets it declares from OpenBao (in memory only), opens one SSH session that checks out the commit on the host and runs `deploy-target.sh` with the secrets on stdin |
+| `deploy-target-wrapper.sh` | the host | installed **by hand** as `/usr/local/sbin/deploy-target` (never by a deploy: it is the gatekeeper). Accepts only `deploy [--color] <service> <sha> [sha256:<digest>]`, refuses services not in `/etc/deploy-target/services`, one deploy per service at a time (`flock`), checks out the commit (must be on a pushed branch), runs that commit's `deploy-target.sh`; logs every request to syslog (`journalctl -t deploy-target`). The deployer's SSH key will be able to run only this. |
 | `deploy-target.sh` | the host | writes `config.env` and the secrets (atomically, mode 600, reports changed/unchanged), checks host-only paths and the certificate, installs the certbot hook, **pulls the image** from GHCR, runs the service's hook if any, starts, waits for health, checks health by name over TLS, runs the smoke test, appends to `/var/lib/deploy-target/<service>.log`, prints a summary with the rollback command |
 | `lib.sh` | the host | shared status output (`Step N/M`, ✓/✗, which step failed) |
 
@@ -36,6 +37,15 @@ runs the same script, fetching the secrets with its own identity instead of your
 that last changed the service's `code` folder or `python/libs/` (deployer spec D1a). A commit that
 only changes `infra/services/<service>/` redeploys the existing image with the new config. To
 deploy a commit from before the workflow existed: `gh workflow run build.yml -f ref=<sha>` first.
+
+**Installing the wrapper on a host** (once, and again only when `deploy-target-wrapper.sh` changes;
+`<service>` is the one that host runs):
+```sh
+ssh <host> 'set -e; S=/opt/steven-universe; git -C $S fetch -q origin
+  git -C $S show origin/main:infra/deployment/deploy-target-wrapper.sh >/tmp/deploy-target
+  install -m 755 -o root -g root /tmp/deploy-target /usr/local/sbin/deploy-target; rm /tmp/deploy-target
+  install -d -m 755 /etc/deploy-target; echo <service> >/etc/deploy-target/services'
+```
 
 **Needs:** on the Mac `git`, `yq`, `bao`, `curl` (and `gh` to wait for builds), SSH aliases for the hosts (`auth-host`, `files-host`);
 OpenBao unsealed (`docs/specs/boot.md`).

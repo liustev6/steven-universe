@@ -11,8 +11,8 @@
 #      checks that the service's image is in GHCR (built by .github/workflows/build.yml), waiting
 #      for a build that is still running
 #   2. fetches the secrets the manifest declares from OpenBao, with your login (BAO_TOKEN)
-#   3. opens ONE SSH session to the manifest's host: checks out the commit there, then runs
-#      infra/deployment/deploy-target.sh (from that commit), passing the secrets on stdin.
+#   3. opens ONE SSH session to the manifest's host and runs its wrapper /usr/local/sbin/deploy-target,
+#      which checks out the commit and runs that commit's deploy-target.sh, secrets on stdin.
 #      The secrets are never written on the Mac; on the host they go straight to their files.
 #
 # Before deploying a service that declares secrets, log in to OpenBao (valid 1 hour):
@@ -26,7 +26,6 @@ set -euo pipefail
 
 SERVICE="${1:-}"
 REF="${2:-main}"
-REPO_URL="https://github.com/liustev6/steven-universe.git"
 GH_REPO="liustev6/steven-universe"
 export BAO_ADDR="${BAO_ADDR:-https://bao.lan.liustev6.ca:8200}"
 
@@ -109,12 +108,8 @@ if [ "$NSECRETS" -gt 0 ]; then
     unset value formatted
 fi
 
-# ---- 3. One SSH session: check out the commit on the host, run deploy-target.sh from it -------------
-REMOTE="set -e
-SRC=/opt/steven-universe
-[ -d \"\$SRC/.git\" ] || git clone --quiet --filter=blob:none $REPO_URL \"\$SRC\"
-git -C \"\$SRC\" fetch --quiet --prune origin
-git -C \"\$SRC\" -c advice.detachedHead=false checkout --quiet --force --detach $SHA
-exec bash \"\$SRC/infra/deployment/deploy-target.sh\" $SERVICE $SHA $COLOR"
+# ---- 3. One SSH session: the host's wrapper checks out the commit and runs deploy-target.sh ---------
+# /usr/local/sbin/deploy-target is installed by hand on each host (deploy-target-wrapper.sh).
+REMOTE="/usr/local/sbin/deploy-target deploy $([ "$COLOR" = 1 ] && echo --color) $SERVICE $SHA"
 
 printf '%s' "$PAYLOAD" | ssh -o BatchMode=yes "$HOST" "$REMOTE"

@@ -3,8 +3,9 @@
 ##############################################################################
 # deploy-target: the host-side half of every deploy (one script for all services).
 #
-# Started by infra/deployment/deploy.sh over SSH, after the host has checked out the commit being
-# deployed (so this file, the manifest and the service code are all from that commit):
+# Started by the wrapper /usr/local/sbin/deploy-target (deploy-target-wrapper.sh; called by deploy.sh
+# over SSH, later by the deployer) after it has checked out the commit being deployed (so this
+# file, the manifest and the service code are all from that commit):
 #
 #   deploy-target.sh <service> <sha> <color>      stdin: the service's secrets (see below)
 #
@@ -159,6 +160,9 @@ fi
 LABEL="$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$IMAGE")"
 [ "$LABEL" = "$IMAGE_SHA" ] || die "$IMAGE says revision ${LABEL:0:7}, expected ${IMAGE_SHA:0:7}."
 DIGEST="$(docker image inspect -f '{{index .RepoDigests 0}}' "$IMAGE")"; DIGEST="${DIGEST#*@}"
+# The deployer passes the digest GitHub built (through the wrapper): the image must be exactly that.
+[ -z "${EXPECTED_DIGEST:-}" ] || [ "$DIGEST" = "$EXPECTED_DIGEST" ] \
+    || die "$IMAGE is $DIGEST, but the request expects $EXPECTED_DIGEST."
 ok "$(basename "${IMAGE%:*}"):${IMAGE_SHA:0:7} ($(docker image inspect -f '{{.Size}}' "$IMAGE" | numfmt --to=iec), ${DIGEST:0:19}…)"
 
 ##############################################################################

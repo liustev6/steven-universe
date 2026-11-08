@@ -6,6 +6,7 @@
 # Spec: docs/specs/deployer.md (D12), docs/specs/secrets-manager.md ("Inventory").
 service: auth-service
 host: auth-host
+pipeline: false                        # by hand only: the root of trust (deployer spec D13)
 code: python/services/auth-service
 compose: python/services/auth-service/compose.yaml
 config: infra/services/auth-service/config.env        # -> /etc/auth-service/config.env

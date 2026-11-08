@@ -330,20 +330,20 @@ still use their old per-service scripts in `infra/deployment/`, run from the lap
 | ID | Problem | Status |
 |---|---|---|
 | P1 | Secrets sit in a plain-text `.env` on the laptop and are copied into a plain-text `.env` on the host, then passed as environment variables (visible in `docker inspect`, inherited by child processes). | fixed for the two migrated services; phase 3 for the rest |
-| P2 | Images are built on the host from an rsynced working copy: uncommitted changes can ship, and nothing records which commit is running. | fixed for the two (pushed sha, revision label); phase 1 moves builds to GitHub |
-| P3 | `:latest` only; no rollback. | rollback = redeploy an older sha (a rebuild); phase 1 makes it a pull |
+| P2 | Images are built on the host from an rsynced working copy: uncommitted changes can ship, and nothing records which commit is running. | fixed for the two: built in GitHub from a pushed commit, pulled by digest-recorded tag |
+| P3 | `:latest` only; no rollback. | fixed for the two: rollback = redeploy an older sha, a pull (commits from before phase 1 need `gh workflow run build.yml -f ref=<sha>` first) |
 | P4 | The old container is removed before the new one is proven healthy (downtime, no recovery). | health + smoke test now gate success; automatic rollback in phase 2 |
 | P5 | Deploys need the laptop and leave no record. | phase 2 |
 | P6 | Four copies of the same script drift apart. | fixed for the two; phase 3 for the rest |
-| P7 | Shared libraries are rsynced separately (`shared-schemas`). | phase 1 (built in GitHub from the repo) |
+| P7 | Shared libraries are rsynced separately (`shared-schemas`). | fixed for the two (built in GitHub from the repo); the rest in phase 3 |
 
 ## Phases
 | Phase | What ships | Status |
 |---|---|---|
 | **0** | Manual deploys with the conventions: secrets as files mounted into containers (not `.env`), and a hardened `compose.yaml` next to each service. | done |
 | **0b** | `infra/` as source of truth (D12): manifests, `config.env`, the policy moved there, OpenBao policies generated from the manifests, the generic `deploy.sh` + `deploy-target.sh`, and managed secrets delivered from OpenBao (this absorbed the old "phase 3, secrets injection"). | **done 2026-11-08**; rotation test pending |
-| **1** | **Images from GitHub.** | next |
-| **2** | **The deployer.** | after 1 |
+| **1** | **Images from GitHub.** | **done 2026-11-08** (both services pull from GHCR); config-only and rollback checks pending |
+| **2** | **The deployer.** | next |
 | **3** | **Migrate the remaining Docker services** (stevenai-service, web-gateway, gpu-server). | |
 | **4** | **The Pi** (pi-server). | later |
 | **5** (optional) | **Federation and provenance.** | |
