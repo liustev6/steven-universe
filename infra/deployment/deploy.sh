@@ -15,9 +15,9 @@
 #      which checks out the commit and runs that commit's deploy-target.sh, secrets on stdin.
 #      The secrets are never written on the Mac; on the host they go straight to their files.
 #
-# Before deploying a service that declares secrets, log in to OpenBao (valid 1 hour):
-#   export BAO_ADDR=https://bao.lan.liustev6.ca:8200
-#   export BAO_TOKEN="$(bao login -method=userpass -token-only username=steven)"
+# OpenBao login: if there is no valid one, the script asks for your password (user $BAO_USER,
+# default steven) and the bao CLI keeps the login for 1 hour, so the next deploys don't ask again.
+# An exported BAO_TOKEN is used if it is still valid. OpenBao must be unsealed (docs/specs/boot.md).
 #
 # Requires on the Mac: git, yq, bao, curl; gh (optional: waits for a running build). Spec: docs/specs/deployer.md (D12), secrets-manager.md (S15-S17).
 ##############################################################################
@@ -28,6 +28,7 @@ SERVICE="${1:-}"
 REF="${2:-main}"
 GH_REPO="liustev6/steven-universe"
 export BAO_ADDR="${BAO_ADDR:-https://bao.lan.liustev6.ca:8200}"
+BAO_USER="${BAO_USER:-steven}"
 
 if [ -t 1 ]; then COLOR=1; RED='\033[0;31m'; GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
 else COLOR=0; RED=''; GREEN=''; BLUE=''; NC=''; fi
@@ -90,8 +91,17 @@ fi
 # One line per secret: <destination> TAB <owner> TAB <base64 of the value, formatted>.
 PAYLOAD=""
 if [ "$NSECRETS" -gt 0 ]; then
-    bao token lookup >/dev/null 2>&1 \
-        || die "Not logged in to OpenBao. Run: export BAO_TOKEN=\"\$(bao login -method=userpass -token-only username=steven)\""
+    rc=0; bao status >/dev/null 2>&1 || rc=$?
+    [ "$rc" -ne 2 ] || die "OpenBao is sealed: unseal it first (docs/specs/boot.md, step 1)."
+    [ "$rc" -ne 1 ] || die "OpenBao at $BAO_ADDR is unreachable (Tailscale on? CT 104 up?)."
+    if ! bao token lookup >/dev/null 2>&1; then
+        unset BAO_TOKEN                     # an expired export would hide the CLI's stored login
+        if ! bao token lookup >/dev/null 2>&1; then
+            [ -t 0 ] || die "Not logged in to OpenBao. Run: BAO_ADDR=$BAO_ADDR bao login -method=userpass username=$BAO_USER"
+            echo -e "OpenBao login as ${BLUE}$BAO_USER${NC} at $BAO_ADDR (kept for 1 hour by the bao CLI):"
+            bao login -method=userpass -no-print username="$BAO_USER" || die "OpenBao login failed."
+        fi
+    fi
     for i in $(seq 0 $((NSECRETS - 1))); do
         from="$(yq -r ".secrets[$i].from" <<<"$MANIFEST")"
         to="$(yq -r ".secrets[$i].to" <<<"$MANIFEST")"

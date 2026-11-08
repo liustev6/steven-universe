@@ -4,12 +4,12 @@ How services are deployed, from the Mac. Two generations live here:
 
 ## Generic, manifest-driven: `deploy.sh` (auth-service, file-management)
 ```sh
-export BAO_ADDR=https://bao.lan.liustev6.ca:8200
-export BAO_TOKEN="$(bao login -method=userpass -token-only username=steven)"   # valid 1 hour
-
 infra/deployment/deploy.sh <service>          # deploy main (latest pushed commit)
 infra/deployment/deploy.sh <service> <ref>    # a pushed branch, tag or sha (also how to roll back)
 ```
+No setup needed: the script uses `https://bao.lan.liustev6.ca:8200` (or `$BAO_ADDR`) and, if you
+aren't logged in to OpenBao, asks for your password (user `steven`, or `$BAO_USER`). The `bao` CLI
+keeps that login for 1 hour, so the next deploys don't ask again.
 
 | File | Runs on | Does |
 |---|---|---|
