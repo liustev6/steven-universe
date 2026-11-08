@@ -13,8 +13,8 @@ infra/deployment/deploy.sh <service> <ref>    # a pushed branch, tag or sha (als
 
 | File | Runs on | Does |
 |---|---|---|
-| `deploy.sh` | the Mac | resolves a **pushed** commit, reads that commit's `infra/services/<service>/deploy.yaml`, fetches the secrets it declares from OpenBao (in memory only), opens one SSH session that checks out the commit on the host and runs `deploy-target.sh` with the secrets on stdin |
-| `deploy-target.sh` | the host | writes `config.env` and the secrets (atomically, mode 600, reports changed/unchanged), checks host-only paths and the certificate, installs the certbot hook, builds the image, runs the service's hook if any, starts, waits for health, checks health by name over TLS, runs the smoke test, prints a summary with the rollback command |
+| `deploy.sh` | the Mac | resolves a **pushed** commit, reads that commit's `infra/services/<service>/deploy.yaml`, checks that the service's image is in GHCR (waits for a running build), fetches the secrets it declares from OpenBao (in memory only), opens one SSH session that checks out the commit on the host and runs `deploy-target.sh` with the secrets on stdin |
+| `deploy-target.sh` | the host | writes `config.env` and the secrets (atomically, mode 600, reports changed/unchanged), checks host-only paths and the certificate, installs the certbot hook, **pulls the image** from GHCR, runs the service's hook if any, starts, waits for health, checks health by name over TLS, runs the smoke test, appends to `/var/lib/deploy-target/<service>.log`, prints a summary with the rollback command |
 | `lib.sh` | the host | shared status output (`Step N/M`, ✓/✗, which step failed) |
 
 Everything about a service lives in `infra/services/<service>/`:
@@ -32,7 +32,12 @@ each service's read-only OpenBao policy and the deployer's. A new service needs 
 `deploy-target.sh` is the deployer's host-side half (docs/specs/deployer.md); the future deployer
 runs the same script, fetching the secrets with its own identity instead of your login.
 
-**Needs:** on the Mac `git`, `yq`, `bao`, SSH aliases for the hosts (`auth-host`, `files-host`);
+**Images** are built by `.github/workflows/build.yml` on every push to `main`, named by the commit
+that last changed the service's `code` folder or `python/libs/` (deployer spec D1a). A commit that
+only changes `infra/services/<service>/` redeploys the existing image with the new config. To
+deploy a commit from before the workflow existed: `gh workflow run build.yml -f ref=<sha>` first.
+
+**Needs:** on the Mac `git`, `yq`, `bao`, `curl` (and `gh` to wait for builds), SSH aliases for the hosts (`auth-host`, `files-host`);
 OpenBao unsealed (`docs/specs/boot.md`).
 
 ## Older per-service scripts (not migrated yet)

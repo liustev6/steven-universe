@@ -1,6 +1,7 @@
 # auth-service pre-start hook. Sourced by infra/deployment/deploy-target.sh after the image is
-# built and before the container is (re)started. Available: the lib.sh helpers (step/ok/info/die/
-# quiet) and $SRC $SVC_DIR $CFG $SHA $SHORT $IMAGE.
+# pulled and before the container is (re)started. Available: the lib.sh helpers (step/ok/info/die/
+# quiet) and $SRC $SVC_DIR $CFG $SHA $SHORT $IMAGE; IMAGE_TAG is exported, so auth-service-admin
+# runs the new image.
 #
 # What only auth-service needs:
 #   - its config folders and the admin CLI on the host

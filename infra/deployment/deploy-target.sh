@@ -19,7 +19,12 @@
 #   1. Commit                5. Service hook (if any)
 #   2. Config and secrets    6. Start, wait until healthy
 #   3. certbot hook          7. Health by name over TLS
-#   4. Build the image       8. Smoke test
+#   4. Pull the image        8. Smoke test
+#
+# The image comes from GHCR (.github/workflows/build.yml), named by the commit that last changed
+# the service's code or python/libs/ (the "image sha", deployer spec D1a); hosts never build.
+# Every deploy appends one line to /var/lib/deploy-target/<service>.log:
+#   <time> TAB <deployed sha> TAB <image sha> TAB <digest> TAB succeeded|failed
 ##############################################################################
 
 set -Eeuo pipefail
@@ -50,6 +55,7 @@ out("M_HOST_ONLY", " ".join(m.get("host_only") or []))
 PY
 )"
 [ "$M_SERVICE" = "$SERVICE" ] || { echo "manifest says service '$M_SERVICE', expected '$SERVICE'" >&2; exit 1; }
+[ -n "$M_CODE" ] || { echo "manifest has no 'code' folder (needed for the image sha)" >&2; exit 1; }
 
 TOTAL=$([ -n "$M_PRE_START" ] && echo 8 || echo 7)
 # shellcheck source=lib.sh
@@ -58,8 +64,22 @@ START=$SECONDS
 SHORT="${SHA:0:7}"; SUBJECT="$(git -C "$SRC" log -1 --format=%s)"
 SVC_DIR="$SRC/$(dirname "$M_COMPOSE")"
 cd "$SVC_DIR"
-CID="$(docker compose ps -q "$SERVICE" 2>/dev/null || true)"
-PREV="$([ -n "$CID" ] && docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$CID" 2>/dev/null || true)"
+
+# The image to run (D1a). Exported: every `docker compose` below, and the service hook, use it.
+IMAGE_SHA="$(git -C "$SRC" log -1 --format=%H "$SHA" -- "$M_CODE" python/libs)"
+export IMAGE_TAG="$IMAGE_SHA"
+DIGEST=""
+
+# Deploy log (D10): the previous successful deploy, and this one's result when the script ends.
+LOG="/var/lib/deploy-target/$SERVICE.log"
+install -d -m 700 "$(dirname "$LOG")"
+PREV="$(awk -F'\t' '$5 == "succeeded" { s = $2 } END { print s }' "$LOG" 2>/dev/null || true)"
+if [ -z "$PREV" ]; then   # deploys from before the log: the running container's revision label
+    CID="$(docker compose ps -q "$SERVICE" 2>/dev/null || true)"
+    PREV="$([ -n "$CID" ] && docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$CID" 2>/dev/null || true)"
+fi
+record() { printf '%s\t%s\t%s\t%s\t%s\n' "$(date -Is)" "$SHA" "$IMAGE_SHA" "${DIGEST:--}" "$1" >>"$LOG"; }
+trap 'rc=$?; [ "$rc" -eq 0 ] || record failed' EXIT
 
 ##############################################################################
 # Step 1: the commit (already checked out by deploy.sh's SSH command)
@@ -69,6 +89,8 @@ ok "$SHORT: $SUBJECT"
 if [ -z "$PREV" ]; then info "first deploy (nothing running yet)"
 elif [ "$PREV" = "$SHA" ]; then info "same commit as the running container (redeploy)"
 else info "running now: ${PREV:0:7}  ->  deploying: $SHORT"; fi
+if [ "$IMAGE_SHA" = "$SHA" ]; then info "image: built from this commit"
+else info "image: ${IMAGE_SHA:0:7} (last change to $M_CODE or python/libs; this commit changes only config)"; fi
 
 ##############################################################################
 # Step 2: config.env, secrets from OpenBao, host-only files, certificate
@@ -124,12 +146,20 @@ else
 fi
 
 ##############################################################################
-# Step 4: build the image (labelled with the commit; the running container is untouched)
+# Step 4: pull the image from GHCR (the running container is untouched)
 ##############################################################################
-step "Building image"
-quiet env REVISION="$SHA" docker compose build "$SERVICE"
-IMAGE="$(docker compose config --images "$SERVICE")"
-ok "Built $IMAGE ($(docker image inspect -f '{{.Size}}' "$IMAGE" | numfmt --to=iec), revision $SHORT)"
+step "Pulling image"
+IMAGE="$(docker compose config --images "$SERVICE")"     # ghcr.io/.../<service>:<image sha>
+if docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    info "already on this host"
+else
+    quiet docker pull "$IMAGE" \
+        || die "Cannot pull $IMAGE. Is its build finished? (gh run list --workflow build.yml; to build an older commit: gh workflow run build.yml -f ref=$SHA)"
+fi
+LABEL="$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$IMAGE")"
+[ "$LABEL" = "$IMAGE_SHA" ] || die "$IMAGE says revision ${LABEL:0:7}, expected ${IMAGE_SHA:0:7}."
+DIGEST="$(docker image inspect -f '{{index .RepoDigests 0}}' "$IMAGE")"; DIGEST="${DIGEST#*@}"
+ok "$(basename "${IMAGE%:*}"):${IMAGE_SHA:0:7} ($(docker image inspect -f '{{.Size}}' "$IMAGE" | numfmt --to=iec), ${DIGEST:0:19}…)"
 
 ##############################################################################
 # Step 5 (only if declared): the service's own pre-start steps
@@ -144,7 +174,7 @@ fi
 # Start and wait until Docker's health check passes
 ##############################################################################
 step "Starting container"
-quiet env REVISION="$SHA" docker compose up -d "$SERVICE"
+quiet docker compose up -d --no-build --pull never "$SERVICE"
 CID="$(docker compose ps -q "$SERVICE")"
 info "waiting for the health check (up to 60 s)..."
 STATUS=starting
@@ -166,7 +196,7 @@ step "Checking $M_HEALTH"
 HEALTH="$(curl -fsS "$M_HEALTH")" || die "Not reachable by name over TLS (DNS, port, certificate, or a dependency)."
 ok "reachable by name, certificate verified: $(printf '%s' "$HEALTH" | cut -c1-120)"
 RUNNING="$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$CID")"
-[ "$RUNNING" = "$SHA" ] || die "Container reports revision ${RUNNING:0:7}, expected $SHORT."
+[ "$RUNNING" = "$IMAGE_SHA" ] || die "Container reports revision ${RUNNING:0:7}, expected ${IMAGE_SHA:0:7}."
 
 ##############################################################################
 # Smoke test: the service's script, in the new image, with host networking
@@ -188,7 +218,9 @@ else
     info "none declared"
 fi
 
-quiet docker image prune -f --filter "label=org.opencontainers.image.title=$SERVICE"
+# Old images of this service (a rollback pulls again: seconds).
+quiet docker image prune -af --filter "label=org.opencontainers.image.title=$SERVICE"
+record succeeded
 
 ##############################################################################
 # Summary
@@ -202,6 +234,7 @@ if [ -n "$PREV" ] && [ "$PREV" != "$SHA" ]; then
 else
     printf 'Commit:       %s%s%s %s\n' "$BLUE" "$SHORT" "$NC" "$SUBJECT"
 fi
+printf 'Image:        %s@%s\n' "${IMAGE%:*}" "$DIGEST"
 printf 'Secrets:      %s from OpenBao (%s changed)\n' "$COUNT" "$CHANGED"
 printf 'Certificate:  valid until %s (%s days)\n' "$CERT_DATE" "$CERT_DAYS"
 printf '\nLogs:         docker compose -f %s logs -f %s   (on the host)\n' "$SRC/$M_COMPOSE" "$SERVICE"

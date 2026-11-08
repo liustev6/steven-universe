@@ -9,7 +9,7 @@ name: file-management
 
 services:
   file-management:
-    image: ghcr.io/liustev6/steven-universe/file-management:${FILES_TAG:-local}
+    image: ghcr.io/liustev6/steven-universe/file-management:${IMAGE_TAG:-local}   # IMAGE_TAG: set by deploy-target.sh (deployer spec D1a)
     build:
       context: ../..                    # python/, so libs/service-auth is included
       dockerfile: services/file-management-service/Dockerfile

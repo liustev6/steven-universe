@@ -7,7 +7,19 @@
 #   auth-service-admin list-clients
 #   auth-service-admin add-client pi-server --stdout | ssh panel '...'   (see scripts/add-client.sh)
 # -T: no TTY, so `--stdout` output can be piped and the CLI's TTY guard works.
+#
+# Which image: during a deploy, deploy-target.sh exports IMAGE_TAG (the new image, so the policy
+# is checked by the code that is about to run it). Otherwise: the image of the running service.
 set -eu
 
 COMPOSE_FILE="${AUTH_SERVICE_COMPOSE:-/opt/steven-universe/python/services/auth-service/compose.yaml}"
+if [ -z "${IMAGE_TAG:-}" ]; then
+    CID="$(docker compose -f "$COMPOSE_FILE" ps -q auth-service 2>/dev/null || true)"
+    if [ -n "$CID" ]; then
+        IMAGE_TAG="$(docker inspect -f '{{.Config.Image}}' "$CID")"
+        IMAGE_TAG="${IMAGE_TAG##*:}"
+    fi
+fi
+[ -n "${IMAGE_TAG:-}" ] || { echo "auth-service-admin: auth-service isn't running; set IMAGE_TAG=<image sha>" >&2; exit 1; }
+export IMAGE_TAG
 exec docker compose -f "$COMPOSE_FILE" --profile admin run --rm -T --quiet-pull admin "$@"

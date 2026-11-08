@@ -134,14 +134,14 @@ writable (last-mint stamps).
 **Deploy / update from the Mac:** `infra/deployment/deploy.sh auth-service [ref]` (log in to
 OpenBao first: `export BAO_TOKEN="$(bao login -method=userpass -token-only username=steven)"`). It
 deploys a pushed commit (default `main`) from `infra/services/auth-service/deploy.yaml`: secrets
-from OpenBao, `config.env`, build, the auth hook (admin CLI, policy validated first, first signing
+from OpenBao, `config.env`, the image pulled from GHCR (built by `.github/workflows/build.yml`), the auth hook (admin CLI, policy validated first, first signing
 key if missing), start, health check over TLS, smoke test. It stops if the TLS certificate is
 missing, so do step 5 once by hand first.
 
-**By hand on the host:** `git pull`, then `docker compose up -d --build`. Policy-only changes need no restart:
-copy the new `policy.yaml` into `/etc/auth-service/` and it is reloaded (an invalid one is
-rejected and the old one stays). Later the image comes from GHCR instead
-(`AUTH_SERVICE_TAG=<sha> docker compose up -d`), built by CI.
+**By hand on the host** (break-glass): `IMAGE_TAG=<image sha> docker compose up -d --no-build`, or
+`docker compose up -d --build` to build locally if GHCR is unreachable. Policy-only changes need no
+restart: copy the new `policy.yaml` into `/etc/auth-service/` and it is reloaded (an invalid one is
+rejected and the old one stays).
 
 **Smoke test:** every deploy ends with `scripts/smoke_test.py`, run in the new image as the
 `smoke-test` client: discovery, JWKS, a real mint verified against the live keys, and three

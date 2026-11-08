@@ -7,7 +7,9 @@
 #   infra/deployment/deploy.sh <service> <ref>    a pushed branch, tag or sha (also how to roll back)
 #
 # What it does:
-#   1. resolves <ref> to a pushed commit and reads that commit's manifest (never the working copy)
+#   1. resolves <ref> to a pushed commit and reads that commit's manifest (never the working copy);
+#      checks that the service's image is in GHCR (built by .github/workflows/build.yml), waiting
+#      for a build that is still running
 #   2. fetches the secrets the manifest declares from OpenBao, with your login (BAO_TOKEN)
 #   3. opens ONE SSH session to the manifest's host: checks out the commit there, then runs
 #      infra/deployment/deploy-target.sh (from that commit), passing the secrets on stdin.
@@ -17,7 +19,7 @@
 #   export BAO_ADDR=https://bao.lan.liustev6.ca:8200
 #   export BAO_TOKEN="$(bao login -method=userpass -token-only username=steven)"
 #
-# Requires on the Mac: git, yq, bao. Spec: docs/specs/deployer.md (D12), secrets-manager.md (S15-S17).
+# Requires on the Mac: git, yq, bao, curl; gh (optional: waits for a running build). Spec: docs/specs/deployer.md (D12), secrets-manager.md (S15-S17).
 ##############################################################################
 
 set -euo pipefail
@@ -25,6 +27,7 @@ set -euo pipefail
 SERVICE="${1:-}"
 REF="${2:-main}"
 REPO_URL="https://github.com/liustev6/steven-universe.git"
+GH_REPO="liustev6/steven-universe"
 export BAO_ADDR="${BAO_ADDR:-https://bao.lan.liustev6.ca:8200}"
 
 if [ -t 1 ]; then COLOR=1; RED='\033[0;31m'; GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -33,7 +36,7 @@ die() { echo -e "${RED}✗ $*${NC}" >&2; exit 1; }
 
 [[ "$SERVICE" =~ ^[a-z][a-z0-9-]{1,62}$ ]] || die "usage: $0 <service> [ref]   (services: $(ls "$(dirname "$0")/../services" | tr '\n' ' '))"
 [[ "$REF" =~ ^[A-Za-z0-9._/-]+$ ]] || die "invalid ref: $REF"
-for tool in git yq bao ssh base64; do command -v "$tool" >/dev/null || die "missing tool: $tool"; done
+for tool in git yq bao ssh base64 curl; do command -v "$tool" >/dev/null || die "missing tool: $tool"; done
 
 # ---- 1. The commit and its manifest ---------------------------------------------------------------
 REPO="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
@@ -46,6 +49,11 @@ else die "'$REF' is not a pushed branch, tag or commit. Push it first."; fi
 MANIFEST="$(git -C "$REPO" show "$SHA:infra/services/$SERVICE/deploy.yaml" 2>/dev/null)" \
     || die "no infra/services/$SERVICE/deploy.yaml at ${SHA:0:7}"
 HOST="$(yq -r '.host' <<<"$MANIFEST")"
+CODE="$(yq -r '.code // ""' <<<"$MANIFEST")"
+[ -n "$CODE" ] || die "infra/services/$SERVICE/deploy.yaml has no 'code' folder"
+# The image: named by the commit that last changed the code or python/libs/ (deployer spec D1a).
+IMAGE_SHA="$(git -C "$REPO" log -1 --format=%H "$SHA" -- "$CODE" python/libs)"
+IMAGE="ghcr.io/$GH_REPO/$SERVICE"
 NSECRETS="$(yq -r '.secrets // [] | length' <<<"$MANIFEST")"
 
 echo -e "${GREEN}========================================${NC}"
@@ -53,7 +61,31 @@ echo -e "${GREEN}Deploying ${SERVICE}${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo -e "Commit:   ${BLUE}${SHA:0:7}${NC} ($REF) $(git -C "$REPO" log -1 --format=%s "$SHA")"
 echo -e "Host:     ${BLUE}$HOST${NC}"
+echo -e "Image:    ${BLUE}$IMAGE:${IMAGE_SHA:0:7}${NC}"
 echo -e "Secrets:  ${BLUE}$NSECRETS${NC} from OpenBao ($BAO_ADDR)"
+
+# ---- The image must exist in GHCR (anonymous pull, as the host will do) --------------------------
+image_exists() {
+    local token
+    token="$(curl -fsS "https://ghcr.io/token?scope=repository:$GH_REPO/$SERVICE:pull" | yq -r '.token')" || return 1
+    curl -fsS -o /dev/null -I -H "Authorization: Bearer $token" \
+        -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+        "https://ghcr.io/v2/$GH_REPO/$SERVICE/manifests/$IMAGE_SHA" 2>/dev/null
+}
+if ! image_exists; then
+    RUN_ID=""
+    if command -v gh >/dev/null; then
+        RUN_ID="$(gh run list -R "$GH_REPO" --workflow build.yml --limit 10 --json databaseId,status \
+            --jq '[.[] | select(.status != "completed")][0].databaseId // empty' 2>/dev/null || true)"
+    fi
+    if [ -n "$RUN_ID" ]; then
+        echo "Waiting for build run $RUN_ID (follow it: gh run watch -R $GH_REPO $RUN_ID) ..."
+        gh run watch -R "$GH_REPO" "$RUN_ID" --exit-status >/dev/null 2>&1 \
+            || die "Build run $RUN_ID failed: gh run view -R $GH_REPO $RUN_ID --log-failed"
+    fi
+    image_exists || die "No image $IMAGE:${IMAGE_SHA:0:7} in GHCR (or the package isn't public).
+  Build it:  gh workflow run build.yml -R $GH_REPO -f ref=$SHA"
+fi
 
 # ---- 2. Secrets from OpenBao (in memory only) ------------------------------------------------------
 # One line per secret: <destination> TAB <owner> TAB <base64 of the value, formatted>.

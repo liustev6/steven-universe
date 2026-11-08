@@ -5,11 +5,11 @@
   "description": "What to deploy where, and which secrets it needs. Read by infra/deployment/deploy.sh, deploy-target.sh and OpenTofu (infra/secrets-manager/tofu/services.tf). Spec: docs/specs/deployer.md (D12).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["service", "host", "compose", "health"],
+  "required": ["service", "host", "code", "compose", "health"],
   "properties": {
     "service": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,62}$", "description": "Must equal the folder name."},
     "host": {"type": "string", "description": "SSH alias of the target host (~/.ssh/config)."},
-    "code": {"type": "string", "description": "The service's code folder."},
+    "code": {"type": "string", "description": "The service's code folder. With python/libs/, the image's inputs: the image is named by the last commit that changed them (deployer spec D1a)."},
     "compose": {"type": "string", "pattern": "compose\\.ya?ml$", "description": "Compose file; its service name must equal `service`."},
     "config": {"type": "string", "pattern": "^infra/services/.+/config\\.env$", "description": "Non-secret settings, installed as /etc/<service>/config.env."},
     "policy": {"type": "string", "description": "auth-service only: the permissions file."},

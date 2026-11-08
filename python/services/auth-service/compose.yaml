@@ -14,7 +14,7 @@ x-hardening: &hardening
   tmpfs: ["/tmp"]
 
 x-image: &image
-  image: ghcr.io/liustev6/steven-universe/auth-service:${AUTH_SERVICE_TAG:-local}
+  image: ghcr.io/liustev6/steven-universe/auth-service:${IMAGE_TAG:-local}   # IMAGE_TAG: set by deploy-target.sh (deployer spec D1a)
   build:
     context: ../..                    # python/, so libs/service-auth is included
     dockerfile: services/auth-service/Dockerfile
