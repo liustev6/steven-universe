@@ -29,7 +29,7 @@ secrets:
   - from: shared/cloudflare_dns_token
     to: /root/.secrets/cloudflare.ini
     owner: "0:0"
-    format: "dns_cloudflare_api_token = {value}"
+    format: "dns_cloudflare_api_token = {value}\n"
 
 # Host-only: created on CT 102 and never copied anywhere, not even into OpenBao. The deploy only
 # checks they exist (signing keys: auth-service-admin new-key/promote-key; hashes: add-client).

@@ -65,7 +65,10 @@ if [ "$NSECRETS" -gt 0 ]; then
         from="$(yq -r ".secrets[$i].from" <<<"$MANIFEST")"
         to="$(yq -r ".secrets[$i].to" <<<"$MANIFEST")"
         owner="$(yq -r ".secrets[$i].owner // \"0:0\"" <<<"$MANIFEST")"
-        format="$(yq -r ".secrets[$i].format // \"{value}\"" <<<"$MANIFEST")"
+        # $(...) strips trailing newlines, which a format may need (e.g. an INI line ending in \n):
+        # append a sentinel, drop it, then drop the one newline yq adds after its output.
+        format="$(yq -r ".secrets[$i].format // \"{value}\"" <<<"$MANIFEST"; printf x)"
+        format="${format%x}"; format="${format%$'\n'}"
         value="$(bao kv get -field=value "kv/$from" 2>/dev/null)" \
             || die "Cannot read kv/$from from OpenBao (missing, or not allowed for your login)."
         formatted="${format%%\{value\}*}${value}${format#*\{value\}}"

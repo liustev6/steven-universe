@@ -31,4 +31,4 @@ secrets:
   - from: shared/cloudflare_dns_token
     to: /root/.secrets/cloudflare.ini
     owner: "0:0"
-    format: "dns_cloudflare_api_token = {value}"   # certbot's credentials file
+    format: "dns_cloudflare_api_token = {value}\n"   # certbot's credentials file
