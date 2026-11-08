@@ -11,10 +11,11 @@
 # working copy), so what runs is always a real commit. Push first, then deploy.
 #
 # Steps on the host:
-#   1. Check out the commit           5. Validate + install policy.yaml
-#   2. Config dir + TLS certificate   6. Signing key (first deploy only)
-#   3. Install host tools             7. Start container, wait until healthy
-#   4. Build the image                8. Check /health by name over TLS
+#   1. Check out the commit           6. Signing key (first deploy only)
+#   2. Config dir + TLS certificate   7. Start container, wait until healthy
+#   3. Install host tools             8. Check /health by name over TLS
+#   4. Build the image                9. Smoke test as the `smoke-test` client
+#   5. Validate + install policy.yaml
 #
 # Prerequisites (one-time, see python/services/auth-service/README.md):
 # - `auth-host` in ~/.ssh/config (or set AUTH_HOST)
@@ -82,7 +83,7 @@ if [ "$COLOR" = 1 ]; then
 else
     RED=''; GREEN=''; YELLOW=''; BLUE=''; NC=''
 fi
-STEP=0; TOTAL=8; STEP_NAME=""
+STEP=0; TOTAL=9; STEP_NAME=""
 step() { STEP=$((STEP + 1)); STEP_NAME="$*"; printf '\n%sStep %d/%d: %s%s\n' "$YELLOW" "$STEP" "$TOTAL" "$*" "$NC"; }
 ok()   { printf '%s✓ %s%s\n' "$GREEN" "$*" "$NC"; }
 info() { printf '  %s\n' "$*"; }
@@ -262,6 +263,38 @@ field() { printf '%s' "$HEALTH" | grep -o "\"$1\":\"[^\"]*\"" | cut -d'"' -f4; }
 ok "Reachable by name, certificate verified, status: $(field status)"
 RUNNING="$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$CONTAINER")"
 [ "$RUNNING" = "$SHA" ] || die "Container reports revision ${RUNNING:0:7}, expected $SHORT."
+
+##############################################################################
+# Step 9: Smoke test
+#
+# scripts/smoke_test.py runs inside the image just built (it has service_auth),
+# with host networking, so it goes through DNS, port 443 and TLS like a real
+# service: discovery, JWKS, a real mint verified against the live keys, and
+# three rejections. It authenticates as `smoke-test`, a dedicated client whose
+# only grant is private/smoke-test/; real clients are never touched. Its secret
+# is created on the first run and kept root-only in /root/.secrets/.
+##############################################################################
+step "Smoke test (as the smoke-test client)"
+SMOKE_SECRET=/root/.secrets/smoke-test-client
+if [ ! -s "$SMOKE_SECRET" ]; then
+    install -d -m 700 /root/.secrets
+    if ! (umask 077; auth-service-admin add-client smoke-test --stdout >"$SMOKE_SECRET" 2>/dev/null); then
+        rm -f "$SMOKE_SECRET"
+        die "Could not create the smoke-test client secret (is smoke-test in policy.yaml?)."
+    fi
+    info "created the smoke-test client secret (first run)"
+fi
+# --user 0: the secret file is root-only; still read-only, no capabilities, removed afterwards.
+if SMOKE_OUT="$(docker run --rm --network host --read-only --user 0 --cap-drop ALL \
+        --security-opt no-new-privileges:true \
+        -v "$SMOKE_SECRET:/t/secret:ro" -v "$SVC/scripts/smoke_test.py:/t/smoke.py:ro" \
+        --entrypoint python "$IMAGE" /t/smoke.py 2>&1)"; then
+    printf '%s\n' "$SMOKE_OUT" | grep -E '^(PASS|FAIL)' | sed 's/^/  /'
+    ok "Smoke test passed ($(printf '%s\n' "$SMOKE_OUT" | grep -c '^PASS') checks)"
+else
+    printf '%s\n' "$SMOKE_OUT" | sed 's/^/  /' >&2
+    die "Smoke test FAILED. The new version is running; roll back with: infra/deployment/auth-service.sh ${PREV:0:7}"
+fi
 
 # Remove old, now-unused auth-service images so the 8 GB disk doesn't fill up.
 quiet docker image prune -f --filter "label=org.opencontainers.image.title=auth-service"

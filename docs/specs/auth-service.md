@@ -1,8 +1,12 @@
 # Spec: auth-service (internal token issuer) and service-auth library
 
 **Paths**: `python/services/auth-service/` (the issuer), `python/libs/service-auth/` (shared
-client and verifier library). **Status**: proposed. Phase 0 can ship with the file-management
-rewrite before the issuer exists.
+client and verifier library). **Status**: **live** since 2026-11-07 on CT 102
+(`https://auth.lan.liustev6.ca`, Docker Compose, deployed with `infra/deployment/auth-service.sh`).
+Phase 0 was skipped; phases 1, 2 and 2b are implemented. The deployed `policy.yaml` enables
+grant 1 and relaying (grant 3) only: no users yet, and no client has `can_downscope` until the
+known relay issue is fixed (auth-service README). Each deploy ends with `scripts/smoke_test.py`,
+run as the dedicated `smoke-test` client (its only grant: `private/smoke-test/` at file-management).
 
 ## Scope
 Services in this repo call each other over the LAN: api-service (the only internet-facing

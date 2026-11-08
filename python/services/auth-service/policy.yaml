@@ -23,7 +23,7 @@ audiences:
       file_access:
         actions: [read, write, delete, list]
         location_syntax: prefix          # "<bucket>/<key prefix>"; subset = string prefix
-        location_roots: [models/, public/, users/, workspaces/, services/]
+        location_roots: [public/, private/]   # file-management's buckets (its spec, D10); keep in sync
 
 clients:
   api-service:
@@ -42,5 +42,13 @@ clients:
       file-management:
         scopes: [files:read, files:write, files:delete, files:list]
         authorization_details:
-          - {type: file_access, actions: [read, write, delete, list], locations: ["services/${client}/"]}
-          - {type: file_access, actions: [read, write, delete, list], locations: ["workspaces/${client}/"]}
+          # its own folder; its agent's workspaces are sub-folders (private/pi-server/workspaces/...)
+          - {type: file_access, actions: [read, write, delete, list], locations: ["private/${client}/"]}
+
+  smoke-test:                            # synthetic client for deploy checks (scripts/smoke_test.py);
+                                         # secret only on the auth host, root-only. Its own folder, nothing else.
+    grants:
+      file-management:
+        scopes: [files:read, files:write, files:delete, files:list]
+        authorization_details:
+          - {type: file_access, actions: [read, write, delete, list], locations: ["private/${client}/"]}

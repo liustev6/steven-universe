@@ -138,6 +138,13 @@ copy the new `policy.yaml` into `/etc/auth-service/` and it is reloaded (an inva
 rejected and the old one stays). Later the image comes from GHCR instead
 (`AUTH_SERVICE_TAG=<sha> docker compose up -d`), built by CI.
 
+**Smoke test:** every deploy ends with `scripts/smoke_test.py`, run in the new image as the
+`smoke-test` client: discovery, JWKS, a real mint verified against the live keys, and three
+rejections (wrong secret, wrong audience, no grant). `smoke-test` is a dedicated client in
+`policy.yaml` whose only grant is `private/smoke-test/` at file-management, so real clients are
+never touched. Its secret is created on the first deploy and kept root-only on the auth host in
+`/root/.secrets/smoke-test-client`.
+
 **Logs:** `docker compose logs -f auth-service` (includes the `auth_service.audit` lines).
 
 ## Notes and deviations from the spec

@@ -126,4 +126,4 @@ def test_repo_policy_relays_pi_server_with_all_its_file_permissions():
     policy = Policy.model_validate(yaml.safe_load(REPO_POLICY.read_text()))
     relayed = resolve(policy, "pi-server", "file-management", {"client": "pi-server"})
     assert set(relayed.scopes) == {"files:read", "files:write", "files:delete", "files:list"}
-    assert [d["locations"] for d in relayed.details] == [["services/pi-server/"], ["workspaces/pi-server/"]]
+    assert [d["locations"] for d in relayed.details] == [["private/pi-server/"]]
