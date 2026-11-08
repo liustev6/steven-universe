@@ -1,0 +1,45 @@
+# OpenBao (secrets-manager) on CT 104. Spec: docs/specs/secrets-manager.md.
+# On the host, from this directory:   docker compose up -d
+#
+# Host layout (owner 10001 = the container user, directories mode 700, files 600):
+#   /etc/openbao/tls/cert.pem, key.pem   Let's Encrypt certificate (cert-hook.sh)   -> read-only
+#   /var/lib/openbao/data                 Raft storage (encrypted; useless without the unseal shares)
+#   /var/lib/openbao/logs                 audit.log
+#
+# Starting or restarting the container leaves OpenBao SEALED: unseal by hand (README).
+name: secrets-manager
+
+services:
+  openbao:
+    image: quay.io/openbao/openbao:2.7.2      # pinned; upgrade deliberately (README)
+    # Run the server directly: the image's entrypoint script only chowns directories and
+    # drops root, which isn't needed when starting as uid 10001.
+    entrypoint: ["bao", "server", "-config=/openbao/config/openbao.hcl"]
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    environment:
+      # For `docker exec … bao …` inside the container: talk to the local listener but verify the
+      # certificate against its real name.
+      BAO_ADDR: https://127.0.0.1:8200
+      BAO_TLS_SERVER_NAME: bao.lan.liustev6.ca
+    ports: ["8200:8200"]
+    volumes:
+      - ./openbao.hcl:/openbao/config/openbao.hcl:ro
+      - /etc/openbao/tls:/openbao/tls:ro
+      - /var/lib/openbao/data:/openbao/data
+      - /var/lib/openbao/logs:/openbao/logs
+    # Healthy = the server answers (sealed or not). `bao status` exits 0 unsealed, 2 sealed,
+    # 1 on error; only 1 is unhealthy.
+    healthcheck:
+      test: ["CMD-SHELL", "bao status >/dev/null 2>&1; [ $$? -ne 1 ]"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}

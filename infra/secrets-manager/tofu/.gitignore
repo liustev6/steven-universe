@@ -1,0 +1,6 @@
+# OpenTofu working files. The state is encrypted, but still never committed.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log

@@ -1,6 +1,6 @@
 # secrets-manager (OpenBao)
 
-**Status:** planned (setup steps below) · will run at `https://bao.lan.liustev6.ca:8200` on CT 104
+**Status:** in setup (steps 2–3 done; 1 awaits approval in Tailscale; 6 written, awaiting review) · `https://bao.lan.liustev6.ca:8200` on CT 104 (`192.168.50.206`)
 **Code:** `infra/secrets-manager/` (container, server config, OpenTofu configuration; no secret
 values) · Related: [deployer.md](deployer.md) (its main reader), [auth-service.md](auth-service.md)
 (how services prove who they are), [rustfs.md](rustfs.md)
@@ -36,10 +36,10 @@ deployer ──3──▶ ssh deploy-target: values on stdin → /etc/<svc>/cred
 | S4 | **Delivered as files at deploy time.** The deployer reads managed secrets and writes them to `/etc/<svc>/credentials/` (deployer D7); services never talk to OpenBao. | A sealed or down OpenBao blocks **deploys only**; running and restarting services keep working. |
 | S5 | **Sealed on restart, unsealed by hand:** Shamir 3 key shares, any 2 unseal; shares kept in three separate places, never on CT 104 or in its backups. | Sealing makes a copy of the disk or a backup useless. Storing the key next to the data (as the community script does) would undo that. |
 | S6 | **The initial root token is revoked** after setup; an emergency root token is generated only with 2 shares (`bao operator generate-root`). | No permanent all-powerful credential exists. |
-| S7 | **Audited:** a file audit device from the start; values are HMAC'd in the log, never stored in plain text. | Who read which secret, when. |
+| S7 | **Audited:** a file audit device declared in `openbao.hcl` (OpenBao refuses creating audit devices through the API by default, `unsafe_allow_api_audit_creation = false`); values are HMAC'd in the log, never stored in plain text. | Who read which secret, when; and the audit device can't be changed through the API. |
 | S8 | **Least privilege by path:** each reader's policy covers exactly its paths; the deployer's is read-only. | |
 | S9 | **Install and initialization are manual runbooks** (one-time, like RustFS); initialization is never scripted. | The unseal shares must only ever appear in your terminal. |
-| S10 | **Configuration as code with OpenTofu:** audit device, secrets engine, auth methods, roles and policies are declared in `infra/secrets-manager/tofu/` and applied with `tofu plan` / `tofu apply`. | Reviewed in git like auth-service's `policy.yaml`; `plan` shows changes before they happen and detects drift. OpenTofu is the open-source Terraform; its Vault provider works with OpenBao. |
+| S10 | **Configuration as code with OpenTofu:** secrets engine, auth methods, roles and policies are declared in `infra/secrets-manager/tofu/` and applied with `tofu plan` / `tofu apply`. | Reviewed in git like auth-service's `policy.yaml`; `plan` shows changes before they happen and detects drift. OpenTofu is the open-source Terraform; its Vault provider works with OpenBao. |
 | S11 | **Secret values are never managed by OpenTofu.** They are written with `bao kv put` (stdin). | Anything OpenTofu manages lands in its state file. |
 | S12 | **OpenTofu state is encrypted** (OpenTofu's built-in state encryption, passphrase in your password manager); kept outside git, later in RustFS (S3 backend). | The state holds configuration details and the admin user's password hash. |
 | S13 | **Docker Compose** like every LXC service (deployer D11): the official image pinned to a version (`quay.io/openbao/openbao:2.7.2`), uid 10001, read-only filesystem, no capabilities, `disable_mlock = true` (recommended with Raft; swap stays small). | Same model and hardening as the other services. |
@@ -62,12 +62,13 @@ deployer ──3──▶ ssh deploy-target: values on stdin → /etc/<svc>/cred
 infra/secrets-manager/
   README.md            install, initialization and unseal runbooks; operations
   compose.yaml         the OpenBao container (pinned image, hardened)
-  openbao.hcl          server config: Raft storage, TLS listener, UI, disable_mlock
+  openbao.hcl          server config: Raft storage, TLS listener (auto-reloads certificates), UI,
+                       disable_mlock, audit log
   cert-hook.sh         certbot deploy hook: copy the certificate for uid 10001, restart
   tofu/
     versions.tf        OpenTofu + Vault provider versions; state encryption
-    main.tf            audit device, kv-v2 at kv/, JWT auth trusting auth-service, roles,
-                       userpass for the admin
+    main.tf            kv-v2 at kv/, JWT auth trusting auth-service, roles, userpass (the admin
+                       user and its password are created by hand, never in state)
     policies/admin.hcl, deployer.hcl
     variables.tf       address, admin user name (password comes from a prompt, not a file)
     .gitignore         *.tfstate*, .terraform/
@@ -85,18 +86,18 @@ storage "raft" {
   node_id = "bao-1"
 }
 listener "tcp" {
-  address       = "0.0.0.0:8200"
-  tls_cert_file = "/openbao/tls/cert.pem"
-  tls_key_file  = "/openbao/tls/key.pem"
+  address         = "0.0.0.0:8200"
+  tls_cert_file   = "/openbao/tls/cert.pem"
+  tls_key_file    = "/openbao/tls/key.pem"
+  tls_auto_reload = true          # renewed certificates without a restart (a restart seals it)
+}
+audit "file" "file" {
+  options { file_path = "/openbao/logs/audit.log" }
 }
 ```
 
 ### OpenTofu configuration (`tofu/main.tf`, sketch)
 ```hcl
-resource "vault_audit" "file" {
-  type    = "file"
-  options = { file_path = "/openbao/logs/audit.log" }
-}
 resource "vault_mount" "kv" {
   path    = "kv"
   type    = "kv"
@@ -123,7 +124,7 @@ resource "vault_policy" "deployer" {
   name   = "deployer"
   policy = file("${path.module}/policies/deployer.hcl")
 }
-# + vault_policy.admin, vault_auth_backend "userpass", the admin user
+# + vault_policy.admin, vault_auth_backend "userpass" (the user itself is created by hand)
 ```
 
 ### Policies (`tofu/policies/*.hcl`)
