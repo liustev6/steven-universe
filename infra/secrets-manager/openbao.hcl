@@ -6,9 +6,9 @@ log_level     = "info"
 api_addr      = "https://bao.lan.liustev6.ca:8200"
 cluster_addr  = "https://bao.lan.liustev6.ca:8201"   # required by Raft even with one node
 
-# mlock needs IPC_LOCK, which the container doesn't get (no capabilities). Recommended with Raft
-# anyway; CT 104 has only 256 MB of swap, the one place memory could reach disk.
-disable_mlock = true
+# No mlock setting: OpenBao 2.x removed memory locking ("disable_mlock" is rejected as unknown).
+# Keeping secrets out of swap is done by the container instead: compose.yaml sets
+# memswap_limit = mem_limit, i.e. zero swap for OpenBao.
 
 # Integrated storage, one node. Encrypted at rest with the key that unsealing unlocks.
 storage "raft" {

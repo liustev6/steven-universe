@@ -21,6 +21,10 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     tmpfs: ["/tmp"]
+    # Memory limit = memory+swap limit: OpenBao gets no swap, so decrypted secrets in its memory
+    # are never written to disk (OpenBao 2.x has no mlock).
+    mem_limit: 512m
+    memswap_limit: 512m
     environment:
       # For `docker exec … bao …` inside the container: talk to the local listener but verify the
       # certificate against its real name.

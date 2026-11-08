@@ -42,7 +42,7 @@ deployer ──3──▶ ssh deploy-target: values on stdin → /etc/<svc>/cred
 | S10 | **Configuration as code with OpenTofu:** secrets engine, auth methods, roles and policies are declared in `infra/secrets-manager/tofu/` and applied with `tofu plan` / `tofu apply`. | Reviewed in git like auth-service's `policy.yaml`; `plan` shows changes before they happen and detects drift. OpenTofu is the open-source Terraform; its Vault provider works with OpenBao. |
 | S11 | **Secret values are never managed by OpenTofu.** They are written with `bao kv put` (stdin). | Anything OpenTofu manages lands in its state file. |
 | S12 | **OpenTofu state is encrypted** (OpenTofu's built-in state encryption, passphrase in your password manager); kept outside git, later in RustFS (S3 backend). | The state holds configuration details and the admin user's password hash. |
-| S13 | **Docker Compose** like every LXC service (deployer D11): the official image pinned to a version (`quay.io/openbao/openbao:2.7.2`), uid 10001, read-only filesystem, no capabilities, `disable_mlock = true` (recommended with Raft; swap stays small). | Same model and hardening as the other services. |
+| S13 | **Docker Compose** like every LXC service (deployer D11): the official image pinned to a version (`quay.io/openbao/openbao:2.7.2`), uid 10001, read-only filesystem, no capabilities, **no swap** (`memswap_limit` = `mem_limit`, 512 MB; OpenBao 2.x has no mlock). | Same model and hardening as the other services. |
 | S14 | **Not the community-scripts installer.** It initializes with one share, writes the unseal key **and the root token** in plain text into the file the server reads, auto-unseals from it, uses a self-signed certificate with verification turned off, and installs `latest` (reviewed 2026-11-08). | Each of these defeats S2, S5 or S6. |
 
 ## What goes where
@@ -63,7 +63,7 @@ infra/secrets-manager/
   README.md            install, initialization and unseal runbooks; operations
   compose.yaml         the OpenBao container (pinned image, hardened)
   openbao.hcl          server config: Raft storage, TLS listener (auto-reloads certificates), UI,
-                       disable_mlock, audit log
+                       audit log
   cert-hook.sh         certbot deploy hook: copy the certificate for uid 10001, restart
   tofu/
     versions.tf        OpenTofu + Vault provider versions; state encryption
@@ -77,7 +77,6 @@ infra/secrets-manager/
 ### Server config (`openbao.hcl`, sketch)
 ```hcl
 ui            = true
-disable_mlock = true
 api_addr      = "https://bao.lan.liustev6.ca:8200"
 cluster_addr  = "https://bao.lan.liustev6.ca:8201"
 
