@@ -5,8 +5,7 @@ tunnel hostname); other services call it with tokens from auth-service, and it e
 token grants.
 
 **Path**: `python/services/file-management-service/` · **Audience / service id**: `file-management`
-**Spec**: `docs/specs/file-management.md` · **Status**: rewritten, tested, **not deployed yet**
-(migration step 4: LXC, `files.lan.liustev6.ca`, certificate, deploy script).
+**Spec**: `docs/specs/file-management.md` · **Status**: rewritten and tested; host, certificate and deploy script ready (CT 103).
 
 ## API
 
@@ -72,20 +71,31 @@ SERVICE_AUTH_DEV_PRINCIPAL='{"service":"dev","scopes":["*"],"authorization_detai
 curl -X PUT --data-binary @README.md localhost:8000/objects/public/readme.md
 ```
 
-## Deployment (not done yet)
+## Deployment
 
-Same model as auth-service (`python/services/auth-service/README.md`): its own LXC, Docker Compose,
-`https://files.lan.liustev6.ca` with a Let's Encrypt certificate (DNS-01), and on the host:
+CT 103 `file-management` on pve01 (`192.168.50.66`, reserved), Docker Compose, deployed by hand
+from the Mac with `infra/deployment/file-management-service.sh [ref]`: it builds a **pushed** commit
+on the host, checks the RustFS key and certificate, starts the container, checks
+`https://files.lan.liustev6.ca/health` with the certificate verified, then runs the smoke test.
 
+One-time setup on the host (done 2026-11-08):
 ```
-/etc/file-management/            owner 10001, mode 700
-  credentials/rustfs_access_key   mounted read-only at /run/secrets/
-  credentials/rustfs_secret_key
-  tls/cert.pem, tls/key.pem
+/etc/file-management/                         owner 10001, mode 700
+  credentials/rustfs_access_key, rustfs_secret_key   the limited RustFS key (only public/ and
+                                                      private/ objects), mounted at /run/secrets/
+  tls/cert.pem, tls/key.pem                   Let's Encrypt (DNS-01), copied by the certbot hook
+/root/.secrets/cloudflare.ini                 Cloudflare token for certbot (root-only)
+/root/.secrets/smoke-test-client              the smoke-test client's secret (root-only)
+/usr/local/sbin/file-management-cert-hook     scripts/cert-hook.sh (refreshed by every deploy)
 ```
-The RustFS user should be limited to the `public` and `private` buckets. `infra/deployment/
-file-management-service.sh` is the old script and refuses to run until it is rewritten like
-`infra/deployment/auth-service.sh`.
+RustFS (CT 101): buckets `public` and `private`, versioning on, old versions expire after 30 days,
+abandoned multipart uploads after 1 day; a RustFS user with a policy limited to object operations
+in those two buckets (checked: refused for creating/deleting buckets, versioning, bucket policies
+and other buckets).
+
+**Smoke test** (`scripts/smoke_test.py`, step 7 of every deploy): as auth-service's `smoke-test`
+client (only grant: `private/smoke-test/`), PUT/GET/Range/LIST/DELETE on real RustFS, then four
+requests outside its folder that must get 403. Real clients are never used.
 
 ## Not implemented yet (spec migration step 6)
 - Per-client quotas (507), multipart routes for uploads over one request's limit.

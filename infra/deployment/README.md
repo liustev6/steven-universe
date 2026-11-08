@@ -6,7 +6,7 @@ and reads that service's `.env` (copy `python/services/<service>/.env.example`).
 | Script | Deploys | To |
 |---|---|---|
 | `auth-service.sh [ref]` | `python/services/auth-service` at a **pushed** commit (default `main`) | CT 102 `auth-host` (Docker Compose, built on the host from a clean checkout) |
-| `file-management-service.sh` | `python/services/file-management-service` | **outdated, refuses to run** until rewritten like `auth-service.sh` (file-management spec, migration step 4) |
+| `file-management-service.sh [ref]` | `python/services/file-management-service` at a **pushed** commit (default `main`) | CT 103 `files-host` (Docker Compose, built on the host; health over TLS; smoke test) |
 | `gpu-server.sh` | `python/services/gpu-server` (+ `python/workers/gpu-server`) | the GPU VM (Docker, built on the VM) |
 | `stevenai-service.sh` | `python/services/stevenai-service` | its LXC (Docker) |
 | `web-gateway.sh` | `python/services/web-gateway` | its LXC (Docker) |
