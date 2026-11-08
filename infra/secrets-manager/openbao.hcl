@@ -25,6 +25,9 @@ listener "tcp" {
   tls_key_file    = "/openbao/tls/key.pem"
   tls_min_version = "tls12"
   tls_auto_reload = true
+  # Don't ask clients for a certificate (by default OpenBao requests one, which makes browsers
+  # show a "select a certificate" prompt). Nobody logs in with client certificates here.
+  tls_disable_client_certs = "true"
 }
 
 # Audit log: every request, with secret values HMAC'd (never in plain text). Declared here because

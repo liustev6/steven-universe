@@ -58,25 +58,38 @@ files); only deploys that need managed secrets wait.
 ## 4. Configure with OpenTofu (first time: with the root token)
 
 On the Mac (OpenTofu and the `bao` CLI: `brew install opentofu openbao`), with the Tailscale
-subnet route approved so `bao.lan.liustev6.ca` is reachable:
+subnet route approved so `bao.lan.liustev6.ca` is reachable. One terminal session throughout:
+OpenTofu reads `VAULT_*`, the `bao` CLI reads `BAO_*`, so both are set.
 ```sh
 cd infra/secrets-manager/tofu
-export BAO_ADDR=https://bao.lan.liustev6.ca:8200 VAULT_ADDR=https://bao.lan.liustev6.ca:8200
-read -rs TF_VAR_state_passphrase && export TF_VAR_state_passphrase   # choose it now; password manager
-read -rs VAULT_TOKEN && export VAULT_TOKEN                           # the initial root token
+export VAULT_ADDR=https://bao.lan.liustev6.ca:8200 BAO_ADDR=https://bao.lan.liustev6.ca:8200
+read -rs TF_VAR_state_passphrase && export TF_VAR_state_passphrase   # the state passphrase (password manager)
+read -rs ROOT                                                        # the initial root token (hidden)
+export VAULT_TOKEN="$ROOT" BAO_TOKEN="$ROOT"
+bao token lookup | grep -E "^policies"     # [root]
+
 tofu init
-tofu plan          # review: kv mount, 2 policies, userpass, auth-service JWT method, deployer role
-tofu apply
+tofu plan -out=first.tfplan   # review: 6 to add (kv, 2 policies, userpass, auth-service JWT, deployer role)
+tofu apply first.tfplan && rm first.tfplan
 ```
-Then create your admin login (password typed at a hidden prompt; it never enters OpenTofu), check
-it, and revoke the root token:
+Create your admin login. The password is read without echo and piped in, so it is never on a
+command line, in history, or in OpenTofu's state:
 ```sh
-bao write auth/userpass/users/steven token_policies=admin token_ttl=1h token_max_ttl=8h password=-   # type the password, then Ctrl-D
-export VAULT_TOKEN="$(bao login -method=userpass -token-only username=steven)"
-bao token lookup | grep policies        # [admin default]
-bao token revoke "<the root token>"     # from your password manager scratch, then delete it there
-tofu plan                                # as admin now: "No changes"
+read -rs P && printf %s "$P" | bao write auth/userpass/users/steven \
+    token_policies=admin token_ttl=1h token_max_ttl=8h password=- && unset P
+ADMIN="$(bao login -method=userpass -token-only username=steven)"   # prompts for the password
+export VAULT_TOKEN="$ADMIN" BAO_TOKEN="$ADMIN"
+bao token lookup | grep -E "^policies"     # [admin default]
 ```
+Revoke the root token and prove it's dead:
+```sh
+bao token revoke "$ROOT"
+BAO_TOKEN="$ROOT" bao token lookup >/dev/null 2>&1 && echo "STILL VALID" || echo "root token revoked"
+unset ROOT
+tofu plan                                   # as admin now: "No changes"
+```
+Delete the root token from wherever you noted it. A new one can only be created with 2 unseal
+shares (`bao operator generate-root`).
 
 From then on, every configuration change is: edit `tofu/`, `tofu plan`, review, `tofu apply`,
 commit. `tofu plan` showing changes you didn't make means someone changed OpenBao by hand.
