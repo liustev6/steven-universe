@@ -94,3 +94,17 @@ def test_body_size_limit(client, github, origin):
     sha = git(origin.path, "rev-parse", "HEAD")
     r = client.post("/v1/deployments", headers={"Authorization": f"Bearer {github.token(sha)}"}, content=b"x" * 5000)
     assert r.status_code == 413
+
+
+def test_dockerfile_entry_point_exists():
+    """The image runs `uvicorn app.main:app --factory`: that name must be a zero-argument factory."""
+    import inspect
+    import re
+    from pathlib import Path
+
+    from uvicorn.importer import import_from_string
+
+    cmd = (Path(__file__).resolve().parents[1] / "Dockerfile").read_text()
+    target = re.search(r'"(app\.main:\w+)", "--factory"', cmd)[1]
+    factory = import_from_string(target)
+    assert callable(factory) and not inspect.signature(factory).parameters

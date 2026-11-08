@@ -137,6 +137,11 @@ def create_app(settings: Settings | None = None, *, deployer: Deployer | None = 
     return app
 
 
+def app() -> FastAPI:  # pragma: no cover - uvicorn factory: `uvicorn app.main:app --factory`
+    """Factory for `uvicorn app.main:app --factory` (the Dockerfile's CMD)."""
+    return create_app()
+
+
 async def _ndjson(queue: asyncio.Queue):
     while True:
         try:
