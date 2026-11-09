@@ -133,7 +133,7 @@ def settings(tmp_path, hosts_file) -> Settings:
     key = tmp_path / "ssh_key"
     key.write_text("not a real key\n")
     return Settings(GITHUB_REPOSITORY_ID="1102380459", GITHUB_OWNER_ID="90568652",
-                    GITHUB_WORKFLOW_REF="liustev6/steven-universe/.github/workflows/build.yml@refs/heads/main",
+                    GITHUB_WORKFLOW_REF="liustev6/steven-universe/.github/workflows/deploy.yml@refs/heads/main",
                     STATE_DIR=tmp_path / "state", HOSTS_FILE=hosts_file, SSH_KEY_FILE=key)
 
 
@@ -162,7 +162,7 @@ class GitHubSigner:
             "iat": now, "nbf": now, "exp": now + 300,
             "repository": "liustev6/steven-universe", "repository_id": "1102380459",
             "repository_owner_id": "90568652", "ref": "refs/heads/main", "environment": "production",
-            "job_workflow_ref": "liustev6/steven-universe/.github/workflows/build.yml@refs/heads/main",
+            "job_workflow_ref": "liustev6/steven-universe/.github/workflows/deploy.yml@refs/heads/main",
             "runner_environment": "github-hosted", "sha": commit, "actor": "liustev6", "run_id": "42",
             "workflow": "build",
         }

@@ -1,23 +1,22 @@
 # build: test and build every service image whose inputs changed, push it to GHCR, then deploy the
-# changed `pipeline: true` services through api-service -> deployer (after your approval in the
-# `production` environment). Spec: docs/specs/deployer.md (D1, D1a, D2-D5, D16, D17, phases 1-2).
+# changed `pipeline: true` services in waves. Spec: docs/specs/deployer.md (D1, D1a, D16, D17, D19).
 #
-# An image is named by the commit that last changed its inputs (D1a): the manifest's `code` folder
-# plus python/libs/. For each infra/services/*/deploy.yaml, `plan` computes that commit and builds
-# only if ghcr.io/liustev6/steven-universe/<service>:<that sha> doesn't exist yet. A config-only
-# commit builds nothing, and re-running is always safe.
+#   plan ─▶ checks ─▶ build (per missing image) ─▶ wave1 (services) ─▶ wave2 (the edge: api-service)
 #
-# Build an older commit's missing images (e.g. to roll back to a commit from before this workflow):
-#   gh workflow run build.yml -f ref=<sha>
-# Redeploy a pipeline service at main's latest commit (GitHub's token is bound to that commit, D5;
-# roll back through the pipeline with `git revert`, or by hand with infra/deployment/deploy.sh <sha>):
-#   gh workflow run build.yml -f redeploy=<service>
+# The logic lives in .github/scripts/ (plan.sh, deploy.sh; tests in .github/scripts/tests/), always
+# taken from this workflow's own commit, so building an older ref still uses today's scripts.
+#
+#   gh workflow run build.yml -f ref=<sha>            build an older commit's missing images
+#   gh workflow run build.yml -f redeploy=<service>   redeploy a pipeline service at main's latest
+#                                                     commit (GitHub's token is bound to it, D5;
+#                                                     roll back with `git revert`, or by hand with
+#                                                     infra/deployment/deploy.sh <svc> <sha>)
 name: build
 
 on:
   push:
     branches: [main]
-    paths: ["python/**", "infra/services/**", ".github/workflows/build.yml"]
+    paths: ["python/**", "infra/services/**", ".github/**"]
   workflow_dispatch:
     inputs:
       ref:
@@ -39,86 +38,30 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       any: ${{ steps.plan.outputs.any }}
-      deploy: ${{ steps.plan.outputs.deploy }}
-      deploy_any: ${{ steps.plan.outputs.deploy_any }}
+      wave1: ${{ steps.plan.outputs.wave1 }}
+      wave2: ${{ steps.plan.outputs.wave2 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0              # full history: the image sha comes from git log
           persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with: {path: .ci, sparse-checkout: .github/scripts, persist-credentials: false}
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550  # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: plan
-        name: Which images are missing, which services to deploy
+        name: What to build and deploy
         env:
           EVENT: ${{ github.event_name }}
           BEFORE: ${{ github.event.before }}
           REDEPLOY: ${{ inputs.redeploy }}
-        run: |
-          set -euo pipefail
-          entries='[]'
-          deploys='[]'
-          # What changed in this push (a new or rewritten history: treat everything as changed).
-          ALL=false; CHANGED=""
-          if [ "$EVENT" = push ]; then
-            if [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
-              CHANGED="$(git diff --name-only "$BEFORE" HEAD)"
-            else
-              ALL=true
-            fi
-          fi
-          if [ -n "$REDEPLOY" ] && [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
-            echo "::error::redeploy only works at main's latest commit (ref=main)"; exit 1
-          fi
-          for m in infra/services/*/deploy.yaml; do
-            svc="$(yq -r '.service' "$m")"
-            code="$(yq -r '.code // ""' "$m")"
-            compose="$(yq -r '.compose' "$m")"
-            [ -n "$code" ] || { echo "::error file=$m::no 'code' folder (needed for the image sha, D1a)"; exit 1; }
-            image_sha="$(git log -1 --format=%H HEAD -- "$code" python/libs)"
-            [ -n "$image_sha" ] || { echo "::error file=$m::no commit touches $code"; exit 1; }
+        run: bash .ci/.github/scripts/plan.sh
 
-            # Build settings come from the service's compose file (one place for them, D12).
-            q() { yq -r "explode(.) | .services[\"$svc\"] | $1" "$compose"; }
-            want="$REGISTRY/$svc:\${IMAGE_TAG:-local}"
-            [ "$(q .image)" = "$want" ] || { echo "::error file=$compose::image must be $want"; exit 1; }
-            context="$(realpath -m --relative-to=. "$(dirname "$compose")/$(q .build.context)")"
-            dockerfile="$context/$(q .build.dockerfile)"
-
-            # Deploy it? Only `pipeline: true` services (D16): on a push, if its image inputs or its
-            # infra/services/<svc>/ changed; on workflow_dispatch, if named in `redeploy`.
-            if [ "$(yq -r '.pipeline // false' "$m")" = true ]; then
-              want=false
-              if [ "$EVENT" = workflow_dispatch ]; then
-                [ "$REDEPLOY" = "$svc" ] && want=true
-              elif [ "$ALL" = true ] || grep -qE "^($code|python/libs|infra/services/$svc)/" <<<"$CHANGED"; then
-                want=true
-              fi
-              if [ "$want" = true ]; then
-                echo "$svc: deploy (image ${image_sha:0:7})"
-                deploys="$(jq -c --arg s "$svc" --arg i "$image_sha" '. + [{service: $s, image_sha: $i}]' <<<"$deploys")"
-              fi
-            fi
-
-            if docker manifest inspect "$REGISTRY/$svc:$image_sha" >/dev/null 2>&1; then
-              echo "$svc: $REGISTRY/$svc:${image_sha:0:7} exists, skip"
-              continue
-            fi
-            echo "$svc: build ${image_sha:0:7} (last change to $code or python/libs)"
-            entries="$(jq -c --arg s "$svc" --arg c "$code" --arg i "$image_sha" \
-              --arg x "$context" --arg f "$dockerfile" \
-              '. + [{service: $s, code: $c, image_sha: $i, context: $x, dockerfile: $f}]' <<<"$entries")"
-          done
-          echo "matrix={\"include\":$entries}" >>"$GITHUB_OUTPUT"
-          echo "any=$([ "$entries" = '[]' ] && echo false || echo true)" >>"$GITHUB_OUTPUT"
-          echo "deploy=$deploys" >>"$GITHUB_OUTPUT"
-          echo "deploy_any=$([ "$deploys" = '[]' ] && echo false || echo true)" >>"$GITHUB_OUTPUT"
-
-  libs:
+  checks:
     runs-on: ubuntu-24.04
     permissions: {contents: read}
     steps:
@@ -126,6 +69,8 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with: {path: .ci, sparse-checkout: .github/scripts, persist-credentials: false}
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with: {python-version: "3.11"}
       - name: Test service-auth
@@ -133,11 +78,13 @@ jobs:
         run: |
           python -m pip install -q ".[fastapi]" pytest
           python -m pytest -q tests
+      - name: Test the CI scripts
+        run: bash .ci/.github/scripts/tests/run.sh
 
   build:
-    needs: [plan, libs]
+    needs: [plan, checks]
     if: needs.plan.outputs.any == 'true'
-    name: ${{ matrix.service }}
+    name: build ${{ matrix.service }}
     runs-on: ubuntu-24.04
     permissions: {contents: read, packages: write, id-token: write, attestations: write}
     strategy:
@@ -155,7 +102,6 @@ jobs:
         run: |
           python -m pip install -q -r requirements-dev.txt
           python -m pytest -q
-
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550  # v4.8.0
         with:
@@ -185,79 +131,22 @@ jobs:
           echo "**${{ matrix.service }}**: \`${{ env.REGISTRY }}/${{ matrix.service }}:${{ matrix.image_sha }}\`" >>"$GITHUB_STEP_SUMMARY"
           echo "digest \`${{ steps.build.outputs.digest }}\`" >>"$GITHUB_STEP_SUMMARY"
 
-  # Deploy: one job per service, after your approval (environment `production`, D17). GitHub's
-  # OIDC token is the only credential (D2): api-service forwards it, the deployer verifies it.
-  deploy:
-    needs: [plan, libs, build]
+  # ---- Deploy in waves (D19): wave 2 runs only if wave 1 succeeded (or had nothing to do) ----------
+  wave1:
+    needs: [plan, checks, build]
     if: >-
-      !cancelled() && github.ref == 'refs/heads/main' && needs.plan.outputs.deploy_any == 'true'
-      && needs.libs.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped')
-    name: deploy ${{ matrix.service }}
-    runs-on: ubuntu-24.04
-    environment: production
+      !cancelled() && github.ref == 'refs/heads/main' && needs.plan.outputs.wave1 != '[]'
+      && needs.checks.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped')
     permissions: {contents: read, id-token: write}
-    concurrency: {group: "deploy-${{ matrix.service }}", cancel-in-progress: false}
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.plan.outputs.deploy) }}
-    steps:
-      - id: image
-        name: Image digest (the host must pull exactly this)
-        env:
-          SERVICE: ${{ matrix.service }}
-          IMAGE_SHA: ${{ matrix.image_sha }}
-        run: |
-          set -euo pipefail
-          repo="liustev6/steven-universe/$SERVICE"
-          token="$(curl -fsS "https://ghcr.io/token?scope=repository:$repo:pull" | jq -r .token)"
-          digest="$(curl -fsSI -H "Authorization: Bearer $token" \
-            -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json" \
-            "https://ghcr.io/v2/$repo/manifests/$IMAGE_SHA" | tr -d '\r' | awk -F': ' 'tolower($1) == "docker-content-digest" {print $2}')"
-          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::no image $REGISTRY/$SERVICE:$IMAGE_SHA in GHCR"; exit 1; }
-          echo "$REGISTRY/$SERVICE:${IMAGE_SHA:0:7} = $digest"
-          echo "digest=$digest" >>"$GITHUB_OUTPUT"
+    uses: ./.github/workflows/deploy.yml
+    with: {services: "${{ needs.plan.outputs.wave1 }}"}
 
-      - name: Deploy (api-service -> deployer -> host)
-        env:
-          SERVICE: ${{ matrix.service }}
-          DIGEST: ${{ steps.image.outputs.digest }}
-          URL: https://api.liustev6.ca/deploy/v1/deployments
-        run: |
-          set -euo pipefail
-          # GitHub's OIDC token for the deployer's audience: signed by GitHub, bound to this run's
-          # repository, branch, environment, workflow and commit; valid a few minutes, used once.
-          token="$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=steven-universe-deployer" | jq -r .value)"
-          echo "::add-mask::$token"
-          body="$(jq -nc --arg s "$SERVICE" --arg sha "$GITHUB_SHA" --arg d "$DIGEST" '{service: $s, sha: $sha, image_digest: $d}')"
-          : >result.json
-          # The deployer streams NDJSON: deploy-target's output, one group per step, then the result.
-          curl -sS -N --fail-with-body --max-time 1800 -X POST "$URL" \
-            -H "Authorization: Bearer $token" -H "Content-Type: application/json" -d "$body" |
-          while IFS= read -r line; do
-            event="$(jq -r '.event // "error"' <<<"$line" 2>/dev/null || echo raw)"
-            case "$event" in
-              accepted) echo "Deploying $SERVICE ${GITHUB_SHA:0:7} to $(jq -r .host <<<"$line")" ;;
-              log)
-                text="$(jq -r .line <<<"$line")"
-                if [[ "$text" =~ ^Step\ [0-9]+/[0-9]+: ]]; then
-                  [ -z "${open:-}" ] || echo "::endgroup::"
-                  echo "::group::$text"; open=1
-                else
-                  printf '%s\n' "$text"
-                fi ;;
-              rollback)
-                [ -z "${open:-}" ] || echo "::endgroup::"; open=
-                echo "::warning::$SERVICE: deploy failed, rolling back to $(jq -r .to <<<"$line")" ;;
-              result)
-                [ -z "${open:-}" ] || echo "::endgroup::"; open=
-                printf '%s\n' "$line" >result.json ;;
-              step|heartbeat) ;;
-              *) printf '%s\n' "$line" ;;   # a refusal from api-service or the deployer (4xx/5xx)
-            esac
-          done
-          status="$(jq -r '.status // empty' result.json 2>/dev/null || true)"
-          echo "### deploy $SERVICE: ${status:-no result}" >>"$GITHUB_STEP_SUMMARY"
-          jq -r '"commit `\(.sha[0:7])`, previous `\(.previous // "none" | .[0:7])`, \(.seconds) s"' result.json >>"$GITHUB_STEP_SUMMARY" 2>/dev/null || true
-          [ "$status" = succeeded ] || { echo "::error::deploy of $SERVICE: ${status:-no result} $(jq -r '.error // empty' result.json 2>/dev/null)"; exit 1; }
+  wave2:
+    needs: [plan, checks, build, wave1]
+    if: >-
+      !cancelled() && github.ref == 'refs/heads/main' && needs.plan.outputs.wave2 != '[]'
+      && needs.checks.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped')
+      && (needs.wave1.result == 'success' || needs.wave1.result == 'skipped')
+    permissions: {contents: read, id-token: write}
+    uses: ./.github/workflows/deploy.yml
+    with: {services: "${{ needs.plan.outputs.wave2 }}"}

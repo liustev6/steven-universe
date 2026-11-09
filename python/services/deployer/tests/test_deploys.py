@@ -15,11 +15,8 @@ def run(deployer, service, sha, digest=None, **kw):
     """prepare + start + collect all events."""
     async def go():
         plan = await deployer.prepare(service, sha, digest, **kw)
-        queue = deployer.start(plan, {"actor": "test"})
-        events = []
-        while (e := await queue.get()) is not None:
-            events.append(e)
-        return events
+        deployment = deployer.start(plan, {"actor": "test"})
+        return [e async for e in deployment.follow() if e["event"] != "heartbeat"]
     return asyncio.run(go())
 
 
@@ -83,11 +80,11 @@ def test_one_deploy_per_service(deployer, origin, fake_host):
             await gate.wait()
             return await original(*a)
         fake_host.run = slow
-        q = deployer.start(await deployer.prepare("demo", sha), {})
+        d = deployer.start(await deployer.prepare("demo", sha), {})
         with pytest.raises(DeployError) as e:
             await deployer.prepare("demo", sha)
         gate.set()
-        while await q.get() is not None:
+        async for _ in d.follow():
             pass
         await deployer.prepare("demo", sha)  # free again
         return e.value.status
@@ -157,3 +154,43 @@ def test_rollback_ignores_pipeline_flag_of_the_previous_commit(deployer, origin,
     fake_host.fail[bad] = 7                           # smoke test fails
     assert result(run(deployer, "demo", bad))["status"] == "rolled_back"
     assert fake_host.running == manual
+
+
+# ---- reconnecting (a dropped stream, e.g. while api-service itself is replaced) ---------------------
+
+def test_events_are_numbered_and_resumable(deployer, origin):
+    sha = git(origin.path, "rev-parse", "HEAD")
+
+    async def go():
+        d = deployer.start(await deployer.prepare("demo", sha), {})
+        everything = [e async for e in d.follow()]
+        resumed = [e async for e in d.follow(after=3)]           # after the deploy is over
+        return d, everything, resumed
+    d, everything, resumed = asyncio.run(go())
+    assert [e["seq"] for e in everything] == list(range(len(everything)))
+    assert everything[0] == {**everything[0], "event": "accepted", "id": d.id}
+    assert resumed == everything[4:] and resumed[-1]["event"] == "result"
+
+
+def test_a_deploy_nobody_watches_still_finishes(deployer, origin, fake_host):
+    sha = git(origin.path, "rev-parse", "HEAD")
+
+    async def go():
+        gate = asyncio.Event()
+        original = fake_host.run
+
+        async def slow(*a):
+            await gate.wait()
+            return await original(*a)
+        fake_host.run = slow
+        d = deployer.start(await deployer.prepare("demo", sha), {})
+        stream = d.follow()
+        first = [await stream.__anext__()]                       # caller sees "accepted", then drops
+        await stream.aclose()
+        gate.set()
+        rest = [e async for e in d.follow(after=first[-1]["seq"]) if e["event"] != "heartbeat"]
+        return first, rest
+    first, rest = asyncio.run(go())
+    assert first[0]["event"] == "accepted"
+    assert rest[0]["seq"] == 1 and rest[-1]["status"] == "succeeded"
+    assert deployer.get(first[0]["id"]).done

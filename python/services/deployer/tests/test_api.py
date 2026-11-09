@@ -108,3 +108,21 @@ def test_dockerfile_entry_point_exists():
     target = re.search(r'"(app\.main:\w+)", "--factory"', cmd)[1]
     factory = import_from_string(target)
     assert callable(factory) and not inspect.signature(factory).parameters
+
+
+def test_reconnect_with_a_fresh_token(client, github, origin):
+    sha = git(origin.path, "rev-parse", "HEAD")
+    ev = events(post(client, github.token(sha), {"service": "demo", "sha": sha}))
+    dep_id = ev[0]["id"]
+
+    def get(token, after=2, ident=dep_id):
+        return client.get(f"/v1/deployments/{ident}/events", params={"after": after},
+                          headers={"Authorization": f"Bearer {token}"})
+    r = get(github.token(sha))
+    assert r.status_code == 200 and events(r) == ev[3:]                    # exactly what came after seq 2
+    token = github.token(sha)
+    assert get(token).status_code == 200 and get(token).status_code == 403  # each token works once
+    assert get(github.token("c" * 40)).status_code == 403                   # token for another commit
+    assert get(github.token(sha), ident="0" * 32).status_code == 404        # unknown deployment
+    assert get(github.token(sha), ident="../../etc").status_code == 404
+    assert client.get(f"/v1/deployments/{dep_id}/events").status_code == 401

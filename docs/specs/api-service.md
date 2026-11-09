@@ -116,6 +116,7 @@ can't name another user's prefix; file-management also enforces this through the
 | Route | Mode | Downstream | Notes |
 |---|---|---|---|
 | `POST /deploy/v1/deployments` | `proxy` | deployer `POST /v1/deployments`, body and `Authorization` unchanged, response streamed | The caller is a GitHub Actions workflow with a GitHub OIDC token whose `aud` is the deployer. api-service is not the token's audience: it pre-checks `iss` = GitHub, rate-limits, and forwards. The deployer does the full verification. |
+| `GET /deploy/v1/deployments/{id}/events?after=` | `proxy` | deployer `GET /v1/deployments/{id}/events`, streamed | Reconnect after a dropped stream (e.g. while api-service itself is replaced by a wave-2 deploy). Same pre-checks; its own, more generous rate limit. |
 
 `proxy` is the only mode that forwards a credential, and only on this allowlisted path. It does
 not conflict with E4, which is about tokens addressed to api-service itself.
@@ -167,7 +168,7 @@ Not a rename: web-gateway's code carries G1–G6 and isn't running anywhere, so 
 fresh (2026-11-08) with only what phase 2 of the deployer needed, and the rest is **ported route by
 route, fixed on the way**. web-gateway is deleted when nothing is left in it.
 
-1. **Done:** `python/services/api-service/` with deny-by-default modes (`public`, `proxy`;
+1. **Done:** `python/services/api-service/`, one package per route group (`app/deploy/` today), with deny-by-default modes (`public`, `proxy`;
    `app/edge.py`) and the reviewed route list test; request IDs, security headers, client IP from
    `CF-Connecting-IP` only via cloudflared, rate limit; `/health` minimal (G6); the deploy proxy.
    Hardened compose on CT 106, manifest-driven deploys, its own LE certificate (`api.lan`).

@@ -20,10 +20,9 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app import deploy_proxy
+from app import deploy
 from app.config import Settings
 from app.edge import Mode, access, client_ip
-from app.ratelimit import RateLimiter
 
 logger = logging.getLogger("api_service")
 
@@ -76,8 +75,8 @@ def create_app(settings: Settings | None = None, *, http: httpx.AsyncClient | No
     async def health() -> dict:
         return {"status": "ok"}   # liveness only: no internal details (spec G6)
 
-    limiter = RateLimiter(settings.DEPLOY_RATE_BURST, settings.DEPLOY_RATE_PER_MINUTE)
-    app.include_router(deploy_proxy.build_router(settings, http, limiter))
+    # Route groups, one package each (app/<group>/): today only deploys.
+    app.include_router(deploy.build_router(settings, http))
     return app
 
 

@@ -4,9 +4,10 @@
 # Spec: docs/specs/api-service.md, docs/specs/deployer.md (D3, D15).
 service: api-service
 host: api-host
-# By hand for now: GitHub's deploy stream passes through api-service, so the pipeline deploying it
-# would cut its own stream (the deploy itself would finish). Revisit once that is handled.
+# By hand until the deployer and api-service with resumable deploys are live (deployer spec 2.14);
+# then true: the workflow reconnects when this deploy cuts its own stream.
 pipeline: false
+wave: 2                                # the edge: after the services it calls (wave 1)
 code: python/services/api-service
 compose: python/services/api-service/compose.yaml
 config: infra/services/api-service/config.env         # -> /etc/api-service/config.env

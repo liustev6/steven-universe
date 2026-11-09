@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Tests for plan.sh against a throwaway git history: what gets built, what gets deployed in which wave.
+set -uo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"; . "$HERE/lib.sh"
+PLAN="$HERE/../plan.sh"
+T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+REGISTRY=ghcr.io/example
+
+# Stand-ins: `docker manifest inspect` (an image exists if listed in $T/existing) and, on macOS,
+# a GNU-compatible `realpath -m --relative-to=.`.
+mkdir -p "$T/bin"
+cat >"$T/bin/docker" <<'SH'
+#!/bin/sh
+grep -qxF "$3" "$EXISTING"
+SH
+cat >"$T/bin/realpath" <<'SH'
+#!/bin/sh
+for a; do last="$a"; done
+python3 -c 'import os,sys; print(os.path.relpath(os.path.normpath(sys.argv[1])))' "$last"
+SH
+chmod +x "$T/bin/"*
+export PATH="$T/bin:$PATH" EXISTING="$T/existing"
+: >"$EXISTING"
+
+# A repository with three services: a (pipeline, wave 1), b (pipeline, wave 2), c (by hand).
+R="$T/repo"; mkdir -p "$R"; cd "$R"
+git init -q -b main; git config user.email t@example.com; git config user.name t
+manifest() {   # service, pipeline, wave
+  mkdir -p "infra/services/$1" "python/services/$1"
+  printf 'service: %s\nhost: h\ncode: python/services/%s\ncompose: python/services/%s/compose.yaml\nhealth: https://x/health\npipeline: %s\nwave: %s\n' \
+    "$1" "$1" "$1" "$2" "$3" >"infra/services/$1/deploy.yaml"
+  printf 'services:\n  %s:\n    image: %s/%s:${IMAGE_TAG:-local}\n    build:\n      context: ../..\n      dockerfile: services/%s/Dockerfile\n' \
+    "$1" "$REGISTRY" "$1" "$1" >"python/services/$1/compose.yaml"
+  echo v1 >"python/services/$1/app.py"
+}
+manifest a true 1; manifest b true 2; manifest c false 1
+mkdir -p python/libs docs; echo lib >python/libs/x.py; echo doc >docs/x.md
+commit() { git add -A; git commit -qm "$1"; git rev-parse HEAD; }
+C1="$(commit first)"
+echo v2 >python/services/a/app.py;            C2="$(commit "a code")"
+echo X=1 >infra/services/b/config.env;         C3="$(commit "b config")"
+echo doc2 >docs/x.md;                          C4="$(commit "docs only")"
+echo lib2 >python/libs/x.py;                   C5="$(commit "shared library")"
+
+run() {   # head, event, before, redeploy -> prints the outputs
+  git checkout -q "$1"
+  out="$T/out"; : >"$out"
+  EVENT="$2" BEFORE="$3" REDEPLOY="$4" REGISTRY="$REGISTRY" GITHUB_SHA="${5:-$1}" GITHUB_OUTPUT="$out" \
+    bash "$PLAN" >"$T/log" 2>&1 || echo "exit=$?" >>"$out"
+  cat "$out"
+}
+svcs() { sed -n "s/^$1=//p" <<<"$2" | jq -r '[.[].service] | join(",")' 2>/dev/null; }
+builds() { sed -n 's/^matrix=//p' <<<"$1" | jq -r '[.include[].service] | join(",")'; }
+
+o="$(run "$C2" push "$C1" "")"
+expect_eq "a's code changed: deploy a in wave 1" "$(svcs wave1 "$o")/$(svcs wave2 "$o")" "a/"
+expect_eq "nothing exists yet: build all three" "$(builds "$o")" "a,b,c"
+
+for s in a b c; do echo "$REGISTRY/$s:$(git log -1 --format=%H "$C5" -- python/services/$s python/libs)" >>"$EXISTING"; done
+for s in a b c; do echo "$REGISTRY/$s:$(git log -1 --format=%H "$C3" -- python/services/$s python/libs)" >>"$EXISTING"; done
+
+o="$(run "$C3" push "$C2" "")"
+expect_eq "b's config changed: deploy b in wave 2, nothing to build" "$(svcs wave1 "$o")/$(svcs wave2 "$o")/$(builds "$o")" "/b/"
+o="$(run "$C4" push "$C3" "")"
+expect_eq "docs only: no deploys" "$(svcs wave1 "$o")/$(svcs wave2 "$o")" "/"
+o="$(run "$C5" push "$C4" "")"
+expect_eq "shared library changed: every pipeline service, by wave (never c)" "$(svcs wave1 "$o")/$(svcs wave2 "$o")" "a/b"
+o="$(run "$C5" push "0000000000000000000000000000000000000000" "")"
+expect_eq "unknown previous push: everything changed" "$(svcs wave1 "$o")/$(svcs wave2 "$o")" "a/b"
+o="$(run "$C5" workflow_dispatch "" b)"
+expect_eq "redeploy=b: only b" "$(svcs wave1 "$o")/$(svcs wave2 "$o")" "/b"
+o="$(run "$C5" workflow_dispatch "" c)"
+expect_eq "redeploy=c (pipeline: false): nothing" "$(svcs wave1 "$o")/$(svcs wave2 "$o")" "/"
+o="$(run "$C5" workflow_dispatch "" "")"
+expect_eq "build-only dispatch: no deploys" "$(svcs wave1 "$o")/$(svcs wave2 "$o")" "/"
+o="$(run "$C4" workflow_dispatch "" b "$C5")"
+expect_contains "redeploy at an older ref is refused" "$o" "exit=1"
+expect_eq "image sha of a at C4 = the last commit touching a or python/libs" \
+  "$(run "$C4" push "$C3" "" >/dev/null; git log -1 --format=%h "$C4" -- python/services/a python/libs)" "$(git rev-parse --short "$C2")"
+finish

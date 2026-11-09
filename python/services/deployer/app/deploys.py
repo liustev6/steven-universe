@@ -2,14 +2,19 @@
 
     prepare()  everything that can refuse a request before anything runs (-> 4xx):
                the commit, the manifest at that commit, `pipeline`, the host allowlist, the lock
-    start()    runs the deploy as a background task and returns a queue of events. The task is not
+    start()    runs the deploy as a background task and returns its Deployment. The task is not
                tied to the HTTP request: if the caller disconnects, the deploy still finishes (and
                rolls back if needed) instead of being cut off halfway.
 
-Events (one JSON object per line on the wire):
-    {"event": "accepted", ...}                 {"event": "step", "n": 2, "of": 8, "name": "..."}
+A Deployment keeps its numbered events, so a caller whose connection dropped (e.g. GitHub, while
+api-service itself is being replaced) can reconnect and continue after the last `seq` it saw:
+`follow(after=<seq>)`, served as GET /v1/deployments/<id>/events?after=<seq>.
+
+Events (one JSON object per line on the wire; all but heartbeats carry "seq": 0, 1, 2, ...):
+    {"event": "accepted", "id": "...", ...}    {"event": "step", "n": 2, "of": 8, "name": "..."}
     {"event": "log", "line": "..."}            {"event": "rollback", "to": "<sha>", "reason": "..."}
     {"event": "result", "status": "succeeded" | "failed" | "rolled_back", ...}
+    {"event": "heartbeat"}                     while nothing happens (keeps proxies from closing)
 """
 
 from __future__ import annotations
@@ -19,9 +24,11 @@ import json
 import logging
 import re
 import time
+import uuid
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Protocol
+from typing import Any, AsyncIterator, Awaitable, Callable, Protocol
 
 import jsonschema
 import yaml
@@ -41,6 +48,50 @@ _STEP = re.compile(r"^Step (\d+)/(\d+): (.+)$")
 _PREVIOUS = re.compile(r"^\s*previous: ([0-9a-f]{40})\s*$")
 
 Emit = Callable[[dict[str, Any]], Awaitable[None]]
+KEEP_DEPLOYMENTS = 100          # finished deployments kept in memory for reconnects
+MAX_EVENTS = 5000               # per deployment (a deploy prints ~100 lines)
+
+
+class Deployment:
+    """One deploy: its numbered events, readable from any point while and after it runs."""
+
+    def __init__(self, service: str, sha: str):
+        self.id = uuid.uuid4().hex
+        self.service = service
+        self.sha = sha
+        self.events: list[dict[str, Any]] = []
+        self.done = False
+        self._changed = asyncio.Condition()
+
+    async def emit(self, event: dict[str, Any]) -> None:
+        async with self._changed:
+            if len(self.events) < MAX_EVENTS or event.get("event") == "result":
+                self.events.append({"seq": len(self.events), **event})
+            self._changed.notify_all()
+
+    async def finish(self) -> None:
+        async with self._changed:
+            self.done = True
+            self._changed.notify_all()
+
+    async def follow(self, after: int = -1, heartbeat: float = 15.0) -> AsyncIterator[dict[str, Any]]:
+        """Events with seq > after, then new ones as they come; ends when the deploy is over."""
+        position = max(after + 1, 0)
+        while True:
+            async with self._changed:
+                if position >= len(self.events) and not self.done:
+                    try:
+                        await asyncio.wait_for(self._changed.wait(), heartbeat)
+                    except TimeoutError:
+                        pass
+                fresh, done = self.events[position:], self.done
+            position += len(fresh)
+            for event in fresh:
+                yield event
+            if done and position >= len(self.events):
+                return
+            if not fresh:
+                yield {"event": "heartbeat"}
 
 
 class DeployError(Exception):
@@ -87,6 +138,7 @@ class Deployer:
     audit_log: Path
     _running: set[str] = field(default_factory=set)
     _tasks: set[asyncio.Task] = field(default_factory=set)
+    deployments: OrderedDict = field(default_factory=OrderedDict)   # id -> Deployment
 
     # ---- checks (nothing has run yet) -----------------------------------------------------------
     async def prepare(self, service: str, sha: str, digest: str | None = None, *,
@@ -138,27 +190,43 @@ class Deployer:
         return host
 
     # ---- the deploy (background task) -----------------------------------------------------------
-    def start(self, plan: Plan, requested_by: dict[str, Any]) -> asyncio.Queue:
+    def start(self, plan: Plan, requested_by: dict[str, Any]) -> Deployment:
         if plan.service in self._running:
             raise DeployError(409, f"a deploy of {plan.service} is already running")
         self._running.add(plan.service)
-        queue: asyncio.Queue = asyncio.Queue()
-        task = asyncio.create_task(self._deploy(plan, requested_by, queue.put))
+        deployment = Deployment(plan.service, plan.sha)
+        self.deployments[deployment.id] = deployment
+        while len(self.deployments) > KEEP_DEPLOYMENTS:
+            oldest = next(iter(self.deployments.values()))
+            if not oldest.done:
+                break
+            self.deployments.popitem(last=False)
+
+        async def run() -> None:
+            try:
+                await self._deploy(plan, requested_by, deployment)
+            finally:
+                await deployment.finish()
+
+        task = asyncio.create_task(run())
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
-        task.add_done_callback(lambda _: queue.put_nowait(None))   # end of stream
-        return queue
+        return deployment
+
+    def get(self, deployment_id: str) -> Deployment | None:
+        return self.deployments.get(deployment_id)
 
     async def wait(self) -> None:
         """Let running deploys finish (shutdown)."""
         if self._tasks:
             await asyncio.gather(*self._tasks, return_exceptions=True)
 
-    async def _deploy(self, plan: Plan, requested_by: dict[str, Any], emit: Emit) -> None:
+    async def _deploy(self, plan: Plan, requested_by: dict[str, Any], deployment: Deployment) -> None:
+        emit = deployment.emit
         started = time.time()
-        result: dict[str, Any] = {"event": "result", "service": plan.service, "sha": plan.sha}
+        result: dict[str, Any] = {"event": "result", "id": deployment.id, "service": plan.service, "sha": plan.sha}
         try:
-            await emit({"event": "accepted", "service": plan.service, "sha": plan.sha,
+            await emit({"event": "accepted", "id": deployment.id, "service": plan.service, "sha": plan.sha,
                         "host": plan.host.name, "digest": plan.digest})
             first = await self._attempt(plan, emit)
             result["previous"] = first.previous

@@ -31,7 +31,8 @@ def test_valid_token(settings, github):
     ("environment", "staging"),                     # didn't pass the production approval
     ("environment", None),                          # no environment at all
     ("job_workflow_ref", "liustev6/steven-universe/.github/workflows/other.yml@refs/heads/main"),
-    ("job_workflow_ref", "liustev6/steven-universe/.github/workflows/build.yml@refs/heads/feature"),
+    ("job_workflow_ref", "liustev6/steven-universe/.github/workflows/deploy.yml@refs/heads/feature"),
+    ("job_workflow_ref", "liustev6/steven-universe/.github/workflows/build.yml@refs/heads/main"),  # the caller itself
     ("runner_environment", "self-hosted"),
 ])
 def test_claims_must_match(settings, github, claim, value):

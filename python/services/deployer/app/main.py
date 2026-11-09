@@ -2,7 +2,11 @@
 
     POST /v1/deployments   Authorization: Bearer <GitHub OIDC token>
                            {"service": "...", "sha": "<40 hex>", "image_digest": "sha256:..."?}
-                           -> 200, NDJSON event stream (last line: the result)
+                           -> 200, NDJSON event stream (first: "accepted" with the id; last: the result)
+    GET  /v1/deployments/<id>/events?after=<seq>
+                           Authorization: Bearer <a fresh GitHub OIDC token for the same commit>
+                           -> the events after <seq>, then live until the result (reconnect after a
+                              dropped stream, e.g. while api-service itself is being replaced)
     GET  /health
 
 Reached from GitHub only through api-service's /deploy/* route (D3, D15); LAN-only otherwise.
@@ -13,9 +17,9 @@ Run (production, inside the container):
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
+import re
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -35,6 +39,7 @@ from app.ssh import SSHRunner
 logger = logging.getLogger("deployer")
 HEARTBEAT_SECONDS = 15  # keeps proxies (Cloudflare, api-service) from closing a quiet stream
 MAX_BODY_BYTES = 4096
+DEPLOYMENT_ID = re.compile(r"^[0-9a-f]{32}$")
 
 
 class DeploymentRequest(BaseModel):
@@ -97,14 +102,13 @@ def create_app(settings: Settings | None = None, *, deployer: Deployer | None = 
         body = {"status": "degraded" if problems else "healthy", "problems": problems}
         return JSONResponse(body, status_code=503 if problems else 200)
 
-    @app.post("/v1/deployments")
-    async def create_deployment(request: Request):
-        # 1. Who is asking: a GitHub OIDC token, checked before the body is even read.
+    async def github_claims(request: Request) -> dict[str, Any] | JSONResponse:
+        """The verified GitHub token's claims, or the error response."""
         auth = request.headers.get("authorization", "")
         if not auth.lower().startswith("bearer "):
             return _error(401, "a GitHub OIDC bearer token is required")
         try:
-            claims = await verifier.verify(auth[7:].strip())
+            return await verifier.verify(auth[7:].strip())
         except Unauthorized as exc:
             return _error(401, str(exc))
         except Forbidden as exc:
@@ -112,6 +116,13 @@ def create_app(settings: Settings | None = None, *, deployer: Deployer | None = 
             return _error(403, str(exc))
         except Unavailable as exc:
             return _error(503, str(exc))
+
+    @app.post("/v1/deployments")
+    async def create_deployment(request: Request):
+        # 1. Who is asking: a GitHub OIDC token, checked before the body is even read.
+        claims = await github_claims(request)
+        if isinstance(claims, JSONResponse):
+            return claims
 
         # 2. What: service + sha (+ digest), nothing else (D4); the token is bound to the sha (D5).
         raw = await request.body()
@@ -128,11 +139,26 @@ def create_app(settings: Settings | None = None, *, deployer: Deployer | None = 
         try:
             plan = await deployer.prepare(body.service, body.sha, body.image_digest)
             requested_by = {k: claims.get(k) for k in ("actor", "run_id", "run_attempt", "workflow", "sha")}
-            queue = deployer.start(plan, requested_by)
+            deployment = deployer.start(plan, requested_by)
         except DeployError as exc:
             return _error(exc.status, exc.message)
 
-        return StreamingResponse(_ndjson(queue), media_type="application/x-ndjson")
+        return StreamingResponse(_ndjson(deployment.follow(heartbeat=HEARTBEAT_SECONDS)),
+                                 media_type="application/x-ndjson")
+
+    @app.get("/v1/deployments/{deployment_id}/events")
+    async def deployment_events(deployment_id: str, request: Request, after: int = -1):
+        # Same checks as starting one; the fresh token must be for the deployment's own commit.
+        claims = await github_claims(request)
+        if isinstance(claims, JSONResponse):
+            return claims
+        deployment = deployer.get(deployment_id) if DEPLOYMENT_ID.match(deployment_id) else None
+        if deployment is None:
+            return _error(404, "unknown deployment (the deployer keeps the last 100 in memory)")
+        if claims.get("sha") != deployment.sha:
+            return _error(403, "the token is for another commit than this deployment")
+        return StreamingResponse(_ndjson(deployment.follow(after, heartbeat=HEARTBEAT_SECONDS)),
+                                 media_type="application/x-ndjson")
 
     return app
 
@@ -142,14 +168,6 @@ def app() -> FastAPI:  # pragma: no cover - uvicorn factory: `uvicorn app.main:a
     return create_app()
 
 
-async def _ndjson(queue: asyncio.Queue):
-    while True:
-        try:
-            event = await asyncio.wait_for(queue.get(), HEARTBEAT_SECONDS)
-        except TimeoutError:
-            yield '{"event": "heartbeat"}\n'
-            continue
-        if event is None:
-            return
+async def _ndjson(events):
+    async for event in events:
         yield json.dumps(event) + "\n"
-

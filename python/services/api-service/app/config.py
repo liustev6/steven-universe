@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # Per client IP: a burst of DEPLOY_RATE_BURST, refilled at DEPLOY_RATE_PER_MINUTE.
     DEPLOY_RATE_BURST: int = 10
     DEPLOY_RATE_PER_MINUTE: float = 10
+    # Reconnects after a dropped stream (the workflow retries every few seconds while api-service
+    # itself restarts): more generous.
+    DEPLOY_EVENTS_RATE_BURST: int = 30
+    DEPLOY_EVENTS_RATE_PER_MINUTE: float = 60
     # The deployer streams progress (with heartbeats every 15 s); a deploy may take minutes.
     DEPLOY_READ_TIMEOUT_SECONDS: float = 120
 

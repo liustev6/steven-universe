@@ -66,12 +66,24 @@ GitHub-hosted runner                                        LAN
 | D16 | **The manifest says who may deploy a service: `pipeline: true` or `false`** (default false). The workflow deploys only `pipeline: true` services. The deployer refuses the others with `403` and has no host entry for them either. D13 services stay `false`. |
 | D17 | **The gate is automated, not a click** (one maintainer who pushes straight to `main`; changed 2026-11-08). The `production` environment accepts only `main`; no approval is required (continuous deployment). What stands between a push and a broken service: tests before any image is pushed, the health check and smoke test, automatic rollback, and `pipeline: true` services only (never the D13 roots). In exchange: two-factor authentication on the GitHub account and no write-access tokens or apps on this repo, since pushing to `main` is deploying. A ruleset on `main` blocks force pushes and deletion; pull requests stay optional. |
 | D18 | **LAN break-glass on the deployer:** `docker exec deployer python -m app.cli deploy <service> <sha>` runs a deploy without a GitHub token. Only someone already root on the deployer LXC can do this, and that person already holds all its power. It is used to test the deployer before the edge exists, and when GitHub is down. |
+| D19 | **Deploys run in waves** (as Argo CD sync waves; 2026-11-08). Each manifest has `wave` (default 1). Wave 1 = services, in parallel; wave 2 = the edge (api-service), only after wave 1 succeeded: backends before their callers, and the conduit every deploy stream passes through goes last. A failed wave stops the next. auth-service, OpenBao and the deployer are not in any wave (D13: by hand). A change that needs a new auth-service grant deploys auth-service by hand first. |
 
 ## GitHub side
-One workflow, `.github/workflows/build.yml` (built 2026-11-08):
+Two workflow files and two scripts (2026-11-08):
+
+| File | What |
+|---|---|
+| `.github/workflows/build.yml` | the pipeline: `plan` → `checks` → `build` (per missing image) → `wave1` → `wave2` |
+| `.github/workflows/deploy.yml` | reusable (`workflow_call`): one deploy job per service of a wave, environment `production`. GitHub's token minted here has `job_workflow_ref = …/deploy.yml@refs/heads/main`, the only workflow the deployer accepts |
+| `.github/scripts/plan.sh` | what to build (D1a) and what to deploy in which wave (D16, D19) |
+| `.github/scripts/deploy.sh` | one deploy: digest, token, POST, the stream as log groups, **reconnect** after a dropped stream, the result |
+| `.github/scripts/tests/` | tests for both (a throwaway git history; a stand-in `curl`), run by `checks` |
+
+The scripts are always taken from the workflow's own commit, so building an older ref still uses
+today's scripts.
 
 ```
-push to main ─▶ plan ─▶ libs (service-auth tests) ─▶ build (per missing image) ─▶ deploy (per service)
+push to main ─▶ plan ─▶ checks ─▶ build (per missing image) ─▶ wave1 ─▶ wave2 (per service, in parallel)
                  │                                                                 environment: production
                  ├─ missing images (D1a)                                           (main only, no approval: D17)
                  └─ services to deploy: pipeline: true AND (its image inputs
@@ -82,7 +94,10 @@ Each `deploy` job, one per service:
 2. requests GitHub's OIDC token for `aud=steven-universe-deployer`;
 3. POSTs `{service, sha: github.sha, image_digest}` to `https://api.liustev6.ca/deploy/v1/deployments`;
 4. folds the deployer's NDJSON stream into one log group per step;
-5. fails unless the result is `succeeded`. A `rolled_back` deploy is a failed job, with a warning.
+5. if the stream drops before the result (for example while the deploy replaces api-service, which
+   carries the stream), requests a fresh token and reconnects to
+   `GET …/deployments/<id>/events?after=<last seq>`, retrying through 502s for up to 15 minutes;
+6. fails unless the result is `succeeded`. A `rolled_back` deploy is a failed job, with a warning.
 
 `concurrency: deploy-<service>` queues a second deploy of the same service.
 
@@ -129,6 +144,14 @@ Errors before anything runs:
 | `404` | no manifest at that sha |
 | `409` | a deploy for this service is running |
 | `422` | bad body, sha mismatch, or the image wasn't built for that sha |
+
+`GET /v1/deployments/<id>/events?after=<seq>` (as `/deploy/v1/deployments/<id>/events` through
+api-service): **reconnect** after a dropped stream. Every event but heartbeats carries a `seq`, and
+`accepted` carries the deployment `id`. Authenticated like a start, with a **fresh** GitHub token
+(each works once) whose `sha` equals the deployment's. It returns the events after `<seq>`, then
+follows live until the result. The deploy itself never depends on a caller: it runs as a background
+task and finishes, rolling back if needed, whether or not anyone is watching. The deployer keeps the
+last 100 deployments in memory. `404` for an unknown id.
 
 `GET /health`: liveness only.
 
@@ -387,6 +410,8 @@ still use their old per-service scripts in `infra/deployment/`, run from the lap
 | 2.10 | **api-service, minimal** (**written 2026-11-08**: a new service, not the web-gateway rename; 22 tests). `python/services/api-service/` with only `/health` and the `/deploy/*` proxy route. The route streams the request through to the deployer, caps the body at 4 KB, rejects requests without a GitHub-issued bearer token, and rate-limits. It gets its own LXC (CT 106) and manifest, and is deployed by hand. Then add the public hostname `api.liustev6.ca` → api-service to the Cloudflare tunnel (CT 100). | me write, you do LXC + tunnel |
 | 2.11 | **The deploy job** (**written 2026-11-08**). Add `deploy` to the workflow (environment `production`, `concurrency` per service, OIDC token, image digest from GHCR, the stream folded into log groups). Services: `pipeline: true` and whose image inputs or `infra/services/<svc>/` changed; or `workflow_dispatch -f redeploy=<svc>`. Flip file-management to `pipeline: true`. | me |
 | 2.12 | **First pipeline deploy.** The push of 2.11 itself is the first one (it changes file-management's manifest): approved in GitHub (the gate was removed afterwards, D17) → watch the stream in the Actions log → smoke test passes. **Done 2026-11-08** (run 42549115243). Then `gh workflow run build.yml -f redeploy=file-management` (a redeploy through the pipeline). Rollback through the pipeline is `git revert` (see "GitHub side"). | you |
+| 2.13 | **Waves and slimmer workflows** (D19, **written 2026-11-08**). `wave` in the schema (api-service: 2); `build.yml` → `plan`, `checks`, `build`, `wave1`, `wave2`; the deploy job moves to the reusable `deploy.yml` (and the deployer's trust rule to `deploy.yml@refs/heads/main`); the bash moves to `.github/scripts/` with tests. | me |
+| 2.14 | **Resumable deploys, api-service in the pipeline** (**written 2026-11-08**). Deployer: deployment ids, numbered events, the reconnect route. api-service: the reconnect route in `proxy` mode (`app/deploy/`, its own rate limit). `deploy.sh`: reconnect after a dropped stream. Rollout in two pushes: **A** (all the code; deploys nothing) → hand-deploy the deployer and api-service → **B** (`api-service: pipeline: true`), which is itself the first wave-2 deploy and cuts its own stream. | me, then you |
 
 **Phase 3: migrate the remaining Docker services** (stevenai-service, web-gateway, gpu-server):
 - each one gets a manifest, `config.env` and a hardened `compose.yaml`;

@@ -37,9 +37,9 @@ async def deploy(service: str, ref: str) -> int:
             print(f"refused: {exc}", file=sys.stderr)
             return 2
         user = os.environ.get("SUDO_USER") or os.environ.get("USER") or "root"
-        queue = deployer.start(plan, {"cli": user})
+        deployment = deployer.start(plan, {"cli": user})
         status = "failed"
-        while (event := await queue.get()) is not None:
+        async for event in deployment.follow():
             kind = event["event"]
             if kind == "log":
                 print(event["line"], flush=True)
