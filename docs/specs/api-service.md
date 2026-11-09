@@ -1,10 +1,13 @@
 # Spec: api-service (the public edge)
 
-**Path**: `python/services/api-service/` (new, 2026-11-08), `infra/services/api-service/`.
-**Status**: minimal and live-ready: `GET /health` and the deploy proxy only (built for the deployer, deployer.md D3, D15),
-on CT 106 behind the Cloudflare tunnel. The other routes come over from
-`python/services/web-gateway/` one at a time (see Migration); this spec describes the target. Related: [auth-service.md](auth-service.md)
-(tokens), [file-management.md](file-management.md) (files).
+**Status: live** since 2026-11-08, minimal: `GET /health` and the deploy routes only (deployer.md
+D3, D15). It runs on CT 106 at `https://api.liustev6.ca`, published through the Cloudflare tunnel
+(origin `https://api.lan.liustev6.ca`), and the pipeline deploys it in wave 2. The rest of this
+spec is the **target**: the other routes come over from `python/services/web-gateway/` one at a
+time (see Migration).
+**Paths:** `python/services/api-service/` (one package per route group: `app/deploy/`),
+`infra/services/api-service/`. Related: [auth-service.md](auth-service.md) (tokens),
+[file-management.md](file-management.md) (files), [deployer.md](deployer.md).
 
 ## Scope
 api-service is the **only service reachable from the internet**, through the Cloudflare tunnel.
@@ -33,8 +36,8 @@ internet ──▶ Cloudflare (cache, WAF, rate rules) ──tunnel──▶ clo
 |---|---|
 | E1 | **The only public entry point.** api-service is the only internal service with a Cloudflare tunnel hostname. Every other service listens on the LAN only. |
 | E2 | **Deny by default.** Every route declares an access mode; the default is `user`. `public` routes are listed explicitly and checked by a test. |
-| E3 | **Its own permissions = what anonymous visitors may do.** api-service's own service token (no user) only holds public permissions (e.g. `read` on `public/`). Anything else needs a token carrying a real user or a relayed client (auth-service A11). |
-| E4 | **No token passthrough.** api-service never forwards the credential it received. It exchanges it at auth-service for a token whose audience is the downstream service (auth-service A12, RFC 8693). |
+| E3 | **Its own permissions = what anonymous visitors may do.** api-service's own service token (no user) only holds public permissions (e.g. `read` on `public/`). Anything else needs a token carrying a real user or a relayed client (auth-service A7, A8). |
+| E4 | **No token passthrough.** api-service never forwards the credential it received. It exchanges it at auth-service for a token whose audience is the downstream service (auth-service A8, RFC 8693). |
 | E5 | **No user login logic of its own.** Users log in through an OpenID Connect identity provider. api-service acts as the backend for the website (the "Backend-for-Frontend" pattern): it completes the OIDC login and holds the session, and the browser only gets an `HttpOnly` session cookie. |
 | E6 | **North-south only.** Traffic from outside goes through api-service. LAN services call each other directly with their own tokens; they never route through api-service. |
 

@@ -87,6 +87,8 @@ From the Mac (Tailscale on; the subnet route gives direct access to `192.168.50.
 curl -s https://auth.lan.liustev6.ca/health                        # auth-service: "healthy"
 curl -s https://files.lan.liustev6.ca/health                       # file-management: storage "ok"
 curl -s https://bao.lan.liustev6.ca:8200/v1/sys/seal-status        # OpenBao: "sealed": true until you unseal
+curl -s https://deploy.lan.liustev6.ca/health                      # deployer: "healthy"
+curl -s https://api.liustev6.ca/health                             # api-service, through Cloudflare: "ok"
 curl -s -o /dev/null -w "%{http_code}\n" http://192.168.50.123:9000/   # RustFS: 403 = up (no credentials)
 ssh pve01 'pct list; pct exec 100 -- systemctl is-active cloudflared'
 ```
@@ -104,12 +106,9 @@ checks and smoke tests against the real services.
 6. Record the date and anything that didn't come back here.
 
 ## Adding a new service
-- Container: `pct set <id> --onboot 1 --startup order=<n>,up=<seconds>`; choose `<n>` after
-  everything it depends on.
-- Inside: `systemctl enable` its service, or Docker enabled plus `restart: unless-stopped` in
-  `compose.yaml`.
-- A DHCP reservation for its MAC (addresses must not change between boots).
-- Add it to the tables and the checks above.
+Follow [lxc-setup.md](../lxc-setup.md): the container (`--onboot 1 --startup order=<n>`, with `<n>`
+after everything it depends on), a DHCP reservation, Docker with `restart: unless-stopped`. Then add
+it to the tables and checks above.
 
 ## Not covered
 The Pi (pi-server, hey-pi) is separate hardware with its own systemd services; the GPU server is

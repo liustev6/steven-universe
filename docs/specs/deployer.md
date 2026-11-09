@@ -1,8 +1,8 @@
 # Spec: deployer (CI/CD from GitHub Actions to the home lab)
 
 **Status: live** (2026-11-08). A push to `main` deploys the changed `pipeline: true` services:
-today file-management (wave 1). api-service joins as wave 2 once its manifest says
-`pipeline: true`.
+file-management (wave 1), then api-service (wave 2; its first pipeline deploy cut its own stream
+and resumed, run 42553181192). auth-service, OpenBao and the deployer deploy by hand (D13).
 **Paths:**
 - `python/services/deployer/`: the service, CT 105, `https://deploy.lan.liustev6.ca`, LAN only;
 - `infra/services/<service>/`: manifests;
@@ -308,8 +308,10 @@ Built on 2026-11-08:
   42549115243).
 - **2.13–2.14:** waves, workflows split into files with tested scripts, and resumable deploys.
 
+- **Waves live:** api-service's first pipeline deploy (wave 2) cut its own stream mid-deploy and the
+  workflow resumed it (run 42553181192).
+
 **Next:**
-- **api-service `pipeline: true`:** its first wave-2 deploy cuts and resumes its own stream.
 - **Phase 3:** stevenai-service, web-gateway and gpu-server move to manifests, OpenBao and the
   pipeline. Until then they use their old scripts, which copy the laptop's `.env` files and build on
   the host.

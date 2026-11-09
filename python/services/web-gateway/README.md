@@ -183,7 +183,7 @@ FILE_SERVICE_API_KEY=your-api-key
 ## Deployment
 
 ### Prerequisites
-- LXC container with Docker installed (see `docs/lxc-setup.md`)
+- LXC container with Docker installed (see `docs/lxc-setup.md`, Part 1)
 - SSH key authentication configured to LXC
 - rsync installed on local machine
 - Local `.env` file with all configuration
