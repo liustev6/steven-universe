@@ -1,7 +1,7 @@
 # Spec: api-service (the public edge)
 
 **Path**: `python/services/api-service/` (new, 2026-11-08), `infra/services/api-service/`.
-**Status**: minimal and live-ready: `GET /health` and the deploy proxy only (deployer phase 2.10),
+**Status**: minimal and live-ready: `GET /health` and the deploy proxy only (built for the deployer, deployer.md D3, D15),
 on CT 106 behind the Cloudflare tunnel. The other routes come over from
 `python/services/web-gateway/` one at a time (see Migration); this spec describes the target. Related: [auth-service.md](auth-service.md)
 (tokens), [file-management.md](file-management.md) (files).

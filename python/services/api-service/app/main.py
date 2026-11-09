@@ -1,6 +1,6 @@
 """api-service: the only service reachable from the internet. Spec: docs/specs/api-service.md.
 
-Minimal for now (deployer spec phase 2.10): `GET /health` and the deploy proxy. The other routes
+Minimal for now: `GET /health` and the deploy routes (deployer.md D3, D15). The other routes
 (files, chat, user login) arrive one at a time, ported from web-gateway and fixed on the way
 (spec Migration).
 

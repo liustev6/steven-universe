@@ -13,3 +13,7 @@ hosts:
     address: 192.168.50.66
     user: root
     host_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFTFg1f4ffXCIyyiXpO51jqJuj5NeBQdFBNMKReN5H1a"
+  api-host:                            # CT 106: runs api-service (wave 2)
+    address: 192.168.50.192
+    user: root
+    host_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEnsM741IazUQodGBPtciM6M7VEfIZswQGlGPcucyJDp"

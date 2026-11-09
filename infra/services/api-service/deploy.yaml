@@ -4,7 +4,7 @@
 # Spec: docs/specs/api-service.md, docs/specs/deployer.md (D3, D15).
 service: api-service
 host: api-host
-# By hand until the deployer and api-service with resumable deploys are live (deployer spec 2.14);
+# By hand until resumable deploys are live on the deployer and api-service (deployer.md "Deployer API");
 # then true: the workflow reconnects when this deploy cuts its own stream.
 pipeline: false
 wave: 2                                # the edge: after the services it calls (wave 1)
