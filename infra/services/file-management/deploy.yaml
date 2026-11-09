@@ -5,7 +5,7 @@
 # Spec: docs/specs/deployer.md (D12), docs/specs/secrets-manager.md ("Inventory").
 service: file-management
 host: files-host                       # SSH alias; the deployer will map it through its host allowlist
-pipeline: false                        # true once the deployer runs (deployer spec phase 2.11)
+pipeline: true                         # GitHub Actions deploys it through the deployer (D16)
 code: python/services/file-management-service
 compose: python/services/file-management-service/compose.yaml
 config: infra/services/file-management/config.env     # -> /etc/file-management/config.env

@@ -1,6 +1,6 @@
-# build: test and build every service image whose inputs changed, and push it to GHCR.
-# Spec: docs/specs/deployer.md (D1, D1a, phase 1). Deploying is separate: infra/deployment/deploy.sh
-# today, the deployer in phase 2.
+# build: test and build every service image whose inputs changed, push it to GHCR, then deploy the
+# changed `pipeline: true` services through api-service -> deployer (after your approval in the
+# `production` environment). Spec: docs/specs/deployer.md (D1, D1a, D2-D5, D16, D17, phases 1-2).
 #
 # An image is named by the commit that last changed its inputs (D1a): the manifest's `code` folder
 # plus python/libs/. For each infra/services/*/deploy.yaml, `plan` computes that commit and builds
@@ -9,6 +9,9 @@
 #
 # Build an older commit's missing images (e.g. to roll back to a commit from before this workflow):
 #   gh workflow run build.yml -f ref=<sha>
+# Redeploy a pipeline service at main's latest commit (GitHub's token is bound to that commit, D5;
+# roll back through the pipeline with `git revert`, or by hand with infra/deployment/deploy.sh <sha>):
+#   gh workflow run build.yml -f redeploy=<service>
 name: build
 
 on:
@@ -20,6 +23,9 @@ on:
       ref:
         description: "Commit or branch whose missing images to build"
         default: main
+      redeploy:
+        description: "A pipeline service to redeploy at main's latest commit (ref must be main)"
+        default: ""
 
 permissions: {}                       # each job asks only for what it needs
 
@@ -33,6 +39,8 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       any: ${{ steps.plan.outputs.any }}
+      deploy: ${{ steps.plan.outputs.deploy }}
+      deploy_any: ${{ steps.plan.outputs.deploy_any }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -45,10 +53,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: plan
-        name: Which images are missing
+        name: Which images are missing, which services to deploy
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          REDEPLOY: ${{ inputs.redeploy }}
         run: |
           set -euo pipefail
           entries='[]'
+          deploys='[]'
+          # What changed in this push (a new or rewritten history: treat everything as changed).
+          ALL=false; CHANGED=""
+          if [ "$EVENT" = push ]; then
+            if [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+              CHANGED="$(git diff --name-only "$BEFORE" HEAD)"
+            else
+              ALL=true
+            fi
+          fi
+          if [ -n "$REDEPLOY" ] && [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+            echo "::error::redeploy only works at main's latest commit (ref=main)"; exit 1
+          fi
           for m in infra/services/*/deploy.yaml; do
             svc="$(yq -r '.service' "$m")"
             code="$(yq -r '.code // ""' "$m")"
@@ -64,6 +89,21 @@ jobs:
             context="$(realpath -m --relative-to=. "$(dirname "$compose")/$(q .build.context)")"
             dockerfile="$context/$(q .build.dockerfile)"
 
+            # Deploy it? Only `pipeline: true` services (D16): on a push, if its image inputs or its
+            # infra/services/<svc>/ changed; on workflow_dispatch, if named in `redeploy`.
+            if [ "$(yq -r '.pipeline // false' "$m")" = true ]; then
+              want=false
+              if [ "$EVENT" = workflow_dispatch ]; then
+                [ "$REDEPLOY" = "$svc" ] && want=true
+              elif [ "$ALL" = true ] || grep -qE "^($code|python/libs|infra/services/$svc)/" <<<"$CHANGED"; then
+                want=true
+              fi
+              if [ "$want" = true ]; then
+                echo "$svc: deploy (image ${image_sha:0:7})"
+                deploys="$(jq -c --arg s "$svc" --arg i "$image_sha" '. + [{service: $s, image_sha: $i}]' <<<"$deploys")"
+              fi
+            fi
+
             if docker manifest inspect "$REGISTRY/$svc:$image_sha" >/dev/null 2>&1; then
               echo "$svc: $REGISTRY/$svc:${image_sha:0:7} exists, skip"
               continue
@@ -75,6 +115,8 @@ jobs:
           done
           echo "matrix={\"include\":$entries}" >>"$GITHUB_OUTPUT"
           echo "any=$([ "$entries" = '[]' ] && echo false || echo true)" >>"$GITHUB_OUTPUT"
+          echo "deploy=$deploys" >>"$GITHUB_OUTPUT"
+          echo "deploy_any=$([ "$deploys" = '[]' ] && echo false || echo true)" >>"$GITHUB_OUTPUT"
 
   libs:
     runs-on: ubuntu-24.04
@@ -142,3 +184,80 @@ jobs:
         run: |
           echo "**${{ matrix.service }}**: \`${{ env.REGISTRY }}/${{ matrix.service }}:${{ matrix.image_sha }}\`" >>"$GITHUB_STEP_SUMMARY"
           echo "digest \`${{ steps.build.outputs.digest }}\`" >>"$GITHUB_STEP_SUMMARY"
+
+  # Deploy: one job per service, after your approval (environment `production`, D17). GitHub's
+  # OIDC token is the only credential (D2): api-service forwards it, the deployer verifies it.
+  deploy:
+    needs: [plan, libs, build]
+    if: >-
+      !cancelled() && github.ref == 'refs/heads/main' && needs.plan.outputs.deploy_any == 'true'
+      && needs.libs.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped')
+    name: deploy ${{ matrix.service }}
+    runs-on: ubuntu-24.04
+    environment: production
+    permissions: {contents: read, id-token: write}
+    concurrency: {group: "deploy-${{ matrix.service }}", cancel-in-progress: false}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.deploy) }}
+    steps:
+      - id: image
+        name: Image digest (the host must pull exactly this)
+        env:
+          SERVICE: ${{ matrix.service }}
+          IMAGE_SHA: ${{ matrix.image_sha }}
+        run: |
+          set -euo pipefail
+          repo="liustev6/steven-universe/$SERVICE"
+          token="$(curl -fsS "https://ghcr.io/token?scope=repository:$repo:pull" | jq -r .token)"
+          digest="$(curl -fsSI -H "Authorization: Bearer $token" \
+            -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json" \
+            "https://ghcr.io/v2/$repo/manifests/$IMAGE_SHA" | tr -d '\r' | awk -F': ' 'tolower($1) == "docker-content-digest" {print $2}')"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::no image $REGISTRY/$SERVICE:$IMAGE_SHA in GHCR"; exit 1; }
+          echo "$REGISTRY/$SERVICE:${IMAGE_SHA:0:7} = $digest"
+          echo "digest=$digest" >>"$GITHUB_OUTPUT"
+
+      - name: Deploy (api-service -> deployer -> host)
+        env:
+          SERVICE: ${{ matrix.service }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+          URL: https://api.liustev6.ca/deploy/v1/deployments
+        run: |
+          set -euo pipefail
+          # GitHub's OIDC token for the deployer's audience: signed by GitHub, bound to this run's
+          # repository, branch, environment, workflow and commit; valid a few minutes, used once.
+          token="$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=steven-universe-deployer" | jq -r .value)"
+          echo "::add-mask::$token"
+          body="$(jq -nc --arg s "$SERVICE" --arg sha "$GITHUB_SHA" --arg d "$DIGEST" '{service: $s, sha: $sha, image_digest: $d}')"
+          : >result.json
+          # The deployer streams NDJSON: deploy-target's output, one group per step, then the result.
+          curl -sS -N --fail-with-body --max-time 1800 -X POST "$URL" \
+            -H "Authorization: Bearer $token" -H "Content-Type: application/json" -d "$body" |
+          while IFS= read -r line; do
+            event="$(jq -r '.event // "error"' <<<"$line" 2>/dev/null || echo raw)"
+            case "$event" in
+              accepted) echo "Deploying $SERVICE ${GITHUB_SHA:0:7} to $(jq -r .host <<<"$line")" ;;
+              log)
+                text="$(jq -r .line <<<"$line")"
+                if [[ "$text" =~ ^Step\ [0-9]+/[0-9]+: ]]; then
+                  [ -z "${open:-}" ] || echo "::endgroup::"
+                  echo "::group::$text"; open=1
+                else
+                  printf '%s\n' "$text"
+                fi ;;
+              rollback)
+                [ -z "${open:-}" ] || echo "::endgroup::"; open=
+                echo "::warning::$SERVICE: deploy failed, rolling back to $(jq -r .to <<<"$line")" ;;
+              result)
+                [ -z "${open:-}" ] || echo "::endgroup::"; open=
+                printf '%s\n' "$line" >result.json ;;
+              step|heartbeat) ;;
+              *) printf '%s\n' "$line" ;;   # a refusal from api-service or the deployer (4xx/5xx)
+            esac
+          done
+          status="$(jq -r '.status // empty' result.json 2>/dev/null || true)"
+          echo "### deploy $SERVICE: ${status:-no result}" >>"$GITHUB_STEP_SUMMARY"
+          jq -r '"commit `\(.sha[0:7])`, previous `\(.previous // "none" | .[0:7])`, \(.seconds) s"' result.json >>"$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          [ "$status" = succeeded ] || { echo "::error::deploy of $SERVICE: ${status:-no result} $(jq -r '.error // empty' result.json 2>/dev/null)"; exit 1; }

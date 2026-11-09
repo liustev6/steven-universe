@@ -68,27 +68,32 @@ GitHub-hosted runner                                        LAN
 | D18 | **LAN break-glass on the deployer:** `docker exec deployer python -m app.cli deploy <service> <sha>` runs a deploy without a GitHub token. Only someone already root on the deployer LXC can do this, and that person already holds all its power. It is used to test the deployer before the edge exists, and when GitHub is down. |
 
 ## GitHub side
-Two workflows. Phase 1 adds the build; phase 2 adds the deploy job.
+One workflow, `.github/workflows/build.yml` (built 2026-11-08):
 
-```yaml
-# .github/workflows/build.yml (one workflow: the deploy job is added to the build in 2.11): on push to main,
-# and workflow_dispatch (redeploy or roll back a chosen sha)
-permissions: {contents: read, packages: write, id-token: write}
-jobs:
-  build:    # per changed service (matrix): test, docker buildx (amd64), push :<sha>, label revision
-  deploy:
-    needs: build
-    environment: production          # required reviewer: you
-    concurrency: deploy-${{ matrix.service }}
-    steps:
-      - id: oidc
-        run: |                       # GitHub's OIDC token for the deployer's audience
-          curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=steven-universe-deployer" | jq -r .value
-      - run: curl --fail-with-body -N -X POST https://api.liustev6.ca/deploy/v1/deployments \
-               -H "Authorization: Bearer <oidc token>" \
-               -d '{"service": "file-management", "sha": "${{ github.sha }}", "image_digest": "sha256:…"}'
 ```
+push to main ─▶ plan ─▶ libs (service-auth tests) ─▶ build (per missing image) ─▶ deploy (per service)
+                 │                                                                 environment: production
+                 ├─ missing images (D1a)                                           (waits for your approval)
+                 └─ services to deploy: pipeline: true AND (its image inputs
+                    or infra/services/<svc>/ changed in this push)
+```
+Each `deploy` job, one per service:
+1. reads the image's digest from GHCR;
+2. requests GitHub's OIDC token for `aud=steven-universe-deployer`;
+3. POSTs `{service, sha: github.sha, image_digest}` to `https://api.liustev6.ca/deploy/v1/deployments`;
+4. folds the deployer's NDJSON stream into one log group per step;
+5. fails unless the result is `succeeded`. A `rolled_back` deploy is a failed job, with a warning.
+
+`concurrency: deploy-<service>` queues a second deploy of the same service.
+
+`workflow_dispatch` inputs:
+- **`ref`:** build an older commit's missing images, for example before deploying it by hand.
+- **`redeploy=<service>`:** redeploy it at `main`'s latest commit.
+
+**Rolling back through the pipeline is `git revert` + push**, not "deploy an older sha". GitHub's
+token always carries the sha of the commit the run is on, and D5 binds the request to it. For
+emergencies, deploy any pushed commit by hand: `infra/deployment/deploy.sh <svc> <sha>` or the
+deployer's CLI (D18).
 
 Repository settings this design relies on (the repo is public; set by hand before phase 2):
 - **Ruleset on `main`:** block force pushes and deletion. Pull requests aren't required (D17).
@@ -377,8 +382,8 @@ still use their old per-service scripts in `infra/deployment/`, run from the lap
 | 2.8 | **Its manifest and first deploy, by hand (D13).** `infra/services/deployer/` with `deploy.yaml` (`pipeline: false`, host-only key and client secret, the shared Cloudflare token) and `config.env`; `tofu apply`; `deploy.sh deployer`. | you run |
 | 2.9 | **Test on the LAN, before anything is public.** `docker exec … app.cli deploy file-management <sha>` → a real deploy through the deployer. Then a rollback drill: deploy a commit whose health check fails, and confirm it reports `rolled_back` with the previous version running. | you run, I watch |
 | 2.10 | **api-service, minimal** (**written 2026-11-08**: a new service, not the web-gateway rename; 22 tests). `python/services/api-service/` with only `/health` and the `/deploy/*` proxy route. The route streams the request through to the deployer, caps the body at 4 KB, rejects requests without a GitHub-issued bearer token, and rate-limits. It gets its own LXC (CT 106) and manifest, and is deployed by hand. Then add the public hostname `api.liustev6.ca` → api-service to the Cloudflare tunnel (CT 100). | me write, you do LXC + tunnel |
-| 2.11 | **The deploy job.** Add `deploy` to the workflow (environment `production`, `concurrency` per service, OIDC token, `curl` the stream). Services: `pipeline: true` and whose image inputs or `infra/services/<svc>/` changed. Flip file-management to `pipeline: true`. | me |
-| 2.12 | **First pipeline deploy.** Push a small file-management change → approve in GitHub → watch the stream in the Actions log → smoke test passes. Then `workflow_dispatch` an older sha (a rollback through the pipeline). | you |
+| 2.11 | **The deploy job** (**written 2026-11-08**). Add `deploy` to the workflow (environment `production`, `concurrency` per service, OIDC token, image digest from GHCR, the stream folded into log groups). Services: `pipeline: true` and whose image inputs or `infra/services/<svc>/` changed; or `workflow_dispatch -f redeploy=<svc>`. Flip file-management to `pipeline: true`. | me |
+| 2.12 | **First pipeline deploy.** The push of 2.11 itself is the first one (it changes file-management's manifest): approve in GitHub → watch the stream in the Actions log → smoke test passes. Then `gh workflow run build.yml -f redeploy=file-management` (a redeploy through the pipeline). Rollback through the pipeline is `git revert` (see "GitHub side"). | you |
 
 **Phase 3: migrate the remaining Docker services** (stevenai-service, web-gateway, gpu-server):
 - each one gets a manifest, `config.env` and a hardened `compose.yaml`;
