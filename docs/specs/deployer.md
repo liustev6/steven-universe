@@ -64,7 +64,7 @@ GitHub-hosted runner                                        LAN
 | D14 | **One host-side script for every path.** The Mac (`deploy.sh`) and the deployer both run the same `deploy-target.sh`, with the same stdin payload. The deployer replaces the caller, never the host logic, so a manual deploy tests exactly what the pipeline runs. |
 | D15 | **Push through the edge, not pull.** GitHub calls the deployer through api-service (D3). The deployer has no public hostname: it is LAN-only and reachable from outside only through api-service's `/deploy/*` route, where GitHub's OIDC token is the gate. Polling GitHub (pull) is not planned. |
 | D16 | **The manifest says who may deploy a service: `pipeline: true` or `false`** (default false). The workflow deploys only `pipeline: true` services. The deployer refuses the others with `403` and has no host entry for them either. D13 services stay `false`. |
-| D17 | **The gate is approval per deploy, not pull requests** (one maintainer who pushes straight to `main`). The `production` environment requires your approval on every deploy and accepts only `main`. A ruleset on `main` blocks force pushes and deletion. Pull requests stay optional. |
+| D17 | **The gate is automated, not a click** (one maintainer who pushes straight to `main`; changed 2026-11-08). The `production` environment accepts only `main`; no approval is required (continuous deployment). What stands between a push and a broken service: tests before any image is pushed, the health check and smoke test, automatic rollback, and `pipeline: true` services only (never the D13 roots). In exchange: two-factor authentication on the GitHub account and no write-access tokens or apps on this repo, since pushing to `main` is deploying. A ruleset on `main` blocks force pushes and deletion; pull requests stay optional. |
 | D18 | **LAN break-glass on the deployer:** `docker exec deployer python -m app.cli deploy <service> <sha>` runs a deploy without a GitHub token. Only someone already root on the deployer LXC can do this, and that person already holds all its power. It is used to test the deployer before the edge exists, and when GitHub is down. |
 
 ## GitHub side
@@ -73,7 +73,7 @@ One workflow, `.github/workflows/build.yml` (built 2026-11-08):
 ```
 push to main ─▶ plan ─▶ libs (service-auth tests) ─▶ build (per missing image) ─▶ deploy (per service)
                  │                                                                 environment: production
-                 ├─ missing images (D1a)                                           (waits for your approval)
+                 ├─ missing images (D1a)                                           (main only, no approval: D17)
                  └─ services to deploy: pipeline: true AND (its image inputs
                     or infra/services/<svc>/ changed in this push)
 ```
@@ -97,10 +97,13 @@ deployer's CLI (D18).
 
 Repository settings this design relies on (the repo is public; set by hand before phase 2):
 - **Ruleset on `main`:** block force pushes and deletion. Pull requests aren't required (D17).
-- **Environment `production`:** required reviewer (you), with "prevent self-review" off, since
-  you approve your own pushes. Deployments only from `main`.
+- **Environment `production`:** deployments only from `main`, no required reviewer (D17). The
+  deployer requires `environment: production` in GitHub's token, so the environment must stay.
 - **Fork pull requests** never get `id-token: write` or the `production` environment, so they
   can't obtain a deploy token.
+- **Two-factor authentication** on the GitHub account, and no personal access tokens or apps with
+  write access to the repository beyond what is needed: with D17, write access to `main` is the
+  ability to deploy `pipeline: true` services.
 - **GHCR packages public.** The code is public and images contain no secrets (D7), so hosts pull
   without credentials. A private package would need a read-only pull token on the host, as a
   managed secret.
@@ -383,7 +386,7 @@ still use their old per-service scripts in `infra/deployment/`, run from the lap
 | 2.9 | **Test on the LAN, before anything is public.** `docker exec … app.cli deploy file-management <sha>` → a real deploy through the deployer. Then a rollback drill: deploy a commit whose health check fails, and confirm it reports `rolled_back` with the previous version running. | you run, I watch |
 | 2.10 | **api-service, minimal** (**written 2026-11-08**: a new service, not the web-gateway rename; 22 tests). `python/services/api-service/` with only `/health` and the `/deploy/*` proxy route. The route streams the request through to the deployer, caps the body at 4 KB, rejects requests without a GitHub-issued bearer token, and rate-limits. It gets its own LXC (CT 106) and manifest, and is deployed by hand. Then add the public hostname `api.liustev6.ca` → api-service to the Cloudflare tunnel (CT 100). | me write, you do LXC + tunnel |
 | 2.11 | **The deploy job** (**written 2026-11-08**). Add `deploy` to the workflow (environment `production`, `concurrency` per service, OIDC token, image digest from GHCR, the stream folded into log groups). Services: `pipeline: true` and whose image inputs or `infra/services/<svc>/` changed; or `workflow_dispatch -f redeploy=<svc>`. Flip file-management to `pipeline: true`. | me |
-| 2.12 | **First pipeline deploy.** The push of 2.11 itself is the first one (it changes file-management's manifest): approve in GitHub → watch the stream in the Actions log → smoke test passes. Then `gh workflow run build.yml -f redeploy=file-management` (a redeploy through the pipeline). Rollback through the pipeline is `git revert` (see "GitHub side"). | you |
+| 2.12 | **First pipeline deploy.** The push of 2.11 itself is the first one (it changes file-management's manifest): approved in GitHub (the gate was removed afterwards, D17) → watch the stream in the Actions log → smoke test passes. **Done 2026-11-08** (run 42549115243). Then `gh workflow run build.yml -f redeploy=file-management` (a redeploy through the pipeline). Rollback through the pipeline is `git revert` (see "GitHub side"). | you |
 
 **Phase 3: migrate the remaining Docker services** (stevenai-service, web-gateway, gpu-server):
 - each one gets a manifest, `config.env` and a hardened `compose.yaml`;
