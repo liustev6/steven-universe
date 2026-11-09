@@ -87,9 +87,9 @@ trap 'rc=$?; [ "$rc" -eq 0 ] || record failed' EXIT
 ##############################################################################
 step "Commit"
 ok "$SHORT: $SUBJECT"
-if [ -z "$PREV" ]; then info "first deploy (nothing running yet)"
-elif [ "$PREV" = "$SHA" ]; then info "same commit as the running container (redeploy)"
-else info "running now: ${PREV:0:7}  ->  deploying: $SHORT"; fi
+if [ -z "$PREV" ]; then info "first deploy (no successful deploy recorded)"
+elif [ "$PREV" = "$SHA" ]; then info "same commit as the last successful deploy (redeploy)"
+else info "last successful: ${PREV:0:7}  ->  deploying: $SHORT"; fi
 [ -z "$PREV" ] || info "previous: $PREV"        # full sha: the deployer rolls back to it (spec D8)
 if [ "$IMAGE_SHA" = "$SHA" ]; then info "image: built from this commit"
 else info "image: ${IMAGE_SHA:0:7} (last change to $M_CODE or python/libs; this commit changes only config)"; fi

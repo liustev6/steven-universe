@@ -1,8 +1,9 @@
 # Spec: api-service (the public edge)
 
-**Path**: `python/services/api-service/`, renamed from `python/services/web-gateway/` (the rename
-hasn't been done yet; see Migration). **Status**: the current web-gateway code works with a single
-shared API key; this spec describes the target. Related: [auth-service.md](auth-service.md)
+**Path**: `python/services/api-service/` (new, 2026-11-08), `infra/services/api-service/`.
+**Status**: minimal and live-ready: `GET /health` and the deploy proxy only (deployer phase 2.10),
+on CT 106 behind the Cloudflare tunnel. The other routes come over from
+`python/services/web-gateway/` one at a time (see Migration); this spec describes the target. Related: [auth-service.md](auth-service.md)
 (tokens), [file-management.md](file-management.md) (files).
 
 ## Scope
@@ -162,12 +163,17 @@ not conflict with E4, which is about tokens addressed to api-service itself.
 | G7 | README still describes it as `web-server` at `python/services/web-server/` | `README.md` | Outdated docs |
 
 ## Migration
-1. **Rename:** `git mv python/services/web-gateway python/services/api-service`; update the
-   README, deploy scripts, the Docker image/container name, settings names, and references in
-   other services' configs (`*_GATEWAY_*` → `API_SERVICE_*`).
-2. **Quick fixes on the current code:** `hmac.compare_digest` (G2), stop logging key prefixes
-   (G3), `/health` minimal and `/status` behind the API key (G6).
-3. **Edge auth skeleton:** `Caller`, `edge_auth(mode=…)`, deny by default, the route-mode tests.
+Not a rename: web-gateway's code carries G1–G6 and isn't running anywhere, so api-service started
+fresh (2026-11-08) with only what phase 2 of the deployer needed, and the rest is **ported route by
+route, fixed on the way**. web-gateway is deleted when nothing is left in it.
+
+1. **Done:** `python/services/api-service/` with deny-by-default modes (`public`, `proxy`;
+   `app/edge.py`) and the reviewed route list test; request IDs, security headers, client IP from
+   `CF-Connecting-IP` only via cloudflared, rate limit; `/health` minimal (G6); the deploy proxy.
+   Hardened compose on CT 106, manifest-driven deploys, its own LE certificate (`api.lan`).
+2. ~~Quick fixes on the old code~~: not needed; G1–G3 and G5 disappear as routes are ported.
+3. **Edge auth:** `Caller`, `edge_auth(mode=…)` with the remaining modes (`user`, `optional`,
+   `client`).
    Until a user login exists, `user` routes stay closed and `client` routes use auth-service
    tokens (auth-service is live; relaying with `can_relay_clients` is already in its policy).
 4. **service-auth client:** replace the per-service keys (G5) with one auth-service client;
@@ -180,8 +186,8 @@ not conflict with E4, which is about tokens addressed to api-service itself.
 
 ## Open questions
 - **Identity provider** for users: Authentik, Keycloak, or Zitadel (self-hosted), or a hosted one?
-- **Domain:** which hostname does the tunnel publish (e.g. `api.liustev6.ca`), and is the website
-  on the same site (simpler cookies, no CORS) or a different one?
+- **Website:** the tunnel publishes `api.liustev6.ca`; is the website on the same site (simpler
+  cookies, no CORS) or a different one?
 - **Anonymous writes:** are there any (contact form, guest uploads), or is anonymous access
   strictly read-only?
 - **Outside machine clients:** does api-service publish auth-service's token endpoint

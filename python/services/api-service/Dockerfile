@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1
+# api-service image. Build context is python/ (like the other services):
+#   docker build -f services/api-service/Dockerfile python/
+# (compose.yaml in this directory does this for you.)
+
+FROM python:3.11-slim AS build
+ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+RUN python -m venv /venv
+COPY services/api-service/requirements.txt /tmp/requirements.txt
+RUN /venv/bin/pip install -r /tmp/requirements.txt
+
+FROM python:3.11-slim
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="api-service" \
+      org.opencontainers.image.source="https://github.com/liustev6/steven-universe" \
+      org.opencontainers.image.revision="${REVISION}"
+ENV PATH=/venv/bin:$PATH \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Fixed uid/gid: /etc/api-service (certificate) on the host is owned by 10001.
+RUN groupadd --system --gid 10001 api \
+ && useradd --system --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin api
+
+COPY --from=build /venv /venv
+WORKDIR /app
+COPY services/api-service/app ./app
+
+USER 10001:10001
+EXPOSE 8443
+
+# Logging: one line per request from app/main.py (request ID, never credentials or full URLs), so
+# uvicorn's own access log is off. --forwarded-allow-ips "": X-Forwarded-* is never trusted; the
+# client IP comes from CF-Connecting-IP, only from cloudflared (app/edge.py).
+
+# Liveness over loopback. The certificate is for api.lan.liustev6.ca, not 127.0.0.1, so this one
+# probe skips verification; it sends nothing secret.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["python", "-c", "import ssl, urllib.request; urllib.request.urlopen('https://127.0.0.1:8443/health', context=ssl._create_unverified_context(), timeout=4)"]
+
+CMD ["uvicorn", "app.main:app", "--factory", \
+     "--host", "0.0.0.0", "--port", "8443", "--no-server-header", \
+     "--forwarded-allow-ips", "", "--no-access-log", \
+     "--ssl-certfile", "/etc/api-service/tls/cert.pem", \
+     "--ssl-keyfile", "/etc/api-service/tls/key.pem"]

@@ -1,0 +1,32 @@
+# api-service on its LXC (CT 106): the only service with a public hostname (Cloudflare tunnel ->
+# https://api.lan.liustev6.ca). Spec: docs/specs/api-service.md. Deployed with:
+#   infra/deployment/deploy.sh api-service
+# API_HOST_CONFIG overrides the host config dir (only for local testing).
+#
+# Host layout (owner 10001, mode 700 directories, 600 files):
+#   /etc/api-service/config.env                 settings (from infra/services/api-service/)
+#   /etc/api-service/tls/cert.pem, key.pem      certificate for api.lan.liustev6.ca (read-only)
+name: api-service
+
+services:
+  api-service:
+    image: ghcr.io/liustev6/steven-universe/api-service:${IMAGE_TAG:-local}   # IMAGE_TAG: set by deploy-target.sh (deployer spec D1a)
+    build:
+      context: ../..                    # python/, like the other services
+      dockerfile: services/api-service/Dockerfile
+      args:
+        REVISION: ${REVISION:-unknown}  # commit sha, recorded as the image's revision label
+    restart: unless-stopped
+    read_only: true                     # whole container filesystem read-only
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    # Host 443 -> container 8443: cloudflared calls https://api.lan.liustev6.ca (no port).
+    ports: ["443:8443"]
+    env_file: ${API_HOST_CONFIG:-/etc/api-service}/config.env
+    volumes:
+      - ${API_HOST_CONFIG:-/etc/api-service}/tls:/etc/api-service/tls:ro
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}

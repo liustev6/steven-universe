@@ -22,7 +22,9 @@ power on ─▶ pve01 (Proxmox VE 9, 192.168.50.101)
  order 1   CT 104 secrets-manager   Docker → OpenBao container               running, SEALED
            ... wait 10 s
  order 2   CT 103 file-management   Docker → file-management container       ready
- order 2   CT 105 deployer          Docker → deployer container (phase 2)    ready
+ order 2   CT 105 deployer          Docker → deployer container              ready
+           ... wait 10 s
+ order 3   CT 106 api-service       Docker → api-service container           ready
  no order  CT 100 cloudflared       systemd cloudflared (Cloudflare tunnel)  ready
 ```
 Containers without an order start after all ordered ones. Shutdown runs in reverse order.
@@ -34,9 +36,10 @@ Containers without an order start after all ordered ones. Shutdown runs in rever
 | 102 | auth-service | `onboot=1` | **0**, `up=15` | Docker enabled; container `restart: unless-stopped` | yes |
 | 103 | file-management | `onboot=1` | 2, `up=10` | Docker enabled; container `restart: unless-stopped` | yes |
 | 104 | secrets-manager | `onboot=1` | 1, `up=10` | Docker enabled; container `restart: unless-stopped` | yes (comes back sealed) |
-| 105 | deployer | `onboot=1` | 2, `up=10` | Docker enabled; the deployer service from deployer phase 2 (not deployed yet) | yes |
+| 105 | deployer | `onboot=1` | 2, `up=10` | Docker enabled; container `restart: unless-stopped` | yes |
+| 106 | api-service | `onboot=1` | 3, `up=10` | Docker enabled; container `restart: unless-stopped` | yes |
 
-Also enabled on CT 102–105: `certbot.timer` (certificate renewal) and `unattended-upgrades`
+Also enabled on CT 102–106: `certbot.timer` (certificate renewal) and `unattended-upgrades`
 (security updates).
 
 ## Why this order
@@ -47,7 +50,8 @@ Also enabled on CT 102–105: `certbot.timer` (certificate renewal) and `unatten
 | secrets-manager (1) | auth-service (only to verify service logins) | nothing reads it at runtime, so it doesn't block anyone |
 | file-management (2) | auth-service (JWKS on first request), rustfs (health check) | after both |
 | deployer (2) | auth-service and OpenBao (only when a deploy runs: token, then secrets) | after both; deploys wait for the unseal |
-| cloudflared (last) | api-service later | the public entry comes up last |
+| api-service (3) | the deployer (for `/deploy/*`) | after it; before cloudflared, which publishes it |
+| cloudflared (last) | api-service | the public entry comes up last |
 
 The order is a convenience, not a guarantee: the services also tolerate starting early.
 file-management fetches auth-service's keys lazily on the first request (and retries), and its

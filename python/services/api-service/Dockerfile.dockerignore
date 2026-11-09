@@ -1,0 +1,6 @@
+# Build context is python/; send only what the image needs.
+**
+!services/api-service/requirements.txt
+!services/api-service/app/**
+**/__pycache__
+**/*.pyc

@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=../deploy.schema.json
+# api-service: the public edge (the only service with a Cloudflare tunnel hostname).
+# Read by OpenTofu (infra/secrets-manager/tofu/services.tf) and by the deploy (infra/deployment/).
+# Spec: docs/specs/api-service.md, docs/specs/deployer.md (D3, D15).
+service: api-service
+host: api-host
+# By hand for now: GitHub's deploy stream passes through api-service, so the pipeline deploying it
+# would cut its own stream (the deploy itself would finish). Revisit once that is handled.
+pipeline: false
+code: python/services/api-service
+compose: python/services/api-service/compose.yaml
+config: infra/services/api-service/config.env         # -> /etc/api-service/config.env
+url: https://api.liustev6.ca                          # public, through the Cloudflare tunnel
+health: https://api.lan.liustev6.ca/health            # checked on the LAN, the way cloudflared reaches it
+smoke_test:
+  script: python/services/api-service/scripts/smoke_test.py   # no secret; proves the path to the deployer
+certificate:
+  name: api.lan.liustev6.ca
+  hook: python/services/api-service/scripts/cert-hook.sh      # -> /usr/local/sbin/api-service-cert-hook
+
+# Managed secrets: values in OpenBao at kv/<from>, written to <to> (mode 600) on every deploy.
+secrets:
+  - from: shared/cloudflare_dns_token
+    to: /root/.secrets/cloudflare.ini
+    owner: "0:0"
+    format: "dns_cloudflare_api_token = {value}\n"   # certbot's credentials file
