@@ -1,0 +1,5 @@
+# sandbox-runner runtime dependencies
+fastapi==0.162.2
+uvicorn[standard]==0.54.0
+pydantic-settings==2.16.2
+docker==7.1.0          # the Docker Engine API (the VM's socket, R3)

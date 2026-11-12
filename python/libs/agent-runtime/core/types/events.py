@@ -52,7 +52,7 @@ class _Event(BaseModel):
 class RuntimeReady(_Event):
     """Once per session: the SDK has started with the profile."""
     type: Literal[EventType.RUNTIME_READY] = EventType.RUNTIME_READY
-    startup_ms: int                # from process start (warm sandbox) to ready
+    startup_ms: int                # from the session file appearing (the claim) to ready
     profile: str
     model: str | None              # None: Codex's default model
     tools: list[str]

@@ -55,7 +55,7 @@ HTTPS on the VM. It's authenticated with an auth-service token: audience `sandbo
 
 | Route | What |
 |---|---|
-| `POST /v1/sandboxes/claim` `{session_id, capability, profile_limits}` | hand over a warm sandbox (R7); returns `sandbox_id`; `503` if the pool is empty and the cap is reached |
+| `POST /v1/sandboxes/claim` `{session_id, capability, profile}` | hand over a warm sandbox: write its session file (R7), with the pod's proxy as `gateway_url`; returns `sandbox_id`, `gateway_url`. Waits up to `CLAIM_WAIT_SECONDS` for a pod still warming up; `503` (`Retry-After`) if none |
 | `POST /v1/sandboxes/{id}/release` | end of session: stop and destroy it, then start a replacement |
 | `GET /v1/sandboxes` | the pool: warm, claimed, starting; image digest |
 | `GET /health` | Docker and gVisor available; the pool at its target |
@@ -85,6 +85,23 @@ starting ──(agent-runtime ready)──▶ warm ──claim──▶ claimed 
 
 The setup steps follow [lxc-setup.md](../../lxc-setup.md), adapted for a VM: `qm` instead of `pct`,
 plus the gVisor install. A runbook gets written when it's built.
+
+## The runner, measured (CP2 2.4, 2026-11-12)
+`python/services/sandbox-runner/` (`app/pool.py`, `backend.py`, `workspaces.py`, `api.py`; 28 tests
+against a fake Docker), run live on VM 200 with the dev gateway as its gateway:
+
+| | |
+|---|---|
+| warm-up of one pod (workspace + network + proxy + sandbox, runtime waiting) | **~1 s** |
+| claim (the API call: writes the session file) | **10 ms** |
+| claim to `runtime.ready` at the gateway (Codex starting under gVisor) | **647 ms** |
+| a real turn through a claimed pod | Codex under gVisor → the pod's proxy → the gateway → the model: works |
+| release | nothing left (containers, network, workspace, session file); the pool refills |
+| `kill -9` mid-warm-up, then restart (R9) | 5 containers, 3 networks, 3 workspaces found and removed; a fresh pool |
+| graceful stop | every pod destroyed |
+
+A pod counts as warm only when its sandbox waits for its session file **and** its proxy runs; a
+warm pod whose proxy stops is replaced.
 
 ## The pod, checked (CP2, 2026-11-12)
 `python/services/sandbox-runner/scripts/pod_check.py` builds two pods by hand on the worker VM

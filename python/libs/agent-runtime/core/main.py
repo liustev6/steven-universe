@@ -139,8 +139,8 @@ class Session:
 
 async def main(session_path: Path, agent_factory: Callable[[SessionFile], AgentLike] | None = None,
                http: httpx.AsyncClient | None = None) -> None:
-    started = time.monotonic()
     session = await wait_for_session(session_path)
+    started = time.monotonic()           # startup_ms counts from the claim (the file appearing), not the warm wait
     if agent_factory is None:
         from core.agent import Agent
         agent_factory = Agent

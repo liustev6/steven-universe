@@ -72,7 +72,7 @@ seconds) · `type`.
 
 | `type` | Comes from (Codex notifications) | Fields |
 |---|---|---|
-| `runtime.ready` | startup, once | `startup_ms`, `profile`, `model`, `tools` |
+| `runtime.ready` | startup, once | `startup_ms` (from the session file appearing, i.e. the claim, to ready), `profile`, `model`, `tools` |
 | `runtime.error` | the runtime itself (busy, crash, wall time) | `message` |
 | `turn.started` | a `turn` received | none |
 | `text.delta` | `item/agentMessage/delta` | `text` |
