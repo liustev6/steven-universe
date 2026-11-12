@@ -50,7 +50,7 @@ how much power the decider holds:
 | ID | Decision |
 |---|---|
 | D1 | **Build in GitHub, run on the LAN.** Hosted runners test and build; images go to GHCR as `ghcr.io/liustev6/steven-universe/<service>:<image sha>` and are deployed **by digest**. Hosts and the deployer never build: the machine that holds the keys never runs third-party build code, and the tested image is the deployed image. |
-| D1a | **An image is named by the commit that last changed its inputs** (the manifest's `code` folder plus `python/libs/`): `git log -1 --format=%H <sha> -- <code> python/libs`. A config-only commit redeploys the existing image with the new config. |
+| D1a | **An image is named by the commit that last changed its inputs:** the manifest's `code` folder plus the shared libraries its Dockerfile copies (`COPY libs/<name> …`, read from the Dockerfile, so it can't drift): `git log -1 --format=%H <sha> -- <code> <libs>`. A config-only commit redeploys the existing image with the new config; a library no Dockerfile copies (such as `agent-runtime`) changes no image. |
 | D2 | **No deployment secrets in GitHub.** The workflow proves who it is with a **GitHub OIDC token** (`id-token: write`): short-lived, signed by GitHub, nothing to store or leak. Image pushes use the built-in `GITHUB_TOKEN`. |
 | D3 | **In through the single edge.** GitHub calls `https://api.liustev6.ca/deploy/v1/deployments`; api-service forwards it unchanged to the deployer. The deployer, auth-service and OpenBao have no public hostname. |
 | D4 | **Requests name, they never command.** A request says *which service* at *which commit*. Everything else comes from that commit's manifest and the deployer's host allowlist. No field is executed or used as a path. |

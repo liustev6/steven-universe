@@ -3,7 +3,8 @@
 # root of the checked-out commit; tested by .github/scripts/tests/test_plan.sh.
 #
 # Builds (deployer spec D1a): for every infra/services/*/deploy.yaml, the image is named by the
-# commit that last changed its inputs (`code` + python/libs/). It is built only if
+# commit that last changed its inputs: its `code` folder and the shared libraries its Dockerfile
+# copies in (`COPY libs/<name> …`, read from the Dockerfile itself). It is built only if
 # $REGISTRY/<service>:<that sha> doesn't exist yet, so a config-only commit builds nothing and a
 # re-run is always safe. Build settings (context, Dockerfile, image name) come from the service's
 # compose file: one place for them (D12).
@@ -40,15 +41,27 @@ for m in infra/services/*/deploy.yaml; do
   code="$(yq -r '.code // ""' "$m")"
   compose="$(yq -r '.compose' "$m")"
   [ -n "$code" ] || { echo "::error file=$m::no 'code' folder (needed for the image sha, D1a)"; exit 1; }
-  image_sha="$(git log -1 --format=%H HEAD -- "$code" python/libs)"
+  q() { yq -r "explode(.) | .services[\"$svc\"] | $1" "$compose"; }
+  context="$(realpath -m --relative-to=. "$(dirname "$compose")/$(q .build.context)")"
+  dockerfile="$context/$(q .build.dockerfile)"
+  [ -f "$dockerfile" ] || { echo "::error file=$compose::no Dockerfile at $dockerfile"; exit 1; }
+
+  # Inputs (D1a): the code, plus each shared library the Dockerfile copies (a source `libs/<name>`
+  # of a COPY line, relative to the build context). A library no service copies changes no image.
+  prefix="$([ "$context" = . ] || echo "$context/")"
+  libs="$(sed -nE 's/^[[:space:]]*COPY[[:space:]]+//p' "$dockerfile" | tr -s ' \t' '\n' \
+    | sed -nE "s|^(libs/[A-Za-z0-9._-]+)/?$|$prefix\1|p" | sort -u | tr '\n' ' ')"
+  inputs="$code $libs"                       # repository paths, no spaces
+  image_sha="$(git log -1 --format=%H HEAD -- $inputs)"
   [ -n "$image_sha" ] || { echo "::error file=$m::no commit touches $code"; exit 1; }
+  watched="$(printf '%s|' $inputs "infra/services/$svc" | sed 's/|$//; s/\./\\./g')"
 
   # ---- deploy? ---------------------------------------------------------------------------------
   if [ "$(yq -r '.pipeline // false' "$m")" = true ]; then
     want=false
     if [ "$EVENT" = workflow_dispatch ]; then
       [ "${REDEPLOY:-}" = "$svc" ] && want=true
-    elif [ "$all_changed" = true ] || grep -qE "^($code|python/libs|infra/services/$svc)/" <<<"$changed"; then
+    elif [ "$all_changed" = true ] || grep -qE "^($watched)/" <<<"$changed"; then
       want=true
     fi
     if [ "$want" = true ]; then
@@ -64,16 +77,13 @@ for m in infra/services/*/deploy.yaml; do
   fi
 
   # ---- build? ----------------------------------------------------------------------------------
-  q() { yq -r "explode(.) | .services[\"$svc\"] | $1" "$compose"; }
   want_image="$REGISTRY/$svc:\${IMAGE_TAG:-local}"
   [ "$(q .image)" = "$want_image" ] || { echo "::error file=$compose::image must be $want_image"; exit 1; }
-  context="$(realpath -m --relative-to=. "$(dirname "$compose")/$(q .build.context)")"
-  dockerfile="$context/$(q .build.dockerfile)"
   if docker manifest inspect "$REGISTRY/$svc:$image_sha" >/dev/null 2>&1; then
     echo "$svc: $REGISTRY/$svc:${image_sha:0:7} exists, skip"
     continue
   fi
-  echo "$svc: build ${image_sha:0:7} (last change to $code or python/libs)"
+  echo "$svc: build ${image_sha:0:7} (last change to: ${inputs% })"
   entries="$(jq -c --arg s "$svc" --arg c "$code" --arg i "$image_sha" --arg x "$context" --arg f "$dockerfile" \
     '. + [{service: $s, code: $c, image_sha: $i, context: $x, dockerfile: $f}]' <<<"$entries")"
 done

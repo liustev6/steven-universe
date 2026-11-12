@@ -22,7 +22,8 @@ chmod +x "$T/bin/"*
 export PATH="$T/bin:$PATH" EXISTING="$T/existing"
 : >"$EXISTING"
 
-# A repository with three services: a (pipeline, wave 1), b (pipeline, wave 2), c (by hand).
+# A repository with three services: a (pipeline, wave 1), b (pipeline, wave 2), c (by hand). Each
+# Dockerfile copies the shared library libs/x; libs/y is copied by none (like agent-runtime).
 R="$T/repo"; mkdir -p "$R"; cd "$R"
 git init -q -b main; git config user.email t@example.com; git config user.name t
 manifest() {   # service, pipeline, wave
@@ -32,15 +33,17 @@ manifest() {   # service, pipeline, wave
   printf 'services:\n  %s:\n    image: %s/%s:${IMAGE_TAG:-local}\n    build:\n      context: ../..\n      dockerfile: services/%s/Dockerfile\n' \
     "$1" "$REGISTRY" "$1" "$1" >"python/services/$1/compose.yaml"
   echo v1 >"python/services/$1/app.py"
+  printf 'FROM scratch\nCOPY libs/x /tmp/x\nCOPY services/%s/ /app\n' "$1" >"python/services/$1/Dockerfile"
 }
 manifest a true 1; manifest b true 2; manifest c false 1
-mkdir -p python/libs docs; echo lib >python/libs/x.py; echo doc >docs/x.md
+mkdir -p python/libs/x python/libs/y docs; echo lib >python/libs/x/x.py; echo lib >python/libs/y/y.py; echo doc >docs/x.md
 commit() { git add -A; git commit -qm "$1"; git rev-parse HEAD; }
 C1="$(commit first)"
 echo v2 >python/services/a/app.py;            C2="$(commit "a code")"
 echo X=1 >infra/services/b/config.env;         C3="$(commit "b config")"
 echo doc2 >docs/x.md;                          C4="$(commit "docs only")"
-echo lib2 >python/libs/x.py;                   C5="$(commit "shared library")"
+echo lib2 >python/libs/x/x.py;                 C5="$(commit "shared library")"
+echo lib2 >python/libs/y/y.py;                 C6="$(commit "a library no service copies")"
 
 run() {   # head, event, before, redeploy -> prints the outputs
   git checkout -q "$1"
@@ -56,8 +59,8 @@ o="$(run "$C2" push "$C1" "")"
 expect_eq "a's code changed: deploy a in wave 1" "$(svcs wave1 "$o")/$(svcs wave2 "$o")" "a/"
 expect_eq "nothing exists yet: build all three" "$(builds "$o")" "a,b,c"
 
-for s in a b c; do echo "$REGISTRY/$s:$(git log -1 --format=%H "$C5" -- python/services/$s python/libs)" >>"$EXISTING"; done
-for s in a b c; do echo "$REGISTRY/$s:$(git log -1 --format=%H "$C3" -- python/services/$s python/libs)" >>"$EXISTING"; done
+for s in a b c; do echo "$REGISTRY/$s:$(git log -1 --format=%H "$C5" -- python/services/$s python/libs/x)" >>"$EXISTING"; done
+for s in a b c; do echo "$REGISTRY/$s:$(git log -1 --format=%H "$C3" -- python/services/$s python/libs/x)" >>"$EXISTING"; done
 
 o="$(run "$C3" push "$C2" "")"
 expect_eq "b's config changed: deploy b in wave 2, nothing to build" "$(svcs wave1 "$o")/$(svcs wave2 "$o")/$(builds "$o")" "/b/"
@@ -65,6 +68,8 @@ o="$(run "$C4" push "$C3" "")"
 expect_eq "docs only: no deploys" "$(svcs wave1 "$o")/$(svcs wave2 "$o")" "/"
 o="$(run "$C5" push "$C4" "")"
 expect_eq "shared library changed: every pipeline service, by wave (never c)" "$(svcs wave1 "$o")/$(svcs wave2 "$o")" "a/b"
+o="$(run "$C6" push "$C5" "")"
+expect_eq "a library no Dockerfile copies: no deploys, no builds" "$(svcs wave1 "$o")/$(svcs wave2 "$o")/$(builds "$o")" "//"
 o="$(run "$C5" push "0000000000000000000000000000000000000000" "")"
 expect_eq "unknown previous push: everything changed" "$(svcs wave1 "$o")/$(svcs wave2 "$o")" "a/b"
 o="$(run "$C5" workflow_dispatch "" b)"
@@ -75,6 +80,8 @@ o="$(run "$C5" workflow_dispatch "" "")"
 expect_eq "build-only dispatch: no deploys" "$(svcs wave1 "$o")/$(svcs wave2 "$o")" "/"
 o="$(run "$C4" workflow_dispatch "" b "$C5")"
 expect_contains "redeploy at an older ref is refused" "$o" "exit=1"
-expect_eq "image sha of a at C4 = the last commit touching a or python/libs" \
-  "$(run "$C4" push "$C3" "" >/dev/null; git log -1 --format=%h "$C4" -- python/services/a python/libs)" "$(git rev-parse --short "$C2")"
+expect_eq "image sha of a at C4 = the last commit touching a or the libraries it copies" \
+  "$(run "$C4" push "$C3" "" >/dev/null; git log -1 --format=%h "$C4" -- python/services/a python/libs/x)" "$(git rev-parse --short "$C2")"
+git checkout -q "$C6"; rm python/services/a/Dockerfile; git commit -qam "no Dockerfile"; C7="$(git rev-parse HEAD)"
+expect_contains "a missing Dockerfile is an error" "$(run "$C7" push "$C6" "")" "exit=1"
 finish

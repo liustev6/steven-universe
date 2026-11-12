@@ -176,7 +176,7 @@ the environment-variable form is refused. Local development without RustFS or au
 
 ## Deployment and secrets
 **Deploys are automatic.** The manifest has `pipeline: true` (wave 1): a push to `main` that changes
-the service's code, `python/libs/` or `infra/services/file-management/` is built by GitHub Actions
+the service's code, `python/libs/service-auth/` or `infra/services/file-management/` is built by GitHub Actions
 and deployed through api-service and the deployer to CT 103. By hand:
 `infra/deployment/deploy.sh file-management [sha]`. The host-side steps (config, secrets,
 certificate hook, pull by digest, health, smoke test, rollback) are in [deployer.md](deployer.md).
