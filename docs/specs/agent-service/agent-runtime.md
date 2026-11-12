@@ -186,7 +186,7 @@ C4 and C5 (plan limits, refresh) are in [model-access.md](model-access.md).
 | Q3 | First text at effort `low`: **1.6–2.6 s** (n = 6; first call or not makes little difference). The first test, at effort `medium` with nothing cached, took **10.1 s**. Codex adds **~10,000 tokens** of its own instructions to every call; `codex_instructions: false` cuts a `voice` call to **~5,800** (−42%). The rest is still Codex's (tool and environment context): worth trimming later. |
 | Q4 | **9–10 ms** from interrupt to `turn.completed` (`interrupted`), after one word; the next turn continues the conversation |
 | Q5 | image **840 MB** (arm64; the Codex binaries are ~400 MB); **84 MiB** idle, **139 MiB** after a few turns |
-| Q6, C2 | deferred to CP2: measured on the sandbox worker, under gVisor |
+| Q6, C2 | **Measured on the sandbox worker (2026-11-12, VM 200, amd64): Codex runs under gVisor**, tools included (a shell command reports the `4.19.0-gvisor` kernel). gVisor (systrap) costs ~0.3 s of startup (590 vs 310 ms), ~20 MiB of memory (108 vs 84 MiB idle), nothing measurable on first text (2.1–2.4 s either way, set by the model) or interrupts (5 ms), and **3.7× on many small files** (0.55 vs 0.15 s for 3,000). Results and the platform choice: [sandbox-runner.md](sandbox-runner.md). |
 | Q7 | **Works read-only:** non-root (10001), read-only root, `CODEX_HOME` on `/tmp`; on the internal network it reaches only the gateway |
 
 ### Baseline: the Claude Agent SDK engine (2026-11-09; replaced)

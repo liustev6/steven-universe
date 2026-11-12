@@ -1,6 +1,8 @@
 # Spec: sandbox-runner (who runs the sandboxes)
 
-**Status: decision locked** (2026-11-09, agent-service decision 1). Not built.
+**Status: decision locked** (2026-11-09, agent-service decision 1). Being built: CP2 ([tracker.md](tracker.md)).
+The worker VM exists (VM 200, [sandbox-worker-setup.md](../../sandbox-worker-setup.md)); gVisor
+measured (below).
 **Planned paths:**
 - `python/services/sandbox-runner/`: the runner;
 - `python/services/egress-proxy/`, or a stock proxy with config: the sandboxes' only way out;
@@ -41,6 +43,7 @@ pve01
 | R8 | **The sandbox image is pinned by digest** in the runner's `config.env`. Updating it is a config-only deploy of the runner: the pool drains and refills with the new image. The VM pulls it from GHCR; sandboxes never pull anything. | The same image-by-digest rule as every service (deployer D1). |
 | R9 | **The runner's state is disposable.** On start, it destroys every sandbox it finds and rebuilds the pool; sessions that had a sandbox fail, and agent-service reports it. | No unknown leftovers. Recovering an in-flight sandbox isn't worth the risk at home scale. |
 | R10 | **One mounter per sandbox** (milestone 2, [files-and-mounts.md](files-and-mounts.md) F2): at claim, the runner starts a small rclone container on the same internal network, with the session's locations, and bind-mounts its FUSE mounts **read-only** into the sandbox at `/workspace/inputs` (`work/` and `outputs/` are local). It is destroyed with the sandbox. | The sandbox gets files without FUSE privileges. The mounter holds only the session capability. |
+| R11 | **Sandboxes have no DNS: they get the gateway (later, egress-proxy) by IP address** in the session file. | Measured in CP2: under gVisor, Docker's embedded DNS (`127.0.0.11`) doesn't work, because gVisor's own network stack bypasses the firewall rules it relies on. No name resolution is also one less way out (2.7 checks it). |
 
 ## API (for agent-service only)
 HTTPS on the VM. It's authenticated with an auth-service token: audience `sandbox-runner`, client
@@ -79,6 +82,25 @@ starting ──(agent-runtime ready)──▶ warm ──claim──▶ claimed 
 The setup steps follow [lxc-setup.md](../../lxc-setup.md), adapted for a VM: `qm` instead of `pct`,
 plus the gVisor install. A runbook gets written when it's built.
 
+## gVisor, measured (CP2, 2026-11-12)
+On the worker VM (8 vCPU, amd64), the same session under each runtime: the `voice` profile, two
+turns, an interrupt, then a benchmark inside the sandbox.
+
+| | runc (no gVisor) | **runsc, systrap** (chosen) | runsc, KVM |
+|---|---|---|---|
+| startup to `ready` | 310 ms | **590 ms** | 1,727 ms |
+| first text (cold / warm) | 2.0 / 2.6 s | **2.4 / 2.1 s** | 2.1 / 1.9 s |
+| interrupt | 3 ms | **5 ms** | 7 ms |
+| memory idle / after turns | 84 / 96 MiB | **108 / 117 MiB** | 110 / 119 MiB |
+| 3,000 small files / Python imports / CPU loop | 0.15 / 0.13 / 0.21 s | **0.55 / 0.16 / 0.22 s** | 1.44 / 0.38 / 0.25 s |
+
+- **gVisor's cost is small where agents spend their time:** first text is set by the model, and
+  memory adds ~20 MiB. It shows on **syscall-heavy work** (3.7× on many small files), which matters
+  for builds and big checkouts, not for chat or home control.
+- **systrap, not KVM:** in a VM, the KVM platform runs on nested virtualization and is slower on
+  every measure here (startup 3×, files 2.6× systrap). The open question is closed.
+- **Codex's own tools work under gVisor:** a shell command reports the `4.19.0-gvisor` kernel.
+
 ## Not chosen
 | Option | Why not (now) |
 |---|---|
@@ -89,7 +111,5 @@ plus the gVisor install. A runbook gets written when it's built.
 
 ## Open questions
 - VM size and pool sizes, after measuring what a sandbox needs (Codex and its tools).
-- gVisor platform: systrap (default, proposed) or KVM. KVM is faster, but needs nested
-  virtualization enabled for the VM.
 - Should egress-proxy also enforce per-profile web allowlists (for profiles allowed to browse), or
   does that stay entirely in the gateway?

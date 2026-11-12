@@ -11,7 +11,7 @@ services:
     build: {context: .., dockerfile: dev/Dockerfile}
     environment:
       DEV_PROFILE: /profiles/${PROFILE:-general}.yaml
-      DEV_GATEWAY_URL: http://dev-gateway:8080        # how the sandbox reaches it
+      DEV_GATEWAY_URL: http://172.30.0.2:8080         # how the sandbox reaches it: by IP, the sandbox has no DNS (gVisor bypasses Docker's resolver)
       DEV_MODEL_AUTH: ${MODEL_AUTH:-chatgpt}          # chatgpt: your subscription · apikey: secrets/openai_api_key
       AGENT_LOG_LEVEL: INFO
     volumes:
@@ -19,7 +19,9 @@ services:
       - ./secrets:/secrets                            # your login (codex-home/, refreshed here): never in the sandbox
       - ./profiles:/profiles:ro
     ports: ["8080:8080"]                              # for agent-dev on your Mac
-    networks: [sandbox, outside]                      # bridges the sandbox's network and the internet
+    networks:                                         # bridges the sandbox's network and the internet
+      sandbox: {ipv4_address: 172.30.0.2}
+      outside: {}
 
   runtime:
     build: {context: .., dockerfile: Dockerfile}
@@ -37,7 +39,9 @@ services:
     networks: [sandbox]                               # no route out: only the dev gateway is reachable
 
 networks:
-  sandbox: {internal: true}
+  sandbox:
+    internal: true
+    ipam: {config: [{subnet: 172.30.0.0/24}]}
   outside: {}
 
 volumes:
