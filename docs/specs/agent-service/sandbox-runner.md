@@ -48,6 +48,7 @@ pve01
 | R11 | **Sandboxes have no DNS: they get the gateway (later, egress-proxy) by IP address** in the session file. | Measured in CP2: under gVisor, Docker's embedded DNS (`127.0.0.11`) doesn't work, because gVisor's own network stack bypasses the firewall rules it relies on. No name resolution is also one less way out (2.7 checks it). |
 | R12 | **One pod per sandbox: its own network and its own egress proxy** (the sidecar pattern, as in a Kubernetes pod). The runner creates the network (a /28 from a pool; the proxy at `.2`; **`inhibit_ipv4`**, so the network's bridge has no address on the VM: otherwise a sandbox reaches the VM's own ports, its SSH included, as CP2 found), starts the proxy from a stock nginx image (pinned by digest) with a config it generates (this pod's sandbox id, a UUID the runner makes and never takes from a request; the gateway as the only upstream, TLS-verified; any `X-Sandbox-Id` from the sandbox replaced; no buffering, so replies stream), then the sandbox. All of it during warm-up, so a claim stays instant; all of it destroyed together. | **Identity is configuration, not a lookup:** the proxy was started for one sandbox, so the stamp can't be wrong or forged, with no table of IPs to trust. **Sandboxes can't reach each other** (or each other's mounters). A failed proxy affects one sandbox. Chosen in CP2 over one shared proxy, with sandboxes identified by source IP, or one proxy joined to every sandbox's network. |
 | R13 | **Workspaces live on a dedicated XFS disk with a quota per sandbox** (`/srv/workspaces` on VM 200, mounted with `prjquota`). At warm-up, the runner creates the pod's directory (`work/`, `outputs/`, owned by the sandbox's uid), gives it an XFS project quota (default 10 GB) and bind-mounts it at `/workspace`; it's deleted with the pod. `/tmp` stays in RAM, capped (512 MB). The mounter's rclone cache (milestone 2) goes under the same pod's quota. | Real tasks (a cloned repo, a dataset) don't fit in RAM, and one task must not fill the VM. The quota is enforced by the VM's kernel, so it holds under gVisor: **measured in CP2**, a sandbox writing past a 20 MB quota stopped at exactly 20 MB with "No space left on device". The disk is separate from the system disk, so a full workspace disk can't take the VM down. The same mechanism as Docker's and Kubernetes' per-container storage limits. Not chosen: workspaces in RAM (they eat memory), a filesystem image per sandbox (one more filesystem and a loop device each). |
+| R14 | **Templates: the kinds of sandbox, by name** (`templates.yaml` next to the runner's config: image, runtime, warm count, cap, memory, CPU, `/tmp`, workspace quota). **A claim names a template, never an image or a path:** the image and every mount are fixed when the pod is created, from the runner's reviewed file; the claim only writes the session file. Which template a session gets is its profile's choice (agent-service, R1). **Capacity:** each template keeps its `warm` pods ready, at most **3 per template** (`MAX_PER_TEMPLATE`, or the template's own `max`) and **6 in all** (`MAX`); a template with `warm: 0` is started on demand (~1 s). **When the VM is full, a claim evicts a warm spare of another template** (the one with the most spares; never a claimed pod), so idle capacity never blocks real demand; an evicted pod's subnet stays taken until its teardown ends. | Different work needs different images and sizes (chat: small and fast; coding: more tools, room, memory). A caller that could name an image or a host path could take over the VM; a name looked up in the runner's own file can't. The per-template cap keeps one kind from crowding out the others. Measured live: a warm claim 6 ms, an on-demand one 1.1 s, an unknown name refused (400), limits and quotas per template. |
 
 ## API (for agent-service only)
 HTTPS on the VM. It's authenticated with an auth-service token: audience `sandbox-runner`, client
@@ -55,9 +56,9 @@ HTTPS on the VM. It's authenticated with an auth-service token: audience `sandbo
 
 | Route | What |
 |---|---|
-| `POST /v1/sandboxes/claim` `{session_id, capability, profile}` | hand over a warm sandbox: write its session file (R7), with the pod's proxy as `gateway_url`; returns `sandbox_id`, `gateway_url`. Waits up to `CLAIM_WAIT_SECONDS` for a pod still warming up; `503` (`Retry-After`) if none |
+| `POST /v1/sandboxes/claim` `{template, session_id, capability, profile}` | hand over a warm sandbox of that template (R14): write its session file (R7), with the pod's proxy as `gateway_url`; returns `sandbox_id`, `gateway_url`. If none is warm, starts one (evicting another template's spare if the VM is full) and waits up to `CLAIM_WAIT_SECONDS`; `400` unknown template; `503` (`Retry-After`) if none |
 | `POST /v1/sandboxes/{id}/release` | end of session: stop and destroy it, then start a replacement |
-| `GET /v1/sandboxes` | the pool: warm, claimed, starting; image digest |
+| `GET /v1/sandboxes` | the pool per template: warm, starting, claimed, cap, image |
 | `GET /health` | Docker and gVisor available; the pool at its target |
 
 There's no route to run a command in a sandbox, read its files or change its network. The runner
@@ -68,8 +69,8 @@ can only create and destroy.
 starting ──(agent-runtime ready)──▶ warm ──claim──▶ claimed ──release or timeout──▶ destroyed
     └────────────── failed to start ─────────────────────────────────────────────▶ destroyed
 ```
-- **Pool size:** `RUNNER_WARM` sandboxes ready (start: 2) and `RUNNER_MAX` in total (start: 4). A
-  claim beyond the cap gets `503`, and agent-service tells the user to try again shortly.
+- **Pool size:** per template, its `warm` pods ready, at most 3 of it, and 6 in all (R14). A claim
+  beyond the caps gets `503`, and agent-service tells the user to try again shortly.
 - **Hard timeout:** a claimed sandbox is destroyed after the session's wall-time limit even if
   agent-service never releases it.
 - **Deploying the runner:** it stops taking claims, waits for claimed sandboxes up to a timeout,

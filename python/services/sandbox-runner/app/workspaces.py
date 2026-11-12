@@ -19,15 +19,15 @@ PROJECT_BASE = 1_000_000          # XFS project ids: base + the pod's slot (uniq
 
 
 class Workspaces(Protocol):
-    def create(self, sandbox_id: uuid.UUID, slot: int) -> Path: ...
+    def create(self, sandbox_id: uuid.UUID, slot: int, quota_mb: int) -> Path: ...
     def remove(self, sandbox_id: uuid.UUID, slot: int) -> None: ...
     def leftovers(self) -> list[uuid.UUID]: ...
     def remove_leftover(self, sandbox_id: uuid.UUID) -> None: ...
 
 
 class XfsWorkspaces:
-    def __init__(self, root: Path, quota_mb: int, uid: int):
-        self.root, self.quota_mb, self.uid = root, quota_mb, uid
+    def __init__(self, root: Path, uid: int):
+        self.root, self.uid = root, uid
 
     def _xfs_quota(self, *commands: str) -> None:
         args = ["xfs_quota", "-x"]
@@ -35,14 +35,15 @@ class XfsWorkspaces:
             args += ["-c", c]
         subprocess.run([*args, str(self.root)], check=True, capture_output=True, text=True)
 
-    def create(self, sandbox_id: uuid.UUID, slot: int) -> Path:
+    def create(self, sandbox_id: uuid.UUID, slot: int, quota_mb: int) -> Path:
+        """The pod's directory, with a hard limit of `quota_mb` (its template's workspace_mb)."""
         path = self.root / str(sandbox_id)
         for sub in ("work", "outputs"):
             (path / sub).mkdir(parents=True)
         for p in (path, path / "work", path / "outputs"):
             shutil.chown(p, self.uid, self.uid)
         project = PROJECT_BASE + slot
-        self._xfs_quota(f"project -s -p {path} {project}", f"limit -p bhard={self.quota_mb}m {project}")
+        self._xfs_quota(f"project -s -p {path} {project}", f"limit -p bhard={quota_mb}m {project}")
         return path
 
     def remove(self, sandbox_id: uuid.UUID, slot: int) -> None:

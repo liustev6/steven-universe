@@ -12,6 +12,12 @@ from app import pool as pool_module
 from app.backend import ContainerSpec
 from app.config import Settings
 from app.pool import READY_MARK, Pool
+from app.templates import Template
+
+TEMPLATES = {
+    "chat": Template(image="ghcr.io/x/agent-runtime@sha256:chat", warm=2, memory_mb=1024, workspace_mb=1024),
+    "dev": Template(image="ghcr.io/x/agent-runtime-dev@sha256:dev", warm=0, memory_mb=4096, workspace_mb=20480),
+}
 
 
 class FakeBackend:
@@ -55,10 +61,10 @@ class FakeWorkspaces:
     def __init__(self, root: Path):
         self.root, self.live, self.left, self.removed_leftovers = root, {}, [], []
 
-    def create(self, sandbox_id, slot):
+    def create(self, sandbox_id, slot, quota_mb):
         path = self.root / str(sandbox_id)
         path.mkdir(parents=True)
-        self.live[sandbox_id] = slot
+        self.live[sandbox_id] = (slot, quota_mb)
         return path
 
     def remove(self, sandbox_id, slot): self.live.pop(sandbox_id, None)
@@ -76,16 +82,16 @@ def fast(monkeypatch):
 @pytest.fixture
 def settings(tmp_path):
     (tmp_path / "token").write_text("dev-token\n")
-    return Settings(SANDBOX_IMAGE="ghcr.io/x/agent-runtime@sha256:abc", GATEWAY_URL="http://gw:8080",
-                    WARM=2, MAX=3, CLAIM_WAIT_SECONDS=0.5, READY_TIMEOUT_SECONDS=0.3,
+    return Settings(GATEWAY_URL="http://gw:8080", MAX=6, MAX_PER_TEMPLATE=3,
+                    CLAIM_WAIT_SECONDS=0.5, READY_TIMEOUT_SECONDS=0.3,
                     WORKSPACE_ROOT=tmp_path / "ws", STATE_ROOT=tmp_path / "state", DEV_TOKEN_FILE=tmp_path / "token")
 
 
 @pytest.fixture
 def make_pool(settings, tmp_path):
-    def make(**overrides):
+    def make(templates=None, **overrides):
         s = settings.model_copy(update=overrides)
-        return Pool(s, FakeBackend(), FakeWorkspaces(tmp_path / "ws"))
+        return Pool(s, templates or TEMPLATES, FakeBackend(), FakeWorkspaces(tmp_path / "ws"))
     return make
 
 
