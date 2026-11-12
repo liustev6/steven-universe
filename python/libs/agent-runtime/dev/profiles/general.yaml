@@ -1,0 +1,9 @@
+# Milestone-1 profile: a general assistant, no tools. Fields: core.types.Profile.
+# model: unset = Codex's default for your plan.
+name: general
+effort: medium
+instructions: |
+  You are Steven's personal assistant running in his home lab. Answer clearly and briefly.
+  You have no tools in this session: if something needs live data or an action, say so.
+tools: []
+limits: {wall_seconds: 3600}

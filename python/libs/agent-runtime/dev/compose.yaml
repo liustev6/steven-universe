@@ -1,0 +1,44 @@
+# Milestone 1: the dev gateway + one sandbox (agent-runtime.md, "The test setup"; dev/README.md).
+#   cd python/libs/agent-runtime/dev && mkdir -p secrets && openssl rand -hex 32 > secrets/dev_token
+#   docker compose build
+#   docker compose run --rm dev-gateway python -m agent_dev.login     # once: your ChatGPT login (device code)
+#   docker compose up -d                   # SANDBOX_RUNTIME=runsc to measure under gVisor (Q6)
+#   AGENT_DEV_TOKEN=$(cat secrets/dev_token) agent-dev ask "hello"
+name: agent-dev
+
+services:
+  dev-gateway:
+    build: {context: .., dockerfile: dev/Dockerfile}
+    environment:
+      DEV_PROFILE: /profiles/${PROFILE:-general}.yaml
+      DEV_GATEWAY_URL: http://dev-gateway:8080        # how the sandbox reaches it
+      DEV_MODEL_AUTH: ${MODEL_AUTH:-chatgpt}          # chatgpt: your subscription · apikey: secrets/openai_api_key
+      AGENT_LOG_LEVEL: INFO
+    volumes:
+      - session:/session                              # writes session.json here
+      - ./secrets:/secrets                            # your login (codex-home/, refreshed here): never in the sandbox
+      - ./profiles:/profiles:ro
+    ports: ["8080:8080"]                              # for agent-dev on your Mac
+    networks: [sandbox, outside]                      # bridges the sandbox's network and the internet
+
+  runtime:
+    build: {context: .., dockerfile: Dockerfile}
+    runtime: ${SANDBOX_RUNTIME:-runc}
+    depends_on: [dev-gateway]
+    read_only: true                                   # the hardening the runner will apply (sandbox-runner R4)
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:exec,mode=1777,size=512m", "/workspace:uid=10001,gid=10001,size=256m"]
+    pids_limit: 256
+    mem_limit: 2g
+    volumes:
+      - session:/run/session:ro                       # the session file (sandbox-runner R7)
+    networks: [sandbox]                               # no route out: only the dev gateway is reachable
+
+networks:
+  sandbox: {internal: true}
+  outside: {}
+
+volumes:
+  session: {}

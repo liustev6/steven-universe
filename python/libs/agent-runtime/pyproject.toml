@@ -1,0 +1,27 @@
+[project]
+name = "agent-runtime"
+version = "0.1.0"
+description = "The program inside every agent sandbox (docs/specs/agent-service/agent-runtime.md)"
+requires-python = ">=3.11"
+dependencies = [
+    "openai-codex==0.167.2",       # the Codex SDK; installs the matching codex binary (openai-codex-cli-bin)
+    "httpx>=0.28.1",
+    "pydantic>=2.10",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "fastapi>=0.115", "pyyaml>=6"]
+
+[project.scripts]
+agent-runtime = "core.main:cli"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

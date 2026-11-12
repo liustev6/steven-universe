@@ -1,0 +1,4 @@
+**
+!pyproject.toml
+!core/**
+**/__pycache__

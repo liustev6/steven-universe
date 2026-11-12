@@ -1,0 +1,6 @@
+**
+!pyproject.toml
+!core/**
+!dev/pyproject.toml
+!dev/agent_dev/**
+**/__pycache__

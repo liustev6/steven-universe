@@ -1,0 +1,21 @@
+[project]
+name = "agent-dev"
+version = "0.1.0"
+description = "Milestone-1 dev gateway and CLI for agent-runtime (temporary)"
+requires-python = ">=3.11"
+dependencies = [
+    "agent-runtime",                 # only for core.types (protocol A)
+    "fastapi>=0.115", "uvicorn[standard]>=0.30", "httpx>=0.28.1", "pyyaml>=6", "pydantic>=2.10",
+    "openai-codex==0.167.2",         # the auth broker: device-code login and token refresh
+]
+
+[project.scripts]
+agent-dev = "agent_dev.cli:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agent_dev*"]
