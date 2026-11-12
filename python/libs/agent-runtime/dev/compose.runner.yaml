@@ -1,0 +1,17 @@
+# Runner mode (agent-service CP2, 2.5): the dev gateway claims its pod from sandbox-runner on this VM,
+# instead of a runtime container of its own. Run on VM 200, with the runner up:
+#   docker compose -f compose.yaml -f compose.runner.yaml up -d dev-gateway
+# Needs secrets/agent_dev_client_secret: auth-service's client agent-dev (add-client.sh; never in git).
+services:
+  dev-gateway:
+    environment:
+      DEV_RUNNER_URL: http://192.168.50.95:8443          # the runner's API (HTTPS on its LAN name from 2.6)
+      DEV_TEMPLATE: ${TEMPLATE:-chat}
+      SERVICE_AUTH_ISSUER: https://auth.lan.liustev6.ca
+      SERVICE_AUTH_CLIENT_ID: agent-dev
+      SERVICE_AUTH_CLIENT_SECRET_FILE: /secrets/agent_dev_client_secret
+    networks:
+      egress: {}                                          # the pods' proxies reach the gateway here
+
+networks:
+  egress: {name: sandbox-egress, external: true}

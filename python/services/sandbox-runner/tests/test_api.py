@@ -1,14 +1,41 @@
-"""The API (sandbox-runner.md "API"): auth, claim, release, the pool, health."""
+"""The API (sandbox-runner.md "API"): auth, claim, release, the pool, health.
 
+Tokens are checked by service-auth's ServiceAuth (its own tests cover the JWT side); here a stand-in
+with the same `require(*scopes)` shape checks that each route asks for its scope.
+"""
+
+from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 
 from app.api import create_app
 from tests.conftest import CAP, PROFILE
 
+TOKENS = {  # bearer -> scopes, as auth-service would grant them
+    "agent": {"sandboxes:claim", "sandboxes:release", "sandboxes:read"},
+    "reader": {"sandboxes:read"},
+}
+
+
+class FakeAuth:
+    def __init__(self):
+        self.asked = set()
+
+    def require(self, *scopes):
+        self.asked.update(scopes)
+
+        async def dependency(request: Request):
+            token = request.headers.get("authorization", "").removeprefix("Bearer ")
+            if token not in TOKENS:
+                raise HTTPException(401, "invalid token")
+            if not set(scopes) <= TOKENS[token]:
+                raise HTTPException(403, "insufficient scope")
+        return dependency
+
 
 def client(make_pool, settings, **overrides):
     pool = make_pool(**overrides)
-    return TestClient(create_app(settings, pool)), pool
+    auth = FakeAuth()
+    return TestClient(create_app(settings, pool, auth)), pool
 
 
 def wait_warm(c, n):
@@ -20,7 +47,7 @@ def wait_warm(c, n):
     raise AssertionError("not warm")
 
 
-H = {"Authorization": "Bearer dev-token"}
+H = {"Authorization": "Bearer agent"}
 
 
 def test_claim_release_and_the_pool(make_pool, settings):
@@ -61,3 +88,17 @@ def test_claim_body_is_strict(make_pool, settings):
         assert c.post("/v1/sandboxes/claim", headers=H, json={**good, "capability": "short"}).status_code == 422
         assert c.post("/v1/sandboxes/claim", headers=H, json={**good, "image": "evil"}).status_code == 422
         assert c.post("/v1/sandboxes/claim", headers=H, json={**good, "template": "nope"}).status_code == 400
+
+
+def test_each_route_needs_its_scope(make_pool, settings):
+    auth = FakeAuth()
+    c = TestClient(create_app(settings, make_pool(), auth))
+    assert auth.asked == {"sandboxes:claim", "sandboxes:release", "sandboxes:read"}
+    with c:
+        wait_warm(c, 2)
+        reader = {"Authorization": "Bearer reader"}
+        body = {"template": "chat", "session_id": "s", "capability": CAP, "profile": PROFILE}
+        assert c.get("/v1/sandboxes", headers=reader).status_code == 200
+        assert c.post("/v1/sandboxes/claim", headers=reader, json=body).status_code == 403
+        assert c.post("/v1/sandboxes/claim", headers={"Authorization": "Bearer forged"}, json=body).status_code == 401
+        assert c.get("/health").status_code == 200                       # no auth: monitoring

@@ -81,10 +81,9 @@ def fast(monkeypatch):
 
 @pytest.fixture
 def settings(tmp_path):
-    (tmp_path / "token").write_text("dev-token\n")
     return Settings(GATEWAY_URL="http://gw:8080", MAX=6, MAX_PER_TEMPLATE=3,
                     CLAIM_WAIT_SECONDS=0.5, READY_TIMEOUT_SECONDS=0.3,
-                    WORKSPACE_ROOT=tmp_path / "ws", STATE_ROOT=tmp_path / "state", DEV_TOKEN_FILE=tmp_path / "token")
+                    WORKSPACE_ROOT=tmp_path / "ws", STATE_ROOT=tmp_path / "state")
 
 
 @pytest.fixture

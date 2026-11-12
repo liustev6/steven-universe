@@ -7,20 +7,22 @@
     GET  /health                         no auth: is the pool at its target?
 
 There is no route to run a command in a sandbox, read its files or change its network: the runner
-can only create and destroy. Callers: a dev token until 2.5 (auth-service, aud=sandbox-runner).
+can only create and destroy.
+
+Callers authenticate with auth-service tokens (audience `sandbox-runner`), checked locally against
+auth-service's public keys (service-auth). Each route needs its scope; auth-service's policy decides
+which clients get them: agent-service only (in CP2, its stand-in `agent-dev`).
 """
 
 from __future__ import annotations
 
-import hmac
 import logging
-import os
 import time
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any, Callable
+from typing import Any, Protocol
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import Settings
@@ -35,19 +37,18 @@ class ClaimRequest(BaseModel):
     profile: dict[str, Any]          # passed through to the session file; agent-runtime validates it
 
 
-def dev_token_auth(settings: Settings) -> Callable[[Request], None]:
-    token = settings.DEV_TOKEN_FILE.read_text().strip() if settings.DEV_TOKEN_FILE else None
-
-    def authorize(request: Request) -> None:
-        auth = request.headers.get("authorization", "")
-        presented = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-        if not token or not hmac.compare_digest(presented, token):
-            raise HTTPException(401, "invalid token")
-    return authorize
+AUDIENCE = "sandbox-runner"
 
 
-def create_app(settings: Settings, pool: Pool, authorize: Callable[[Request], None] | None = None) -> FastAPI:
-    authorize = authorize or dev_token_auth(settings)
+class Auth(Protocol):
+    """service_auth.fastapi_auth.ServiceAuth, or a stand-in in tests."""
+    def require(self, *scopes: str): ...
+
+
+def create_app(settings: Settings, pool: Pool, auth: Auth | None = None) -> FastAPI:
+    if auth is None:
+        from service_auth.fastapi_auth import ServiceAuth
+        auth = ServiceAuth.from_env(AUDIENCE)              # SERVICE_AUTH_ISSUER
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -57,9 +58,8 @@ def create_app(settings: Settings, pool: Pool, authorize: Callable[[Request], No
 
     app = FastAPI(title="sandbox-runner", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.pool = pool
-    auth = [Depends(authorize)]
 
-    @app.post("/v1/sandboxes/claim", dependencies=auth)
+    @app.post("/v1/sandboxes/claim", dependencies=[Depends(auth.require("sandboxes:claim"))])
     async def claim(body: ClaimRequest) -> dict:
         try:
             pod = await pool.claim(body.template, body.session_id, body.capability, body.profile)
@@ -69,13 +69,13 @@ def create_app(settings: Settings, pool: Pool, authorize: Callable[[Request], No
             raise HTTPException(503, str(exc), headers={"Retry-After": "5"})
         return {"sandbox_id": str(pod.id), "gateway_url": pod.gateway_url}
 
-    @app.post("/v1/sandboxes/{sandbox_id}/release", dependencies=auth)
+    @app.post("/v1/sandboxes/{sandbox_id}/release", dependencies=[Depends(auth.require("sandboxes:release"))])
     async def release(sandbox_id: uuid.UUID) -> dict:
         if not await pool.release(sandbox_id):
             raise HTTPException(404, "no claimed sandbox with that id")
         return {"ok": True}
 
-    @app.get("/v1/sandboxes", dependencies=auth)
+    @app.get("/v1/sandboxes", dependencies=[Depends(auth.require("sandboxes:read"))])
     async def sandboxes() -> dict:
         now = time.monotonic()
         templates = {name: {"image": t.image, "runtime": t.runtime, "target_warm": t.warm, "max": pool.cap(name),

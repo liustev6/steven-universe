@@ -34,7 +34,6 @@ class Settings(BaseSettings):
     WORKSPACE_ROOT: Path = Path("/srv/workspaces")              # the XFS disk, prjquota
     STATE_ROOT: Path = Path("/run/sandbox-runner")              # tmpfs: session files, proxy configs
 
-    # ---- Callers: a dev token until 2.5 brings auth-service tokens (aud=sandbox-runner) -------
-    DEV_TOKEN_FILE: Path | None = None
+    # Callers: auth-service tokens, audience sandbox-runner (SERVICE_AUTH_ISSUER; see app/api.py).
 
     LOG_LEVEL: str = "INFO"

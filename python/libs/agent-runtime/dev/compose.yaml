@@ -8,7 +8,7 @@ name: agent-dev
 
 services:
   dev-gateway:
-    build: {context: .., dockerfile: dev/Dockerfile}
+    build: {context: ../.., dockerfile: agent-runtime/dev/Dockerfile}
     environment:
       DEV_PROFILE: /profiles/${PROFILE:-general}.yaml
       DEV_GATEWAY_URL: http://172.30.0.2:8080         # how the sandbox reaches it: by IP, the sandbox has no DNS (gVisor bypasses Docker's resolver)

@@ -27,6 +27,10 @@ audiences:
         location_syntax: prefix          # "<bucket>/<key prefix>"; subset = string prefix
         location_roots: [public/, private/]   # file-management's buckets (its spec, D10); keep in sync
 
+  sandbox-runner:                        # creates and destroys agent sandboxes on VM 200
+                                         # (docs/specs/agent-service/sandbox-runner.md). Only agent-service may call it.
+    scopes: [sandboxes:claim, sandboxes:release, sandboxes:read]
+
   secrets-manager:                       # OpenBao: services log in with a token for this audience.
                                          # What a login may read is OpenBao's policy (generated from the
                                          # manifests, infra/secrets-manager/tofu/), not a scope here.
@@ -38,6 +42,13 @@ clients:
     grants:
       secrets-manager:
         scopes: [secrets:read]
+
+  agent-dev:                             # TEMPORARY (agent-service CP2): the dev gateway on VM 200, standing in for
+                                         # agent-service until it exists (CP3), then removed. Secret host-only on VM 200,
+                                         # in the dev stack's secrets/ (gitignored).
+    grants:
+      sandbox-runner:
+        scopes: [sandboxes:claim, sandboxes:release, sandboxes:read]
 
   api-service:
     can_relay_clients: true              # may pass an outside machine client's own identity downstream (grant 3)

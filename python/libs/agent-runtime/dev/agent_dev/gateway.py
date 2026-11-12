@@ -13,6 +13,14 @@ One session, one profile. It does the control plane's job just enough to test th
                   POST /dev/turns/{id}/interrupt,  POST /dev/end,  GET /dev/events?after=
                   GET  /dev/health           no auth: is the runtime ready?
 
+Two ways to get a sandbox:
+    standalone    (CP1) it writes the session file itself, for a runtime container next to it
+    runner mode   (CP2, DEV_RUNNER_URL) it claims a pod from sandbox-runner at start, with its own
+                  auth-service token (client agent-dev, audience sandbox-runner), and releases it at
+                  the end. Then every runtime and model request must also carry the pod's
+                  X-Sandbox-Id, stamped by that pod's egress proxy: the capability only works from
+                  the sandbox it was given to (sandbox-runner.md R12).
+
 Deleted when agent-service's gateway exists. Settings come from the environment (DEV_*).
 """
 
@@ -43,9 +51,11 @@ from core.types import EventBatch, EventType, Profile, SessionFile, parse_event
 
 logger = logging.getLogger("agent_dev.gateway")
 
-# Request headers the gateway never forwards upstream: the sandbox's credential and hop-by-hop ones.
+# Request headers the gateway never forwards upstream: the sandbox's credential, the proxy's stamp,
+# and hop-by-hop ones.
 DROP_HEADERS = {"host", "authorization", "x-api-key", "chatgpt-account-id", "content-length", "connection",
-                "accept-encoding"}
+                "accept-encoding", "x-sandbox-id", "x-forwarded-for"}
+RUNNER_SCOPES = ["sandboxes:claim", "sandboxes:release"]
 # Response headers passed back to Codex: content, request ids and the plan's usage/rate-limit figures.
 PASS_PREFIXES = ("content-type", "content-encoding", "retry-after", "x-request-id", "x-codex-", "x-ratelimit-", "openai-")
 UPSTREAMS = {"chatgpt": "https://chatgpt.com/backend-api/codex", "apikey": "https://api.openai.com/v1"}
@@ -60,6 +70,8 @@ class Settings(BaseModel):
     dev_token_file: Path = Path(os.environ.get("DEV_TOKEN_FILE", "/secrets/dev_token"))
     gateway_url: str = os.environ.get("DEV_GATEWAY_URL", "http://dev-gateway:8080")   # as the sandbox sees it
     upstream: str | None = os.environ.get("DEV_UPSTREAM")                             # default: UPSTREAMS
+    runner_url: str | None = os.environ.get("DEV_RUNNER_URL") or None                 # runner mode (CP2)
+    template: str = os.environ.get("DEV_TEMPLATE", "chat")                            # the pod's template
 
 
 class TurnRequest(BaseModel):
@@ -78,9 +90,41 @@ class State:
         self.changed = asyncio.Condition()
         self.turn_ids = (f"t{n}" for n in itertools.count(1))
         self.ready = False
+        self.sandbox_id: str | None = None        # runner mode: the claimed pod; requests must come from it
+
+    def profile(self) -> Profile:
+        return Profile.model_validate(yaml.safe_load(self.settings.profile_file.read_text()))
+
+    async def claim(self, runner: httpx.AsyncClient, attempts: int = 10) -> None:
+        """Runner mode: get a pod for this session (sandbox-runner claim). The runner writes the
+        session file, with the pod's proxy as the gateway; this side only learns which pod it is."""
+        body = {"template": self.settings.template, "session_id": self.session_id, "capability": self.capability,
+                "profile": self.profile().model_dump(mode="json")}
+        delay = 1.0
+        for attempt in range(1, attempts + 1):
+            try:
+                r = await runner.post("/v1/sandboxes/claim", json=body)
+                if r.status_code == 200:
+                    self.sandbox_id = r.json()["sandbox_id"]
+                    logger.info("claimed sandbox %s (%s) for session %s", self.sandbox_id, self.settings.template,
+                                self.session_id)
+                    return
+                logger.warning("claim refused (attempt %d): %s %s", attempt, r.status_code, r.text[:200])
+                if r.status_code not in (502, 503, 504):
+                    break
+            except httpx.HTTPError as exc:
+                logger.warning("runner unreachable (attempt %d): %r", attempt, exc)
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 10)
+        raise RuntimeError("no sandbox from the runner")
+
+    async def release(self, runner: httpx.AsyncClient) -> None:
+        if self.sandbox_id:
+            r = await runner.post(f"/v1/sandboxes/{self.sandbox_id}/release")
+            logger.info("released sandbox %s: %s", self.sandbox_id, r.status_code)
 
     def write_session_file(self) -> None:
-        profile = Profile.model_validate(yaml.safe_load(self.settings.profile_file.read_text()))
+        profile = self.profile()
         session = SessionFile(session_id=self.session_id, capability=self.capability,
                               gateway_url=self.settings.gateway_url, profile=profile)
         d = self.settings.session_dir
@@ -106,9 +150,15 @@ class State:
 
 
 def create_app(settings: Settings | None = None, *, upstream_transport: httpx.AsyncBaseTransport | None = None,
-               broker: AuthBroker | None = None) -> FastAPI:
+               broker: AuthBroker | None = None, runner: httpx.AsyncClient | None = None) -> FastAPI:
     settings = settings or Settings()
     state = State(settings)
+    if settings.runner_url and runner is None:
+        from service_auth import TokenClient   # SERVICE_AUTH_ISSUER, _CLIENT_ID, _CLIENT_SECRET_FILE
+
+        tokens = TokenClient.from_env()
+        runner = httpx.AsyncClient(base_url=settings.runner_url, timeout=30.0,
+                                   auth=tokens.auth("sandbox-runner", scopes=RUNNER_SCOPES))
     upstream = httpx.AsyncClient(base_url=settings.upstream or UPSTREAMS[settings.model_auth],
                                  transport=upstream_transport, timeout=httpx.Timeout(30.0, read=600.0))
     if settings.model_auth == "chatgpt":
@@ -116,12 +166,20 @@ def create_app(settings: Settings | None = None, *, upstream_transport: httpx.As
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        state.write_session_file()
+        if runner is not None:
+            await state.claim(runner)
+        else:
+            state.write_session_file()
         keeper = asyncio.create_task(broker.keep_fresh()) if broker else None
-        yield
-        if keeper:
-            keeper.cancel()
-        await upstream.aclose()
+        try:
+            yield
+        finally:
+            if keeper:
+                keeper.cancel()
+            if runner is not None:
+                await state.release(runner)
+                await runner.aclose()
+            await upstream.aclose()
 
     app = FastAPI(title="dev-gateway", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.dev = state
@@ -133,6 +191,11 @@ def create_app(settings: Settings | None = None, *, upstream_transport: httpx.As
     def runtime_auth(request: Request) -> None:
         if not hmac.compare_digest(_presented(request), state.capability):
             raise HTTPException(401, "invalid session capability")
+        # Runner mode: the capability is only valid from its own pod (the proxy's stamp; R12).
+        if state.sandbox_id is not None and not hmac.compare_digest(
+                request.headers.get("x-sandbox-id", ""), state.sandbox_id):
+            logger.warning("capability used from another sandbox (%r): refused", request.headers.get("x-sandbox-id"))
+            raise HTTPException(403, "this capability isn't valid from this sandbox")
 
     def dev_auth(request: Request) -> None:
         if not hmac.compare_digest(_presented(request), state.dev_token):

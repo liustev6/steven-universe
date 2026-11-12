@@ -136,3 +136,47 @@ def test_events_are_parsed_one_by_one(settings):
         return r.json(), [e["seq"] for e in app.state.dev.events]
     body, kept = run(app, go)
     assert body == {"ok": True, "dropped": 2} and kept == [0, 3]       # one bad event never loses the batch
+
+
+# ---- runner mode (CP2): the pod comes from sandbox-runner; the capability only works from it ------
+
+SANDBOX = "3f2b8c1e-7a4d-4e9b-9c2a-1d5e6f708192"
+
+
+def fake_runner(calls):
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path, json.loads(request.content) if request.content else None))
+        if request.url.path == "/v1/sandboxes/claim":
+            return httpx.Response(200, json={"sandbox_id": SANDBOX, "gateway_url": "http://172.29.0.2:8080"})
+        return httpx.Response(200, json={"ok": True})
+    return httpx.AsyncClient(base_url="http://runner:8443", transport=httpx.MockTransport(handler))
+
+
+def test_runner_mode_claims_at_start_and_releases_at_the_end(settings):
+    calls = []
+    app = create_app(settings.model_copy(update={"runner_url": "http://runner:8443"}), runner=fake_runner(calls))
+    run(app, lambda c: asyncio.sleep(0))
+    (m1, p1, claim), (m2, p2, _) = calls
+    assert (m1, p1) == ("POST", "/v1/sandboxes/claim") and (m2, p2) == ("POST", f"/v1/sandboxes/{SANDBOX}/release")
+    assert claim["template"] == "chat" and claim["capability"] == app.state.dev.capability
+    assert claim["session_id"] == app.state.dev.session_id and claim["profile"]["name"] == "general"
+    assert not (settings.session_dir / "session.json").exists()          # the runner writes it, in the pod
+
+
+def test_runner_mode_capability_only_works_from_its_own_pod(settings):
+    seen = []
+    app = create_app(settings.model_copy(update={"runner_url": "http://runner:8443"}),
+                     upstream_transport=fake_upstream(seen), runner=fake_runner([]))
+
+    async def go(c):
+        cap = {"Authorization": f"Bearer {app.state.dev.capability}"}
+        poll = lambda extra: c.get("/v1/runtime/turns", params={"wait": 0}, headers={**cap, **extra})
+        return [
+            (await poll({})).status_code,                                         # no stamp
+            (await poll({"X-Sandbox-Id": "another-pod"})).status_code,           # someone else's pod
+            (await poll({"X-Sandbox-Id": SANDBOX})).status_code,                 # its own pod
+            (await c.post("/model/responses", content=b"{}", headers={**cap, "X-Sandbox-Id": "another-pod"})).status_code,
+            (await c.post("/model/responses", content=b"{}", headers={**cap, "X-Sandbox-Id": SANDBOX})).status_code,
+        ]
+    assert run(app, go) == [403, 403, 200, 403, 200]
+    assert len(seen) == 1 and "x-sandbox-id" not in seen[0]["headers"]        # the stamp never reaches OpenAI

@@ -1,4 +1,5 @@
 # Local development and tests
 -r requirements.txt
+-e ../../libs/service-auth[fastapi]   # token checks (ServiceAuth)
 pytest==9.2.0
 httpx==0.28.1          # FastAPI TestClient
