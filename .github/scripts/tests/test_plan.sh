@@ -28,7 +28,7 @@ R="$T/repo"; mkdir -p "$R"; cd "$R"
 git init -q -b main; git config user.email t@example.com; git config user.name t
 manifest() {   # service, pipeline, wave
   mkdir -p "infra/services/$1" "python/services/$1"
-  printf 'service: %s\nhost: h\ncode: python/services/%s\ncompose: python/services/%s/compose.yaml\nhealth: https://x/health\npipeline: %s\nwave: %s\n' \
+  printf 'service: %s\nhost: h\ncode: python/services/%s\nlibs: [x]\ncompose: python/services/%s/compose.yaml\nhealth: https://x/health\npipeline: %s\nwave: %s\n' \
     "$1" "$1" "$1" "$2" "$3" >"infra/services/$1/deploy.yaml"
   printf 'services:\n  %s:\n    image: %s/%s:${IMAGE_TAG:-local}\n    build:\n      context: ../..\n      dockerfile: services/%s/Dockerfile\n' \
     "$1" "$REGISTRY" "$1" "$1" >"python/services/$1/compose.yaml"
@@ -84,4 +84,8 @@ expect_eq "image sha of a at C4 = the last commit touching a or the libraries it
   "$(run "$C4" push "$C3" "" >/dev/null; git log -1 --format=%h "$C4" -- python/services/a python/libs/x)" "$(git rev-parse --short "$C2")"
 git checkout -q "$C6"; rm python/services/a/Dockerfile; git commit -qam "no Dockerfile"; C7="$(git rev-parse HEAD)"
 expect_contains "a missing Dockerfile is an error" "$(run "$C7" push "$C6" "")" "exit=1"
+git checkout -q "$C6"; sed -i.bak 's/^libs: \[x\]$/libs: [x, y]/' infra/services/b/deploy.yaml && rm infra/services/b/deploy.yaml.bak
+git commit -qam "b declares a library its Dockerfile doesn't copy"; C8="$(git rev-parse HEAD)"
+o="$(run "$C8" push "$C6" "")"
+expect_contains "libs that don't match the Dockerfile fail the plan" "$o$(cat "$T/log")" "doesn't match what"
 finish

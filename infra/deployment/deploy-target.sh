@@ -23,7 +23,7 @@
 #   4. Pull the image        8. Smoke test
 #
 # The image comes from GHCR (.github/workflows/build.yml), named by the commit that last changed
-# the service's code or python/libs/ (the "image sha", deployer spec D1a); hosts never build.
+# the service's code or its libs (the "image sha", deployer spec D1a); hosts never build.
 # Every deploy appends one line to /var/lib/deploy-target/<service>.log:
 #   <time> TAB <deployed sha> TAB <image sha> TAB <digest> TAB succeeded|failed
 ##############################################################################
@@ -53,6 +53,7 @@ out("M_SMOKE_SCRIPT", smoke.get("script")); out("M_SMOKE_SECRET", smoke.get("sec
 out("M_CERT_NAME", cert.get("name")); out("M_CERT_HOOK", cert.get("hook"))
 out("M_PRE_START", (m.get("hooks") or {}).get("pre_start"))
 out("M_HOST_ONLY", " ".join(m.get("host_only") or []))
+out("M_LIBS", " ".join("python/libs/" + lib for lib in m.get("libs") or []))
 PY
 )"
 [ "$M_SERVICE" = "$SERVICE" ] || { echo "manifest says service '$M_SERVICE', expected '$SERVICE'" >&2; exit 1; }
@@ -67,7 +68,8 @@ SVC_DIR="$SRC/$(dirname "$M_COMPOSE")"
 cd "$SVC_DIR"
 
 # The image to run (D1a). Exported: every `docker compose` below, and the service hook, use it.
-IMAGE_SHA="$(git -C "$SRC" log -1 --format=%H "$SHA" -- "$M_CODE" python/libs)"
+# shellcheck disable=SC2086  # $M_LIBS: repository paths, no spaces
+IMAGE_SHA="$(git -C "$SRC" log -1 --format=%H "$SHA" -- "$M_CODE" $M_LIBS)"
 export IMAGE_TAG="$IMAGE_SHA"
 DIGEST=""
 
@@ -92,7 +94,7 @@ elif [ "$PREV" = "$SHA" ]; then info "same commit as the last successful deploy 
 else info "last successful: ${PREV:0:7}  ->  deploying: $SHORT"; fi
 [ -z "$PREV" ] || info "previous: $PREV"        # full sha: the deployer rolls back to it (spec D8)
 if [ "$IMAGE_SHA" = "$SHA" ]; then info "image: built from this commit"
-else info "image: ${IMAGE_SHA:0:7} (last change to $M_CODE or python/libs; this commit changes only config)"; fi
+else info "image: ${IMAGE_SHA:0:7} (last change to $M_CODE or its libs; this commit changes only config)"; fi
 
 ##############################################################################
 # Step 2: config.env, secrets from OpenBao, host-only files, certificate

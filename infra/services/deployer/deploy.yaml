@@ -7,6 +7,7 @@ service: deployer
 host: deployer-host
 pipeline: false                        # by hand only (D13); also absent from its own host allowlist
 code: python/services/deployer
+libs: [service-auth]                   # in the image (its Dockerfile copies libs/service-auth; CI checks)
 compose: python/services/deployer/compose.yaml
 config: infra/services/deployer/config.env            # -> /etc/deployer/config.env
 url: https://deploy.lan.liustev6.ca

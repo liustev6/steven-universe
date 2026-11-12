@@ -51,8 +51,10 @@ MANIFEST="$(git -C "$REPO" show "$SHA:infra/services/$SERVICE/deploy.yaml" 2>/de
 HOST="$(yq -r '.host' <<<"$MANIFEST")"
 CODE="$(yq -r '.code // ""' <<<"$MANIFEST")"
 [ -n "$CODE" ] || die "infra/services/$SERVICE/deploy.yaml has no 'code' folder"
-# The image: named by the commit that last changed the code or python/libs/ (deployer spec D1a).
-IMAGE_SHA="$(git -C "$REPO" log -1 --format=%H "$SHA" -- "$CODE" python/libs)"
+# The image: named by the commit that last changed its code or its libs (deployer spec D1a).
+LIBS="$(yq -r '.libs // [] | .[] | "python/libs/" + .' <<<"$MANIFEST" | tr '\n' ' ')"
+# shellcheck disable=SC2086  # $LIBS: repository paths, no spaces
+IMAGE_SHA="$(git -C "$REPO" log -1 --format=%H "$SHA" -- "$CODE" $LIBS)"
 IMAGE="ghcr.io/$GH_REPO/$SERVICE"
 NSECRETS="$(yq -r '.secrets // [] | length' <<<"$MANIFEST")"
 

@@ -7,6 +7,7 @@ service: file-management
 host: files-host                       # SSH alias; the deployer will map it through its host allowlist
 pipeline: true                         # GitHub Actions deploys it through the deployer (D16)
 code: python/services/file-management-service
+libs: [service-auth]                   # in the image (its Dockerfile copies libs/service-auth; CI checks)
 compose: python/services/file-management-service/compose.yaml
 config: infra/services/file-management/config.env     # -> /etc/file-management/config.env
 url: https://files.lan.liustev6.ca

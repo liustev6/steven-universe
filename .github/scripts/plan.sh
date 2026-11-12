@@ -3,8 +3,9 @@
 # root of the checked-out commit; tested by .github/scripts/tests/test_plan.sh.
 #
 # Builds (deployer spec D1a): for every infra/services/*/deploy.yaml, the image is named by the
-# commit that last changed its inputs: its `code` folder and the shared libraries its Dockerfile
-# copies in (`COPY libs/<name> …`, read from the Dockerfile itself). It is built only if
+# commit that last changed its inputs: its `code` folder and its `libs` (python/libs/<name>). The
+# manifest's `libs` must match the Dockerfile's `COPY libs/<name> …` lines exactly, or this fails:
+# deploy.sh and deploy-target.sh name the image from `libs` too, so they can't drift. It is built only if
 # $REGISTRY/<service>:<that sha> doesn't exist yet, so a config-only commit builds nothing and a
 # re-run is always safe. Build settings (context, Dockerfile, image name) come from the service's
 # compose file: one place for them (D12).
@@ -46,12 +47,14 @@ for m in infra/services/*/deploy.yaml; do
   dockerfile="$context/$(q .build.dockerfile)"
   [ -f "$dockerfile" ] || { echo "::error file=$compose::no Dockerfile at $dockerfile"; exit 1; }
 
-  # Inputs (D1a): the code, plus each shared library the Dockerfile copies (a source `libs/<name>`
-  # of a COPY line, relative to the build context). A library no service copies changes no image.
-  prefix="$([ "$context" = . ] || echo "$context/")"
-  libs="$(sed -nE 's/^[[:space:]]*COPY[[:space:]]+//p' "$dockerfile" | tr -s ' \t' '\n' \
-    | sed -nE "s|^(libs/[A-Za-z0-9._-]+)/?$|$prefix\1|p" | sort -u | tr '\n' ' ')"
-  inputs="$code $libs"                       # repository paths, no spaces
+  # Inputs (D1a): the code and the manifest's `libs`, which must equal the libraries the Dockerfile
+  # copies (a source `libs/<name>` of a COPY line). A library no image includes changes no image.
+  copied="$(sed -nE 's/^[[:space:]]*COPY[[:space:]]+//p' "$dockerfile" | tr -s ' \t' '\n' \
+    | sed -nE 's|^libs/([A-Za-z0-9._-]+)/?$|\1|p' | sort -u | tr '\n' ' ')"
+  declared="$(yq -r '.libs // [] | .[]' "$m" | sort -u | tr '\n' ' ')"
+  [ "$copied" = "$declared" ] || {
+    echo "::error file=$m::libs [${declared% }] doesn't match what $dockerfile copies [${copied% }]"; exit 1; }
+  inputs="$code $(for l in $declared; do printf 'python/libs/%s ' "$l"; done)"   # repository paths, no spaces
   image_sha="$(git log -1 --format=%H HEAD -- $inputs)"
   [ -n "$image_sha" ] || { echo "::error file=$m::no commit touches $code"; exit 1; }
   watched="$(printf '%s|' $inputs "infra/services/$svc" | sed 's/|$//; s/\./\\./g')"
