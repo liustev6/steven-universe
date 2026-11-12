@@ -15,7 +15,7 @@ services come up, what needs a person, and how to check that everything is back.
 power on ─▶ pve01 (Proxmox VE 9, 192.168.50.101)
             │  tailscaled           remote access + subnet route 192.168.50.0/24
             │                       (forwarding: /etc/sysctl.d/99-tailscale.conf)
-            ▼  pve-guests           starts every container with onboot=1, by startup order
+            ▼  pve-guests           starts every container and VM with onboot=1, by startup order
  order 0   CT 102 auth-service      Docker → auth-service container          ready
            ... wait 15 s (up=15)
  order 1   CT 101 rustfs            systemd rustfs.service                   ready
@@ -25,9 +25,13 @@ power on ─▶ pve01 (Proxmox VE 9, 192.168.50.101)
  order 2   CT 105 deployer          Docker → deployer container              ready
            ... wait 10 s
  order 3   CT 106 api-service       Docker → api-service container           ready
+           ... wait 10 s
+ order 4   VM 200 sandbox-worker    Docker (+ gVisor) → nothing yet (CP2)    ready
+           ... wait 30 s (a VM boots its own kernel)
  no order  CT 100 cloudflared       systemd cloudflared (Cloudflare tunnel)  ready
 ```
-Containers without an order start after all ordered ones. Shutdown runs in reverse order.
+Guests without an order start after all ordered ones. Shutdown runs in reverse order. Numbering:
+containers from 100, VMs from 200.
 
 | CT | Name | Starts at boot | Order | Service inside | Restarts on crash |
 |---|---|---|---|---|---|
@@ -38,9 +42,10 @@ Containers without an order start after all ordered ones. Shutdown runs in rever
 | 104 | secrets-manager | `onboot=1` | 1, `up=10` | Docker enabled; container `restart: unless-stopped` | yes (comes back sealed) |
 | 105 | deployer | `onboot=1` | 2, `up=10` | Docker enabled; container `restart: unless-stopped` | yes |
 | 106 | api-service | `onboot=1` | 3, `up=10` | Docker enabled; container `restart: unless-stopped` | yes |
+| **VM 200** | sandbox-worker | `onboot=1` | 4, `up=30` | Docker enabled, gVisor (`runsc`) registered; the sandbox runner arrives in CP2 ([sandbox-worker-setup.md](../sandbox-worker-setup.md)) | yes |
 
 Also enabled on CT 102–106: `certbot.timer` (certificate renewal) and `unattended-upgrades`
-(security updates).
+(security updates); on VM 200, `unattended-upgrades` and the QEMU guest agent.
 
 ## Why this order
 | Service | Depends on | Why it's placed there |
@@ -51,6 +56,7 @@ Also enabled on CT 102–106: `certbot.timer` (certificate renewal) and `unatten
 | file-management (2) | auth-service (JWKS on first request), rustfs (health check) | after both |
 | deployer (2) | auth-service and OpenBao (only when a deploy runs: token, then secrets) | after both; deploys wait for the unseal |
 | api-service (3) | the deployer (for `/deploy/*`) | after it; before cloudflared, which publishes it |
+| sandbox-worker (4) | agent-service's gateway (its sandboxes reach only that), when it exists | after the control plane; nothing depends on it at boot |
 | cloudflared (last) | api-service | the public entry comes up last |
 
 The order is a convenience, not a guarantee: the services also tolerate starting early.
