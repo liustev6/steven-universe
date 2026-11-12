@@ -11,7 +11,7 @@
 | 3 | The engine: the **Codex SDK** (OpenAI's `openai-codex`) runs the agent loop in the sandbox, replacing the Claude Agent SDK, so that your ChatGPT Pro subscription pays for the model | [agent-runtime.md](agent-runtime.md) |
 | 4 | Model access: your subscription's login lives only in a trusted **auth broker** in agent-service (one owner refreshes it; the durable copy is in OpenBao); sandboxes hold only a capability; personal use only. The gateway adds your token on the way out (route A, proven in milestone 1) | [model-access.md](model-access.md) |
 
-**Milestones (proposed):**
+**Milestones** (the build order as checkpoints: [tracker.md](tracker.md)):
 
 | Milestone | What | Document |
 |---|---|---|
@@ -31,7 +31,7 @@
 
 Related: [auth-service.md](../auth-service.md), [file-management.md](../file-management.md),
 [api-service.md](../api-service.md), [deployer.md](../deployer.md), [secrets-manager.md](../secrets-manager.md);
-in this folder: [agent-runtime.md](agent-runtime.md), [model-access.md](model-access.md),
+in this folder: [tracker.md](tracker.md), [agent-runtime.md](agent-runtime.md), [model-access.md](model-access.md),
 [sandbox-runner.md](sandbox-runner.md), [files-and-mounts.md](files-and-mounts.md).
 
 ## What it is
@@ -326,13 +326,8 @@ summaries and memory.
   without the control plane.
 
 ## Build order
-| Step | What | Proves |
-|---|---|---|
-| 1 | agent-service skeleton (sessions, events, the gateway's model route and auth broker); `agent-runtime` with the Codex SDK; sandbox-runner with gVisor on the worker VM; a warm pool of 2; profile `chat`; pi-server's assistant turns → agent-service | the whole loop, voice to model to voice |
-| 2 | Weather and Home Assistant tools, with the confirmation flow; profile `home` | it acts on the home, safely |
-| 3 | Downscoping fixed at auth-service; workspaces (the sync model) through the gateway; profile `tasks` | file work with least privilege |
-| 4 | Knowledge: corpus into a bucket, index, `search_knowledge`; profile `steven-ai`; retire stevenai-service | RAG, upgraded |
-| 5 | Transcripts and memory; the phone through api-service | continuity; outside the home |
+The build order is a sequence of checkpoints, tracked in [tracker.md](tracker.md): what each one
+proves, when it's done, and the sub-checkpoints of the one in progress.
 
 ## Open questions
 - **Latency budget for voice:** if a warm sandbox plus the SDK's startup adds too much to "turn off
