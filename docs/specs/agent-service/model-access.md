@@ -1,7 +1,8 @@
 # Spec: model access (how a session calls the model, paid by your ChatGPT subscription)
 
 **Status: milestone 1, route A chosen** (2026-11-11; 2026-11-12: C1 passed, your Pro plan answers
-through the gateway). The rules below are agreed. Left: C5 (watching a refresh). Part of
+through the gateway). The rules below are agreed. C5 (watching a refresh) is deferred to CP3, when
+the broker saves the login to OpenBao ([tracker.md](tracker.md)). Part of
 [agent-service](README.md). Related: [agent-runtime.md](agent-runtime.md),
 [secrets-manager.md](../secrets-manager.md).
 
@@ -66,7 +67,7 @@ requires_openai_auth = false
 |---|---|---|
 | C1 | Does OpenAI accept your `codex login` access token from the gateway, and bill it to your plan? | **Yes** (2026-11-12): route A |
 | C4 | How do parallel sessions share your Pro limits? What does a limit look like? | **Partly answered.** Codex reports the plan's usage after each call (`account/rateLimits/updated`, now forwarded as `model.usage_updated`): a **5-hour window** and a **weekly window**, each with `used_percent` and a reset time; a hit sets `rate_limit_reached_type`, which becomes `model.rate_limited`. A short voice turn moved the 5-hour window by about 1% or less. How parallel sessions share it: under load, later. |
-| C5 | What does a refresh look like from the broker: how often, and does the SDK's account refresh write the new bundle to `auth.json`? | how the broker saves to OpenBao (MA3). The broker refreshes every 6 hours and on a `401`; not yet observed |
+| C5 | What does a refresh look like from the broker: how often, and does the SDK's account refresh write the new bundle to `auth.json`? | how the broker saves to OpenBao (MA3). The broker refreshes every 6 hours and on a `401`; **deferred to CP3** |
 
 (C2 and C3 are the runtime's questions: [agent-runtime.md](agent-runtime.md).)
 

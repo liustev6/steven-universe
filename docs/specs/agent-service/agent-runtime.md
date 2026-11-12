@@ -1,8 +1,9 @@
 # Spec: agent-runtime (what runs inside every sandbox)
 
-**Status: milestone 1, in progress** (2026-11-09; 2026-11-11: the engine is the Codex SDK;
-2026-11-12: day 1 done, a reply paid by your ChatGPT subscription through the gateway, results below).
-Left: the test VM (gVisor, Q5 busy, Q6, C2). Build the runtime and test it with a temporary
+**Status: milestone 1 done** (2026-11-09; 2026-11-11: the engine is the Codex SDK; 2026-11-12:
+replies paid by your ChatGPT subscription through the gateway, results below). The results lock the
+design described here. **Deferred:** gVisor (Q6, C2) to the sandbox worker ([tracker.md](tracker.md)
+CP2); the login refresh (C5) to agent-service with OpenBao (CP3). Build the runtime and test it with a temporary
 **dev gateway**: no agent-service, no sandbox-runner, no public route yet. Details get locked as
 milestone 1 answers its questions (below). Part of [agent-service](README.md); model access is in
 [model-access.md](model-access.md).
@@ -185,7 +186,7 @@ C4 and C5 (plan limits, refresh) are in [model-access.md](model-access.md).
 | Q3 | First text at effort `low`: **1.6–2.6 s** (n = 6; first call or not makes little difference). The first test, at effort `medium` with nothing cached, took **10.1 s**. Codex adds **~10,000 tokens** of its own instructions to every call; `codex_instructions: false` cuts a `voice` call to **~5,800** (−42%). The rest is still Codex's (tool and environment context): worth trimming later. |
 | Q4 | **9–10 ms** from interrupt to `turn.completed` (`interrupted`), after one word; the next turn continues the conversation |
 | Q5 | image **840 MB** (arm64; the Codex binaries are ~400 MB); **84 MiB** idle, **139 MiB** after a few turns |
-| Q6, C2 | not yet: gVisor on the test VM |
+| Q6, C2 | deferred to CP2: measured on the sandbox worker, under gVisor |
 | Q7 | **Works read-only:** non-root (10001), read-only root, `CODEX_HOME` on `/tmp`; on the internal network it reaches only the gateway |
 
 ### Baseline: the Claude Agent SDK engine (2026-11-09; replaced)

@@ -15,7 +15,7 @@
 
 | Milestone | What | Document |
 |---|---|---|
-| M1 | the runtime on the Codex SDK, with a temporary dev gateway (no control plane). **Day 1 done** (2026-11-12): replies paid by your subscription, interrupts in 10 ms; left: the test VM with gVisor | [agent-runtime.md](agent-runtime.md), [model-access.md](model-access.md) |
+| M1 | the runtime on the Codex SDK, with a temporary dev gateway (no control plane). **Done** (2026-11-12): replies paid by your subscription, interrupts in 10 ms; gVisor moves to CP2 | [agent-runtime.md](agent-runtime.md), [model-access.md](model-access.md) |
 | M2 | files as a mounted folder: a WebDAV view in file-management, a mounter sidecar, the gateway's files route, narrowed tokens | [files-and-mounts.md](files-and-mounts.md) |
 
 **Replaces and absorbs:**

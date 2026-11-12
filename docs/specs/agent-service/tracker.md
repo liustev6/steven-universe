@@ -25,9 +25,9 @@ Part of [agent-service](README.md). The build order, as checkpoints.
 | CP | Status | Built | Risk it retires | Done when |
 |---|---|---|---|---|
 | 0 | ✅ 2026-11-11 | the design: decisions 1–4 | building the wrong thing | the specs are agreed |
-| 1 | 🟡 | **the runtime** on the Codex SDK, with the dev gateway (milestone 1, [agent-runtime.md](agent-runtime.md)) | can the agent run sandboxed, paid by your plan, with no secret in the sandbox? | below |
-| 2 | ⏳ | **sandbox worker:** the VM, sandbox-runner, warm pool, egress proxy, gVisor ([sandbox-runner.md](sandbox-runner.md)); the dev gateway stays | isolation and speed at the infrastructure level | a claim gives a ready sandbox in under 1 s; the pool refills; each sandbox is destroyed after use; a sandbox reaches only the gateway (escape tests fail); the proxy overwrites the sandbox-id header |
-| 3 | ⏳ | **agent-service skeleton** on CT 107, through the deployer: sessions API, gateway (runtime and model routes), auth broker with OpenBao, auth-service tokens. **The dev gateway is deleted.** | the control plane, real auth, operability | a caller's token starts a session and streams a turn; another caller can't read it; reconnecting with `?after=` loses nothing, even across a restart (G10); the login survives a host rebuild; the kill switch works |
+| 1 | ✅ 2026-11-12 (`37d1b61`) | **the runtime** on the Codex SDK, with the dev gateway (milestone 1, [agent-runtime.md](agent-runtime.md)) | can the agent run sandboxed, paid by your plan, with no secret in the sandbox? | replies paid by your Pro plan through the gateway (C1, route A); the sandbox never held the token (Q1, Q7); ready ~350 ms, first text 1.6–2.6 s, interrupt ~10 ms (Q2–Q5). **Deferred:** gVisor (Q6, C2) to CP2; the login refresh (C5) to CP3 |
+| 2 | ⏳ | **sandbox worker:** the VM, sandbox-runner, warm pool, egress proxy, gVisor ([sandbox-runner.md](sandbox-runner.md)); the dev gateway stays | isolation and speed at the infrastructure level | Codex runs under gVisor (C2) and gVisor's cost is measured (Q6, from CP1); a claim gives a ready sandbox in under 1 s; the pool refills; each sandbox is destroyed after use; a sandbox reaches only the gateway (escape tests fail); the proxy overwrites the sandbox-id header |
+| 3 | ⏳ | **agent-service skeleton** on CT 107, through the deployer: sessions API, gateway (runtime and model routes), auth broker with OpenBao, auth-service tokens. **The dev gateway is deleted.** | the control plane, real auth, operability | a caller's token starts a session and streams a turn; a login refresh is watched and its new bundle saved to OpenBao (C5, from CP1); another caller can't read it; reconnecting with `?after=` loses nothing, even across a restart (G10); the login survives a host rebuild; the kill switch works |
 | 4 | ⏳ | **voice:** pi-server → agent-service, protocol B in shared-schemas, Hey Pi speaks | the first thing you actually use | you ask Hey Pi and hear the answer; first audio within the budget set at the start of this CP; barge-in interrupts; a week of daily use |
 | 5 | ⏳ | **tools:** the gateway's MCP route, weather, Home Assistant, confirmations (G12), budgets (G14) | an agent that acts, safely | "turn off the kitchen lights" works; locks and the garage ask first; an injected instruction can't unlock the door; a session over budget is refused |
 | 6 | ⏳ | **files** (milestone 2, [files-and-mounts.md](files-and-mounts.md)): WebDAV read view, mounter, publish, token exchange | storage access without credentials in the sandbox | that spec's "done when" |
@@ -40,17 +40,8 @@ CP1 ─▶ CP2 ─▶ CP3 ─▶ CP4 ─▶ CP5 ─┬─▶ CP7 ─▶ CP9
                                   └─▶ CP6 ─▶ CP8      (6 and 7 can swap or run in parallel)
 ```
 
-## CP1: the runtime (in progress)
-| Sub-CP | Status | What | Done when / evidence |
-|---|---|---|---|
-| 1.1 | ✅ | the package `core`: protocol A in `core/types`, the main loop, the gateway client | 21 tests pass |
-| 1.2 | ✅ | the Codex engine: custom model provider (the gateway, the capability as its key), translator, plan usage forwarded | Q1 against a fake upstream: one kind of request, only the capability |
-| 1.3 | ✅ | dev gateway: session file, auth broker (device-code login, refresh via Codex), model route with token injection | tests: token swap, refresh-and-retry on `401`, `503` when signed out, API-key mode |
-| 1.4 | ✅ | **day 1:** one message paid by your subscription | C1 passed 2026-11-12: route A chosen ([model-access.md](model-access.md)) |
-| 1.5 | ✅ | measurements on the Mac | Q2 ~350 ms · Q3 1.6–2.6 s at effort `low` · Q4 ~10 ms · Q5 840 MB, 84–139 MiB · Q7 hardened · `codex_instructions: false` −42% tokens (commit `37d1b61`) |
-| 1.6 | ⏳ | **the test VM:** Debian 13, Docker, gVisor (`runsc`); the stack from `dev/README.md` | Q6 (gVisor's cost: Q2–Q5 again under `runsc`) and C2 (Codex runs under gVisor) recorded |
-| 1.7 | ⏳ | C5: a login refresh, watched | the gateway log shows a refresh (scheduled or on `401`) and the next call succeeds; how the bundle changes is noted for MA3 |
-| 1.8 | ⏳ | close CP1 | [agent-runtime.md](agent-runtime.md)'s questions answered and its decisions locked; this section collapsed to one line |
+## In progress
+None. **CP2 is next;** its sub-checkpoints are defined when it starts.
 
 ## Found along the way (not yet scheduled)
 | Item | Found in | Likely CP |
