@@ -43,7 +43,8 @@ logger = logging.getLogger(__name__)
 READY_MARK = "waiting for"            # agent-runtime's log line while it waits for its session file
 REAP_EVERY = 5.0                      # seconds between hard-timeout checks
 READY_POLL = 0.1                      # seconds between readiness checks while a pod starts
-RETRY_DELAY = 1.0                     # after a pod fails to start, before trying again
+RETRY_DELAY = 1.0                     # after a pod fails to start: the first wait before trying again
+MAX_RETRY_DELAY = 60.0                # doubling per consecutive failure of the template, up to this
 GRACE_SECONDS = 30                    # added to a session's wall time before the hard timeout
 
 
@@ -98,6 +99,12 @@ class Pool:
         self._changed = asyncio.Condition()
         self._tasks: set[asyncio.Task] = set()
         self._closing = False
+        self._failures: dict[str, int] = {}          # consecutive warm-up failures, per template
+        self._backoff_until: dict[str, float] = {}   # no new pods of the template before this time
+
+    def backing_off(self, template: str) -> float:
+        """Seconds left before the template may start pods again (0 = it may)."""
+        return max(0.0, self._backoff_until.get(template, 0.0) - time.monotonic())
 
     def cap(self, template: str) -> int:
         """The most pods of this template at once."""
@@ -163,6 +170,8 @@ class Pool:
         if self._closing:
             return
         for name, t in self.templates.items():
+            if self.backing_off(name):
+                continue
             while self.count("warm", "starting", template=name) < t.warm and self._room(name):
                 if not self._start_pod(name):
                     return
@@ -206,11 +215,16 @@ class Pool:
             if not await asyncio.to_thread(self.backend.running, f"proxy-{pod.name}"):
                 raise RuntimeError("its egress proxy isn't running")
         except Exception as exc:
-            logger.error("pod %s (%s) failed to start: %r", pod.name, pod.template, exc)
+            failures = self._failures[pod.template] = self._failures.get(pod.template, 0) + 1
+            delay = min(RETRY_DELAY * 2 ** (failures - 1), MAX_RETRY_DELAY)
+            self._backoff_until[pod.template] = time.monotonic() + delay
+            logger.error("pod %s (%s) failed to start (%d in a row; next try in %.0f s): %r",
+                         pod.name, pod.template, failures, delay, exc)
             await self._destroy(pod)
-            await asyncio.sleep(RETRY_DELAY)           # don't spin on a persistent failure
+            await asyncio.sleep(delay)                 # don't spin on a persistent failure
             await self.refill()
             return
+        self._failures.pop(pod.template, None)
         async with self._changed:
             pod.state = "warm"
             self._changed.notify_all()
@@ -283,6 +297,8 @@ class Pool:
                 if pod is not None:
                     break
                 if self.count("starting", template=template) == 0:
+                    if wait := self.backing_off(template):
+                        raise NoSandbox(f"{template} sandboxes are failing to start; next try in {wait:.0f}s")
                     if self._live(template) >= self.cap(template):
                         raise NoSandbox(f"no {template} sandbox available: {self._live(template)}/{self.cap(template)} "
                                         f"of this template in use")

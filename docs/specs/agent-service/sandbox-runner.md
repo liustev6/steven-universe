@@ -42,7 +42,7 @@ pve01
 | R5 | **Sandboxes reach only agent-service's gateway.** Each sits on **its own** `--internal` Docker network, with no route out; its pod's **egress-proxy** is the only other member and forwards only to the gateway, stamping the sandbox's id on each request (R12). A second layer: the Proxmox firewall on the VM's interface allows only the gateway, GHCR (the VM's image pulls) and the runner's API from agent-service. | A sandbox can't reach the LAN, the internet, pve01 or the router, whatever runs in it. The gateway can check that a session capability is used from its own sandbox. |
 | R6 | **Single-use, from a warm pool.** The runner keeps N sandboxes started, with `agent-runtime` loaded and waiting. A claim hands one over in milliseconds; a released sandbox is destroyed and replaced, never reused. | Warm keeps voice responses fast; single-use means nothing carries over between sessions. |
 | R7 | **The session is handed over by file, not network.** At claim, the runner writes the session config (session id, capability, gateway URL) into that sandbox's bind-mounted `/run/session/` (on the VM's tmpfs); `agent-runtime` waits for that file, then starts. | A warm sandbox was started before its session existed; this delivers the session without opening any port into the sandbox. |
-| R8 | **The sandbox image is pinned by digest** in the runner's `config.env`. Updating it is a config-only deploy of the runner: the pool drains and refills with the new image. The VM pulls it from GHCR; sandboxes never pull anything. | The same image-by-digest rule as every service (deployer D1). |
+| R8 | **Sandbox images are built by CI and rolled out automatically.** CI builds `agent-runtime` like a service image (named by the last commit touching it); the runner's manifest lists it as an input, so a change to it redeploys the runner, whose templates (R14) name the new image, pinned by digest at deploy. The redeploy rebuilds the whole pool from the new image (pods are never updated in place); old images are pruned, keeping the last two. The VM pulls from GHCR; sandboxes never pull anything. | The same image-by-commit and by-digest rules as every service (deployer D1, D1a), with no hand-edited digests. |
 | R9 | **The runner's state is disposable.** On start, it destroys every sandbox it finds and rebuilds the pool; sessions that had a sandbox fail, and agent-service reports it. | No unknown leftovers. Recovering an in-flight sandbox isn't worth the risk at home scale. |
 | R10 | **One mounter per sandbox** (milestone 2, [files-and-mounts.md](files-and-mounts.md) F2): at claim, the runner starts a small rclone container in the sandbox's pod (its network, through its proxy), with the session's locations, and bind-mounts its FUSE mounts **read-only** into the sandbox at `/workspace/inputs` (`work/` and `outputs/` are local). It is destroyed with the sandbox. | The sandbox gets files without FUSE privileges. The mounter holds only the session capability. |
 | R11 | **Sandboxes have no DNS: they get the gateway (later, egress-proxy) by IP address** in the session file. | Measured in CP2: under gVisor, Docker's embedded DNS (`127.0.0.11`) doesn't work, because gVisor's own network stack bypasses the firewall rules it relies on. No name resolution is also one less way out (2.7 checks it). |
@@ -73,8 +73,10 @@ starting ──(agent-runtime ready)──▶ warm ──claim──▶ claimed 
   beyond the caps gets `503`, and agent-service tells the user to try again shortly.
 - **Hard timeout:** a claimed sandbox is destroyed after the session's wall-time limit even if
   agent-service never releases it.
-- **Deploying the runner:** it stops taking claims, waits for claimed sandboxes up to a timeout,
-  then restarts (R9).
+- **Deploying the runner:** it restarts at once and **running sessions are lost**: the old runner's
+  shutdown destroys every pod, the new one cleans anything left (R9) and warms a fresh pool.
+  agent-service reports the lost sandbox; the caller starts a new session, which picks up the
+  conversation once history exists (decision 2). Chosen over draining: simpler, and deploys are rare.
 
 ## The worker VM
 | Item | Plan |
@@ -145,5 +147,9 @@ turns, an interrupt, then a benchmark inside the sandbox.
 
 ## Open questions
 - VM size and pool sizes, after measuring what a sandbox needs (Codex and its tools).
-- Should egress-proxy also enforce per-profile web allowlists (for profiles allowed to browse), or
-  does that stay entirely in the gateway?
+- **Network for tools** (decided in outline, built later): web search is Codex's server-side tool
+  (no sandbox network); screenshots of an app inside the sandbox need a browser template, not a
+  network; fetching real sites needs an allowlisting forward proxy with private-range (SSRF)
+  checks after DNS, or the browser as a tool outside the sandbox. Either needs the Proxmox
+  firewall (R5's second layer) first. Where the allowlist lives (the pod proxy, the gateway, or a
+  dedicated egress proxy) is decided then.

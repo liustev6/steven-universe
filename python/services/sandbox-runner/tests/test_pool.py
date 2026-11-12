@@ -76,7 +76,7 @@ def test_proxy_config_is_written_for_its_pod(make_pool, settings):
         await pool.stop()
         return pod, text, mode
     pod, text, mode = run(go())
-    assert f'X-Sandbox-Id "{pod.id}"' in text and "proxy_pass http://gw:8080;" in text and mode == 0o444
+    assert f'X-Sandbox-Id "{pod.id}"' in text and "set $gateway http://gw:8080;" in text and mode == 0o444
 
 
 def test_claim_writes_the_session_file_and_refills_its_template(make_pool, settings):
@@ -239,3 +239,34 @@ def test_subnets_are_reused_only_after_release(make_pool):
         return slot, again
     slot, again = run(go())
     assert again.slot == slot
+
+
+def test_a_template_that_keeps_failing_backs_off(make_pool, monkeypatch):
+    monkeypatch.setattr(pool_module, "RETRY_DELAY", 0.2)
+    pool = make_pool(templates={"chat": Template(image="img", warm=1)})
+    pool.backend.never_ready = 1000                          # every sandbox fails to get ready
+
+    async def go():
+        await pool.start()
+        await until(lambda: pool._failures.get("chat", 0) >= 2, timeout=5)
+        waits = pool.backing_off("chat")
+        with pytest.raises(NoSandbox, match="failing to start"):
+            await pool.claim("chat", "s", CAP, PROFILE)       # fails fast instead of starting another
+        attempts = sum(n.startswith("sandbox-") for n in pool.backend.removed_containers)
+        await pool.stop()
+        return waits, attempts
+    waits, attempts = run(go())
+    assert 0 < waits <= 0.4 and attempts <= 3                # 0.2 s, then 0.4 s: not a pod every few ms
+
+
+def test_backoff_resets_after_a_success(make_pool):
+    pool = make_pool(templates={"chat": Template(image="img", warm=1)})
+    pool.backend.never_ready = 1
+
+    async def go():
+        await pool.start()
+        await until(lambda: pool.count("warm") == 1)
+        state = pool._failures.get("chat"), pool.backing_off("chat")
+        await pool.stop()
+        return state
+    assert run(go()) == (None, 0.0)
