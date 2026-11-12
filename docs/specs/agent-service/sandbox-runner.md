@@ -100,6 +100,8 @@ against a fake Docker), run live on VM 200 with the dev gateway as its gateway:
 | release | nothing left (containers, network, workspace, session file); the pool refills |
 | `kill -9` mid-warm-up, then restart (R9) | 5 containers, 3 networks, 3 workspaces found and removed; a fresh pool |
 | graceful stop | every pod destroyed |
+| API auth (2.5) | auth-service tokens (audience `sandbox-runner`, a scope per route): no or forged token 401; the dev gateway claims and releases with its own token |
+| theft test (2.5) | this session's capability used from another pod, even with the victim's `X-Sandbox-Id` sent: **403** (that pod's proxy re-stamps its own id); from its own pod: 200 |
 
 A pod counts as warm only when its sandbox waits for its session file **and** its proxy runs; a
 warm pod whose proxy stops is replaced.

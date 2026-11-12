@@ -19,6 +19,7 @@ services:
       - ./secrets:/secrets                            # your login (codex-home/, refreshed here): never in the sandbox
       - ./profiles:/profiles:ro
     ports: ["8080:8080"]                              # for agent-dev on your Mac
+    stop_grace_period: 20s                            # time to release its pod (runner mode) before being killed
     networks:                                         # bridges the sandbox's network and the internet
       sandbox: {ipv4_address: 172.30.0.2}
       outside: {}

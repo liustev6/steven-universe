@@ -15,4 +15,7 @@ RUN pip install --no-deps ./agent-runtime ./dev ./service-auth \
  && pip install "fastapi>=0.115" "uvicorn[standard]>=0.30" "httpx>=0.28.1" "pyyaml>=6" "pydantic>=2.10" \
       "pyjwt[crypto]>=2.10.1" "openai-codex==0.167.2"
 EXPOSE 8080
-CMD ["uvicorn", "agent_dev.gateway:app", "--factory", "--host", "0.0.0.0", "--port", "8080"]
+# Shutdown: stop waiting for the runtime's long polls after 5 s, so the shutdown code runs (runner
+# mode releases its pod there) well within compose's stop_grace_period.
+CMD ["uvicorn", "agent_dev.gateway:app", "--factory", "--host", "0.0.0.0", "--port", "8080", \
+     "--timeout-graceful-shutdown", "5"]
