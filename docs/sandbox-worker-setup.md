@@ -184,7 +184,29 @@ qm guest passwd 200 root          # optional: a root password for emergencies
 If the agent isn't running: still booting (retry), or the snippet isn't attached
 (`qm config 200 | grep cicustom` is empty): attach it as in step 2, then `qm reboot 200`.
 
-## 7. Done when (sub-checkpoint 2.1)
+## 7. The workspace disk (CP2 2.4, R13)
+Sandboxes' workspaces live on their own disk: XFS with project quotas, so each sandbox gets a hard
+size limit, and a full workspace disk can't fill the system disk. Added while the VM runs.
+
+**On pve01's shell:**
+```sh
+qm set 200 --scsi1 local-lvm:256,discard=on,ssd=1,iothread=1
+```
+**On the VM** (the disk is the one Proxmox calls `drive-scsi1`; check it's empty before formatting):
+```sh
+DEV=/dev/disk/by-id/scsi-0QEMU_QEMU_HARDDISK_drive-scsi1
+wipefs -n $DEV                                     # must print nothing: no filesystem on it yet
+apt-get install -y -qq xfsprogs
+mkfs.xfs -q -L workspaces $DEV
+mkdir -p /srv/workspaces
+echo "LABEL=workspaces /srv/workspaces xfs defaults,prjquota,nofail 0 2" >> /etc/fstab
+systemctl daemon-reload && mount /srv/workspaces
+xfs_quota -x -c "state -p" /srv/workspaces | grep -E "Accounting|Enforcement"   # both ON
+```
+To grow it later: `qm disk resize 200 scsi1 <size>` on pve01, then `xfs_growfs /srv/workspaces` on
+the VM (online). VM 200 got 200 GB, then 256 GB.
+
+## 8. Done when (sub-checkpoint 2.1)
 - [x] `docker run --rm --runtime=runsc hello-world` works on the VM (2026-11-12: runsc
   release-20261109.0, Docker 29.9.3; `/dev/kvm` present, so gVisor's KVM platform can be measured)
 - [x] the host key was checked through pve01 before it was trusted

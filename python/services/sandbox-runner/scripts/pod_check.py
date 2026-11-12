@@ -7,7 +7,8 @@ receives, then, from inside the sandboxes:
   1. the proxy stamps the pod's sandbox id, replacing any X-Sandbox-Id the sandbox sends;
   2. a request for another host (absolute URL, other Host) still goes only to the gateway;
   3. replies stream (the first chunk arrives before the reply ends);
-  4. the gateway can't be reached directly, nor the other pod's proxy, nor the internet, nor DNS.
+  4. the gateway can't be reached directly, nor the other pod's proxy, nor the VM itself (the pod
+     network's bridge has no address on the VM), nor the internet, nor DNS.
 Everything it creates is removed at the end. Exit status 0 = every check passed.
 """
 
@@ -53,7 +54,7 @@ ThreadingHTTPServer(("0.0.0.0", 8080), H).serve_forever()
 
 SANDBOX_CHECKS = r'''
 import json, socket, sys, time, urllib.request
-me, proxy, other_proxy, gateway = sys.argv[1:5]
+me, proxy, other_proxy, gateway, vm_bridge = sys.argv[1:6]
 results = {}
 def reach(host, port, timeout=2):
     try:
@@ -80,6 +81,7 @@ results["replies stream"] = first == b"chunk0\n" and t_first < 0.5 and t_all > 1
 
 results["gateway not reachable directly"] = not reach(gateway, 8080)
 results["other pod's proxy not reachable"] = not reach(other_proxy, 8080)
+results["the VM not reachable (its SSH)"] = not reach(vm_bridge, 22)
 results["internet not reachable"] = not reach("1.1.1.1", 443)
 try:
     socket.getaddrinfo("example.com", 443); results["no DNS"] = False
@@ -109,7 +111,8 @@ def main(sandbox_image: str, runtime: str = "runsc") -> int:
     confdir = Path(tempfile.mkdtemp(prefix="pod-check-"))
     for sid, prefix in PODS.items():
         net = f"check-pod-{name(sid)}"
-        sh("docker", "network", "create", "--internal", "--subnet", f"{prefix}.0/28", net)
+        sh("docker", "network", "create", "--internal", "--subnet", f"{prefix}.0/28",
+           "-o", "com.docker.network.bridge.inhibit_ipv4=true", net)
         conf = confdir / f"{name(sid)}.conf"
         conf.write_text(proxy_config(sid, f"http://{GW_IP}:8080"))
         conf.chmod(0o444)
@@ -124,7 +127,7 @@ def main(sandbox_image: str, runtime: str = "runsc") -> int:
             out = sh("docker", "run", "--rm", "--name", f"check-{name(sid)}", "--runtime", runtime,
                      "--network", f"check-pod-{name(sid)}", "--ip", f"{prefix}.3", *hardening, "--user", "10001:10001",
                      "--entrypoint", "python3", sandbox_image, "-c", SANDBOX_CHECKS,
-                     str(sid), f"{prefix}.2", f"{other}.2", GW_IP)
+                     str(sid), f"{prefix}.2", f"{other}.2", GW_IP, f"{prefix}.1")
             for check, ok in json.loads(out).items():
                 print(f"{'PASS' if ok else 'FAIL'}  {name(sid)}: {check}")
                 failed += not ok
