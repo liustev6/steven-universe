@@ -13,9 +13,9 @@ The sandbox can't change any of this: it only ever sees the proxy's port.
 from __future__ import annotations
 
 import re
+import uuid
 from urllib.parse import urlsplit
 
-SANDBOX_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 LISTEN_PORT = 8080
 CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt"   # in the nginx image
 
@@ -63,10 +63,19 @@ _TLS = """\
 """
 
 
-def proxy_config(sandbox_id: str, upstream: str) -> str:
-    """nginx.conf for one pod's proxy. `upstream`: the gateway's base URL, e.g. https://agent.lan.example:8443."""
-    if not SANDBOX_ID.match(sandbox_id):
-        raise ValueError(f"bad sandbox id: {sandbox_id!r}")
+def new_sandbox_id() -> uuid.UUID:
+    """A sandbox's id: random, made by the runner, never taken from a request."""
+    return uuid.uuid4()
+
+
+def proxy_config(sandbox_id: uuid.UUID, upstream: str) -> str:
+    """nginx.conf for one pod's proxy. `upstream`: the gateway's base URL, e.g. https://agent.lan.example:8443.
+
+    The id is a UUID, not a string: its text is only hex digits and dashes, so it can't break out of
+    the header's quotes, by construction rather than by a check.
+    """
+    if not isinstance(sandbox_id, uuid.UUID):
+        raise TypeError(f"sandbox_id must be a uuid.UUID, got {type(sandbox_id).__name__}")
     u = urlsplit(upstream)
     if u.scheme not in ("http", "https") or not u.hostname or u.path not in ("", "/") or u.query or u.fragment \
             or u.username or u.password:
@@ -75,5 +84,5 @@ def proxy_config(sandbox_id: str, upstream: str) -> str:
         raise ValueError(f"bad upstream host: {u.hostname!r}")
     host = u.netloc
     tls = _TLS.format(upstream_hostname=u.hostname, ca=CA_BUNDLE) if u.scheme == "https" else ""
-    return _TEMPLATE.format(sandbox_id=sandbox_id, port=LISTEN_PORT, upstream=f"{u.scheme}://{host}",
+    return _TEMPLATE.format(sandbox_id=str(sandbox_id), port=LISTEN_PORT, upstream=f"{u.scheme}://{host}",
                             upstream_host=host, tls=tls)

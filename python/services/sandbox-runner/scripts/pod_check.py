@@ -15,16 +15,22 @@ from __future__ import annotations
 
 import json
 import subprocess
+import uuid
 import sys
 import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from app.egress import proxy_config  # noqa: E402
+from app.egress import new_sandbox_id, proxy_config  # noqa: E402
 
 PROXY_IMAGE = "nginxinc/nginx-unprivileged:stable-alpine"
 GW_NET, GW_IP = "check-gw", "172.31.250.2"
-PODS = {"sandbox-1": "172.29.1", "sandbox-2": "172.29.2"}     # sandbox id -> its pod's /28
+PODS: dict[uuid.UUID, str] = {new_sandbox_id(): "172.29.1", new_sandbox_id(): "172.29.2"}   # id -> its pod's /28
+
+
+def name(sid: uuid.UUID) -> str:
+    """Docker names: short and readable; the full id is what the proxy stamps."""
+    return sid.hex[:12]
 
 ECHO_GATEWAY = r'''
 import json, time
@@ -88,9 +94,9 @@ def sh(*args: str, check: bool = True) -> str:
 
 
 def cleanup() -> None:
-    names = ["check-gateway"] + [f"check-proxy-{s}" for s in PODS] + [f"check-{s}" for s in PODS]
+    names = ["check-gateway"] + [f"check-proxy-{name(s)}" for s in PODS] + [f"check-{name(s)}" for s in PODS]
     sh("docker", "rm", "-f", *names, check=False)
-    for net in [GW_NET] + [f"check-pod-{s}" for s in PODS]:
+    for net in [GW_NET] + [f"check-pod-{name(s)}" for s in PODS]:
         sh("docker", "network", "rm", net, check=False)
 
 
@@ -102,25 +108,25 @@ def main(sandbox_image: str, runtime: str = "runsc") -> int:
        "--entrypoint", "python3", sandbox_image, "-c", ECHO_GATEWAY)
     confdir = Path(tempfile.mkdtemp(prefix="pod-check-"))
     for sid, prefix in PODS.items():
-        net = f"check-pod-{sid}"
+        net = f"check-pod-{name(sid)}"
         sh("docker", "network", "create", "--internal", "--subnet", f"{prefix}.0/28", net)
-        conf = confdir / f"{sid}.conf"
+        conf = confdir / f"{name(sid)}.conf"
         conf.write_text(proxy_config(sid, f"http://{GW_IP}:8080"))
         conf.chmod(0o444)
-        sh("docker", "create", "--name", f"check-proxy-{sid}", "--network", net, "--ip", f"{prefix}.2", *hardening,
+        sh("docker", "create", "--name", f"check-proxy-{name(sid)}", "--network", net, "--ip", f"{prefix}.2", *hardening,
            "--tmpfs", "/tmp", "-v", f"{conf}:/etc/nginx/nginx.conf:ro", PROXY_IMAGE)
-        sh("docker", "network", "connect", GW_NET, f"check-proxy-{sid}")
-        sh("docker", "start", f"check-proxy-{sid}")
+        sh("docker", "network", "connect", GW_NET, f"check-proxy-{name(sid)}")
+        sh("docker", "start", f"check-proxy-{name(sid)}")
     failed = 0
     try:
         for sid, prefix in PODS.items():
             other = next(p for s, p in PODS.items() if s != sid)
-            out = sh("docker", "run", "--rm", "--name", f"check-{sid}", "--runtime", runtime,
-                     "--network", f"check-pod-{sid}", "--ip", f"{prefix}.3", *hardening, "--user", "10001:10001",
+            out = sh("docker", "run", "--rm", "--name", f"check-{name(sid)}", "--runtime", runtime,
+                     "--network", f"check-pod-{name(sid)}", "--ip", f"{prefix}.3", *hardening, "--user", "10001:10001",
                      "--entrypoint", "python3", sandbox_image, "-c", SANDBOX_CHECKS,
-                     sid, f"{prefix}.2", f"{other}.2", GW_IP)
-            for name, ok in json.loads(out).items():
-                print(f"{'PASS' if ok else 'FAIL'}  {sid}: {name}")
+                     str(sid), f"{prefix}.2", f"{other}.2", GW_IP)
+            for check, ok in json.loads(out).items():
+                print(f"{'PASS' if ok else 'FAIL'}  {name(sid)}: {check}")
                 failed += not ok
     finally:
         cleanup()
