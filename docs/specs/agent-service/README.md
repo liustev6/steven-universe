@@ -7,7 +7,7 @@
 | # | Decision | Document |
 |---|---|---|
 | 1 | Who runs sandboxes: sandbox-runner, a container on a dedicated VM, starting Docker sandboxes under gVisor | [sandbox-runner.md](sandbox-runner.md) |
-| 2 | Conversation history: PostgreSQL in the control plane owns history and memory; context is curated at session start; append-only within a session (a later step) | "Conversation history and cost" below |
+| 2 | Conversation history: PostgreSQL in the control plane owns history and memory; context is curated at session start; append-only within a session. **Built in CP3** (history, carry-over, backups); summaries and memory in CP7 | "Conversation history and cost" below |
 | 3 | The engine: the **Codex SDK** (OpenAI's `openai-codex`) runs the agent loop in the sandbox, replacing the Claude Agent SDK, so that your ChatGPT Pro subscription pays for the model | [agent-runtime.md](agent-runtime.md) |
 | 4 | Model access: your subscription's login lives only in a trusted **auth broker** in agent-service (one owner refreshes it; the durable copy is in OpenBao); sandboxes hold only a capability; personal use only. The gateway adds your token on the way out (route A, proven in milestone 1) | [model-access.md](model-access.md) |
 
