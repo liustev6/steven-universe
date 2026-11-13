@@ -40,6 +40,23 @@ CP1 ─▶ CP2 ─▶ CP3 ─▶ CP4 ─▶ CP5 ─┬─▶ CP7 ─▶ CP9
                                   └─▶ CP6 ─▶ CP8      (6 and 7 can swap or run in parallel)
 ```
 
+## Ongoing: S, the lab's status
+**One public page for the whole lab:** `GET https://api.liustev6.ca/v1/status`, no token. api-service
+reads every service in parallel and returns a public-safe summary (cached 5 s, rate-limited): each
+service ok or not, its own health details, and the sandbox runner's pods. Never in it: session or
+sandbox ids, prompts, tokens, secrets, internal addresses, who deployed.
+- **A service's `/health`** stays minimal and unauthenticated (Docker, deploys); api-service reads it
+  when it says enough (auth-service, file-management, the deployer; OpenBao's `/v1/sys/health`).
+- **A token-protected `/v1/status`** (scope `status:read`, granted to api-service only) when a service
+  has details beyond liveness: sandbox-runner's pods now, agent-service's sessions in CP3.
+- **Rule:** every checkpoint that adds or changes a service adds it to api-service's list (and its
+  `/v1/status` if it has details), and checks it in a smoke test. Later: a `status` tool for agents,
+  through the gateway.
+
+| Sub-CP | Status | What | Done when |
+|---|---|---|---|
+| S.1 | 🟡 | `status:read` on `sandbox-runner` for api-service; the runner's `/v1/status`; api-service's public `/v1/status` (service-auth and a client secret for api-service); VM 200's firewall lets CT 106 reach the runner | `curl https://api.liustev6.ca/v1/status` shows every service and the runner's pods; a stopped service shows as down without failing the page |
+
 ## In progress: CP3, agent-service (with history)
 **Decided (2026-11-13):**
 - **Callers see protocol B v0,** agent-service's own stream: full-fidelity events translated from

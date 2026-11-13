@@ -29,7 +29,7 @@ audiences:
 
   sandbox-runner:                        # creates and destroys agent sandboxes on VM 200
                                          # (docs/specs/agent-service/sandbox-runner.md). Only agent-service may call it.
-    scopes: [sandboxes:claim, sandboxes:release, sandboxes:read]
+    scopes: [sandboxes:claim, sandboxes:release, sandboxes:read, status:read]
 
   secrets-manager:                       # OpenBao: services log in with a token for this audience.
                                          # What a login may read is OpenBao's policy (generated from the
@@ -53,6 +53,8 @@ clients:
   api-service:
     can_relay_clients: true              # may pass an outside machine client's own identity downstream (grant 3)
     grants:
+      sandbox-runner:                    # its public /v1/status reads the runner's pods (S.1)
+        scopes: [status:read]
       file-management:
         scopes: [files:read, files:list]
         authorization_details:
