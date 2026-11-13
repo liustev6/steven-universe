@@ -32,7 +32,7 @@
 
 Related: [auth-service.md](../auth-service.md), [file-management.md](../file-management.md),
 [api-service.md](../api-service.md), [deployer.md](../deployer.md), [secrets-manager.md](../secrets-manager.md);
-in this folder: [tracker.md](tracker.md), [agent-runtime.md](agent-runtime.md), [model-access.md](model-access.md),
+in this folder: [tracker.md](tracker.md), [control-plane.md](control-plane.md), [agent-runtime.md](agent-runtime.md), [model-access.md](model-access.md),
 [sandbox-runner.md](sandbox-runner.md), [files-and-mounts.md](files-and-mounts.md).
 
 ## What it is
@@ -138,7 +138,7 @@ alternative stays the fallback for model access (route B in [model-access.md](mo
 | G2 | **Sandboxes are single-use, from a warm pool.** The runner keeps N sandboxes started and idle with the runtime loaded. A session claims one, keeps it for its follow-ups, and on idle timeout (5 min) the workspace is saved and the sandbox **destroyed**, never reused. | Warm keeps "turn off the lights" fast; single-use means no leftovers between sessions. |
 | G3 | **No real credential ever enters a sandbox.** A sandbox gets one **session capability**: a random token valid only for that session, and only from that sandbox (the egress proxy stamps each request with the sandbox's id), and only at the gateway. The gateway adds the real credentials on the way out: your subscription's model token ([model-access.md](model-access.md)), Home Assistant's token, file-management tokens. | Prompt injection can make an agent misbehave, but there's no key to steal. This is the same idea as Managed Agents' vault credentials and Claude Code on the web's proxy. |
 | G4 | **Sandbox egress is denied by default:** a sandbox reaches the gateway and nothing else, neither the LAN nor the internet. Web access, when a profile allows it, goes through the gateway with an allowlist. | Like Copilot's agent firewall: an agent can't reach your router, Proxmox or the internet unless the profile says so. |
-| G5 | **Profiles and skills are files in git** (`infra/agents/`), reviewed like `policy.yaml`. A profile names: `model`, `effort`, `tools` (allowlist), `skills`, `workspace` (bucket prefixes, read or write), `confirm` (actions needing your yes), and limits (turns, tokens, wall time). | Changing what the assistant may do is a reviewed diff, not a setting in a UI. |
+| G5 | **Profiles and skills are files in git** (profiles: `infra/services/agent-service/profiles.yaml`, installed by every deploy; skills later), reviewed like `policy.yaml`. A profile names: `model`, `effort`, `tools` (allowlist), `skills`, `workspace` (bucket prefixes, read or write), `confirm` (actions needing your yes), and limits (turns, tokens, wall time). | Changing what the assistant may do is a reviewed diff, not a setting in a UI. |
 | G6 | **agent-service defines the API and ships the sandbox side as a package,** `agent-runtime`, installed in the sandbox image. It: fetches the session config from the gateway; runs the **Codex SDK** (built-in shell and file-edit tools, MCP, skills, subagents) with the gateway as its model provider; registers the gateway's MCP tools; syncs the workspace; streams events back. | One contract between control and data plane; the image is built and pinned by CI like everything else. |
 | G7 | **Sandboxes never hold storage credentials; file-management stays the only S3 client** ([file-management.md](../file-management.md) D1, D3). A session's workspace has three areas: `inputs/` (its S3 locations, **mounted read-only** by a mounter sidecar through the egress proxy and gateway), `work/` (local scratch) and `outputs/` (local results). Saving to S3 happens only through an explicit **publish** checked by the gateway ([files-and-mounts.md](files-and-mounts.md)). | Reads are lazy and natural; editing happens on a real disk (S3 isn't POSIX); writes from code that may be compromised are explicit, checked and audited. |
 | G8 | **A session acts on behalf of whoever asked.** pi-server's request carries pi-server's identity, and later a user's. The gateway calls file-management with a **downscoped** token (auth-service grant 4) limited to the session's workspace, so a sandbox can't reach beyond it even through the gateway. | Least privilege per session; every file access audited under the real requester. Needs auth-service's downscope gap fixed first ([auth-service.md](../auth-service.md), Known issues). |
@@ -174,6 +174,8 @@ alternative stays the fallback for model access (route B in [model-access.md](mo
    - the sandbox is destroyed.
 
 ## API
+**In detail, with the protocol callers see:** [control-plane.md](control-plane.md) (CP3). The outline:
+
 **agent-service**, for clients (pi-server today; api-service for the phone later). Authentication is
 an auth-service token with `aud=agent-service`.
 

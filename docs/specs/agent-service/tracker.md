@@ -80,7 +80,7 @@ sandbox ids, prompts, tokens, secrets, internal addresses, who deployed.
 
 | Sub-CP | Status | What | Done when |
 |---|---|---|---|
-| 3.1 | ⏳ | **the design:** `control-plane.md`: sessions and ownership, protocol B v0 and visibility, the gateway, the auth broker, the PostgreSQL schema, context carry-over, backups; README's API and G5 updated | reviewed and agreed |
+| 3.1 | 🟡 | **the design:** `control-plane.md`: sessions and ownership, protocol B v0 and visibility, the gateway, the auth broker, the PostgreSQL schema, context carry-over, backups; README's API and G5 updated | reviewed and agreed. **Written:** [control-plane.md](control-plane.md), 4 open questions |
 | 3.2 | ⏳ | **identity and secrets:** auth-service policy (audience `agent-service`; client `agent-service` with `sandbox-runner`, `secrets-manager`, `file-management` (backups); callers `smoke-test`, `agent-cli`; api-service relaying); OpenBao: role `agent-service`, a policy that may write only its login, the PostgreSQL password (OpenTofu) | `explain` shows the grants; `tofu plan` shows only these changes; deployed and applied |
 | 3.3 | ⏳ | **CT 107:** the container (lxc-setup part 1), DNS name, certificate; client secrets delivered (`add-client.sh`) | host ready, like CT 103 |
 | 3.4 | ⏳ | **the service:** sessions API with ownership and protocol B v0; the runner client (claim at start, release, idle timeout); the gateway on 8443 (runtime routes, pairing by `X-Sandbox-Id`, the model route); the auth broker (login, refresh, save and restore with OpenBao); profiles from `profiles.yaml`; tested against fakes | tests: ownership, pairing, translation and visibility, resume, broker |
