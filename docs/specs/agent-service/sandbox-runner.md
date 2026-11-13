@@ -1,6 +1,7 @@
 # Spec: sandbox-runner (who runs the sandboxes)
 
-**Status: decision locked** (2026-11-09, agent-service decision 1). Being built: CP2 ([tracker.md](tracker.md)).
+**Status: decision locked** (2026-11-09, agent-service decision 1). **Deployed** on VM 200 by the
+pipeline (wave 1) since 2026-11-13; CP2 in progress ([tracker.md](tracker.md)).
 The worker VM exists (VM 200, [sandbox-worker-setup.md](../../sandbox-worker-setup.md)); gVisor
 measured (below).
 **Planned paths:**
