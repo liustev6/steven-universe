@@ -14,6 +14,8 @@
     "code": {"type": "string", "description": "The service's code folder. With `libs`, the image's inputs: the image is named by the last commit that changed them (deployer spec D1a)."},
     "libs": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"}, "uniqueItems": true, "description": "The shared libraries (python/libs/<name>) the image includes. Must match the Dockerfile's `COPY libs/<name>` lines exactly: CI checks it (.github/scripts/plan.sh)."},
     "compose": {"type": "string", "pattern": "compose\\.ya?ml$", "description": "Compose file; its service name must equal `service`."},
+    "images": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"}, "uniqueItems": true, "description": "Images it runs that aren't services (infra/images/<name>.yaml): CI builds them, a change to one redeploys this service, and `files` name them as ${image:<name>} (sandbox-runner.md R8)."},
+    "files": {"type": "array", "items": {"type": "string", "pattern": "^infra/services/[a-z0-9-]+/[A-Za-z0-9._-]+$"}, "uniqueItems": true, "description": "More config files, installed on every deploy as /etc/<service>/<name>, with each ${image:<name>} replaced by that image pinned by digest."},
     "config": {"type": "string", "pattern": "^infra/services/.+/config\\.env$", "description": "Non-secret settings, installed as /etc/<service>/config.env."},
     "policy": {"type": "string", "description": "auth-service only: the permissions file."},
     "url": {"type": "string", "format": "uri"},

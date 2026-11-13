@@ -1,0 +1,2 @@
+# Tests (CI's build job runs them before building the sandbox image): the package, its test extras.
+-e .[test]

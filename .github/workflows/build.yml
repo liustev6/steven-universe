@@ -16,7 +16,7 @@ name: build
 on:
   push:
     branches: [main]
-    paths: ["python/**", "infra/services/**", ".github/**"]
+    paths: ["python/**", "infra/services/**", "infra/images/**", ".github/**"]
   workflow_dispatch:
     inputs:
       ref:

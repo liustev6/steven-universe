@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=../deploy.schema.json
+# sandbox-runner: creates, keeps warm and destroys agent sandboxes on the sandbox worker (VM 200).
+# Read by OpenTofu (infra/secrets-manager/tofu/services.tf) and by the deploy (infra/deployment/).
+# Spec: docs/specs/agent-service/sandbox-runner.md; host: docs/sandbox-worker-setup.md.
+service: sandbox-runner
+host: sandbox-host
+# Joins the pipeline after its first hand deploy (lxc-setup.md, part 2): then pipeline: true.
+pipeline: false
+wave: 1
+code: python/services/sandbox-runner
+libs: [service-auth]                   # in the image (its Dockerfile copies libs/service-auth; CI checks)
+# The sandbox image (infra/images/agent-runtime.yaml): CI builds it, and a change to it redeploys
+# this service, whose templates name it; the deploy pins it by digest (sandbox-runner.md R8).
+images: [agent-runtime]
+compose: python/services/sandbox-runner/compose.yaml
+config: infra/services/sandbox-runner/config.env      # -> /etc/sandbox-runner/config.env
+files:                                                # -> /etc/sandbox-runner/<name>, ${image:...} filled in
+  - infra/services/sandbox-runner/templates.yaml
+url: https://sandbox-runner.lan.liustev6.ca
+health: https://sandbox-runner.lan.liustev6.ca/health
+certificate:
+  name: sandbox-runner.lan.liustev6.ca
+  hook: python/services/sandbox-runner/scripts/cert-hook.sh   # -> /usr/local/sbin/sandbox-runner-cert-hook
+
+# Managed secrets: values in OpenBao at kv/<from>, written to <to> (mode 600) on every deploy.
+secrets:
+  - from: shared/cloudflare_dns_token
+    to: /root/.secrets/cloudflare.ini
+    owner: "0:0"
+    format: "dns_cloudflare_api_token = {value}\n"   # certbot's credentials file

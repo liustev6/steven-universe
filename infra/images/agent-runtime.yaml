@@ -1,0 +1,9 @@
+# The sandbox image: agent-runtime and Codex (docs/specs/agent-service/agent-runtime.md).
+# Not a service: nothing deploys it directly. CI builds it like a service image (tests, then GHCR,
+# named by the last commit touching `code` and `libs`), and services that list it under `images`
+# (sandbox-runner) are redeployed when it changes, with it pinned by digest (sandbox-runner.md R8).
+image: agent-runtime
+code: python/libs/agent-runtime
+context: python/libs/agent-runtime
+dockerfile: python/libs/agent-runtime/Dockerfile
+libs: []

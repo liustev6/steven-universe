@@ -54,6 +54,8 @@ out("M_CERT_NAME", cert.get("name")); out("M_CERT_HOOK", cert.get("hook"))
 out("M_PRE_START", (m.get("hooks") or {}).get("pre_start"))
 out("M_HOST_ONLY", " ".join(m.get("host_only") or []))
 out("M_LIBS", " ".join("python/libs/" + lib for lib in m.get("libs") or []))
+out("M_FILES", " ".join(m.get("files") or []))
+out("M_IMAGES", " ".join(m.get("images") or []))
 PY
 )"
 [ "$M_SERVICE" = "$SERVICE" ] || { echo "manifest says service '$M_SERVICE', expected '$SERVICE'" >&2; exit 1; }
@@ -104,6 +106,41 @@ install -d -m 700 -o 10001 -g 10001 "$CFG"
 if [ -n "$M_CONFIG" ]; then
     install -m 600 -o 10001 -g 10001 "$SRC/$M_CONFIG" "$CFG/config.env"
     ok "config.env from $M_CONFIG"
+fi
+
+# Other config files (manifest `files`): installed as $CFG/<name>, with each ${image:<name>} replaced by
+# that image (manifest `images`, infra/images/<name>.yaml) pinned by digest. Each image is named like
+# a service's (the last commit touching its code and libs) and pulled here, before anything restarts.
+if [ -n "$M_FILES" ]; then
+    REGISTRY="$(dirname "$(docker compose config --images "$SERVICE")")"     # ghcr.io/<owner>/<repo>
+    FILL_ARGS=()
+    for img in $M_IMAGES; do
+        eval "$(python3 - "$SRC/infra/images/$img.yaml" <<'PY'
+import shlex, sys, yaml
+f = yaml.safe_load(open(sys.argv[1]))
+print("I_CODE=" + shlex.quote(f["code"]))
+print("I_LIBS=" + shlex.quote(" ".join("python/libs/" + lib for lib in f.get("libs") or [])))
+PY
+)"
+        # shellcheck disable=SC2086  # $I_LIBS: repository paths, no spaces
+        I_SHA="$(git -C "$SRC" log -1 --format=%H "$SHA" -- "$I_CODE" $I_LIBS)"
+        I_REF="$REGISTRY/$img:$I_SHA"
+        docker image inspect "$I_REF" >/dev/null 2>&1 || quiet docker pull "$I_REF" \
+            || die "Cannot pull $I_REF. Is its build finished? (gh run list --workflow build.yml)"
+        I_LABEL="$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$I_REF")"
+        [ "$I_LABEL" = "$I_SHA" ] || die "$I_REF says revision ${I_LABEL:0:7}, expected ${I_SHA:0:7}."
+        I_PINNED="$(docker image inspect -f '{{index .RepoDigests 0}}' "$I_REF")"
+        FILL_ARGS+=("$img=$I_PINNED")
+        I_DIGEST="${I_PINNED#*@}"
+        ok "image $img: ${I_SHA:0:7} (${I_DIGEST:0:19}…)"
+    done
+    for f in $M_FILES; do
+        dest="$CFG/$(basename "$f")"
+        python3 "$SRC/infra/deployment/fill-images.py" "$SRC/$f" "$dest.new" "${FILL_ARGS[@]}" \
+            || die "Cannot install $f (see above)."
+        chown 10001:10001 "$dest.new"; chmod 600 "$dest.new"; mv "$dest.new" "$dest"
+        ok "$(basename "$f") from $f"
+    done
 fi
 
 # Secrets: write each one atomically (temp file in the same directory, then rename), mode 600.

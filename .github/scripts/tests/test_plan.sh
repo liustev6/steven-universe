@@ -88,4 +88,17 @@ git checkout -q "$C6"; sed -i.bak 's/^libs: \[x\]$/libs: [x, y]/' infra/services
 git commit -qam "b declares a library its Dockerfile doesn't copy"; C8="$(git rev-parse HEAD)"
 o="$(run "$C8" push "$C6" "")"
 expect_contains "libs that don't match the Dockerfile fail the plan" "$o$(cat "$T/log")" "doesn't match what"
+
+# Images that aren't services (infra/images/): built when their inputs change; a service listing one
+# is deployed then too (sandbox-runner.md R8), and no other.
+git checkout -q "$C6"
+mkdir -p infra/images python/libs/img && echo v1 >python/libs/img/x.py
+printf 'FROM scratch\nCOPY x.py /x\n' >python/libs/img/Dockerfile
+printf 'image: img\ncode: python/libs/img\ncontext: python/libs/img\ndockerfile: python/libs/img/Dockerfile\n' >infra/images/img.yaml
+printf 'images: [img]\n' >>infra/services/a/deploy.yaml
+C9="$(commit "an image, used by a")"
+echo v2 >python/libs/img/x.py; C10="$(commit "the image changes")"
+o="$(run "$C10" push "$C9" "")"
+expect_eq "an image's change: builds it, deploys the service that runs it, and only that one" \
+  "$(builds "$o")/$(svcs wave1 "$o")/$(svcs wave2 "$o")" "img/a/"
 finish

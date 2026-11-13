@@ -1,0 +1,39 @@
+# sandbox-runner on the sandbox worker (VM 200). Spec: docs/specs/agent-service/sandbox-runner.md.
+# Deployed by the pipeline (wave 1); by hand: infra/deployment/deploy.sh sandbox-runner
+#
+# Host layout:
+#   /etc/sandbox-runner/config.env, templates.yaml   from infra/services/sandbox-runner/, by every deploy
+#   /etc/sandbox-runner/tls/cert.pem, key.pem        certificate for sandbox-runner.lan.liustev6.ca
+#   /srv/workspaces/                                 the XFS disk (prjquota): pods' workspaces (R13)
+#   /run/sandbox-runner/                             tmpfs: pods' session files and proxy configs
+# The pods themselves are separate containers it creates through the VM's Docker socket (R3).
+name: sandbox-runner
+
+services:
+  sandbox-runner:
+    image: ghcr.io/liustev6/steven-universe/sandbox-runner:${IMAGE_TAG:-local}   # IMAGE_TAG: set by deploy-target.sh (deployer spec D1a)
+    build:
+      context: ../..                    # python/, so libs/service-auth is included
+      dockerfile: services/sandbox-runner/Dockerfile
+      args:
+        REVISION: ${REVISION:-unknown}
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp"]
+    # Root with every privilege: it holds the Docker socket (already root on the VM, R3), and XFS
+    # quotas need the quota ioctls on the workspace disk (R13).
+    privileged: true
+    # Host 443 -> container 8443: agent-service calls https://sandbox-runner.lan.liustev6.ca (no port).
+    ports: ["443:8443"]
+    # Its shutdown destroys every pod (sessions are lost on a deploy, by design).
+    stop_grace_period: 60s
+    env_file: /etc/sandbox-runner/config.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/sandbox-runner:/etc/sandbox-runner:ro       # config.env, templates.yaml, tls/
+      # The same paths as on the VM: the pods it creates bind-mount them by their VM paths.
+      - /srv/workspaces:/srv/workspaces
+      - /run/sandbox-runner:/run/sandbox-runner
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}
