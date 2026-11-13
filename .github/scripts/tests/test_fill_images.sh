@@ -2,7 +2,11 @@
 # Tests for infra/deployment/fill-images.py: placeholders filled with pinned images, never left behind.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"; . "$HERE/lib.sh"
+# The script under test is the host side (infra/), not CI's: in the repo next to these tests, or, in CI
+# (whose .ci/ checkout holds only .github/scripts), in the main checkout the job runs from.
 FILL="$HERE/../../../infra/deployment/fill-images.py"
+[ -f "$FILL" ] || FILL="$PWD/infra/deployment/fill-images.py"
+[ -f "$FILL" ] || { echo "FAIL  fill-images.py not found"; exit 1; }
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 REF="ghcr.io/x/agent-runtime@sha256:$(printf 'a%.0s' $(seq 64))"
 printf 'chat:\n  image: ${image:agent-runtime}\ndev:\n  image: ${image:agent-runtime}\n' >"$T/in.yaml"
