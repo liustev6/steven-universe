@@ -1,7 +1,8 @@
 # Spec: sandbox-runner (who runs the sandboxes)
 
-**Status: decision locked** (2026-11-09, agent-service decision 1). **Deployed** on VM 200 by the
-pipeline (wave 1) since 2026-11-13; CP2 in progress ([tracker.md](tracker.md)).
+**Status: live** (decided 2026-11-09, agent-service decision 1; built and locked by CP2, 2026-11-13).
+Deployed on VM 200 by the pipeline (wave 1); behind the Proxmox firewall (R5). The decisions below
+are measured, not proposed ([tracker.md](tracker.md) CP2).
 The worker VM exists (VM 200, [sandbox-worker-setup.md](../../sandbox-worker-setup.md)); gVisor
 measured (below).
 **Planned paths:**
@@ -89,6 +90,20 @@ starting ──(agent-runtime ready)──▶ warm ──claim──▶ claimed 
 
 The setup steps follow [lxc-setup.md](../../lxc-setup.md), adapted for a VM: `qm` instead of `pct`,
 plus the gVisor install. A runbook gets written when it's built.
+
+## Measured through the deployed runner (CP2 2.8, 2026-11-13)
+The dev gateway (agent-service's stand-in) claimed from `https://sandbox-runner.lan.liustev6.ca`
+over TLS with its auth-service token:
+
+| | |
+|---|---|
+| a claim of a warm `chat` pod (token arrived → response) | **26 ms** |
+| claim → `runtime.ready` inside the sandbox (Codex starting under gVisor) | **523 ms** |
+| a claim of `dev`, none warm (a pod built from scratch, 20 GB quota) | **834 ms** |
+| a real turn in the claimed pod | works (first text 2.6–3.3 s with the `general` profile; `voice` measured 1.6–2.6 s) |
+| theft test: the capability from another pod, with the victim's id forged | **403**; from its own pod, 200 |
+| the gateway stops | its pod is released; the pool refills |
+| an `agent-runtime` change | rolls out by itself: CI builds it, the runner is redeployed (recreated) and its pool rebuilt from it; the old image removed |
 
 ## The runner, measured (CP2 2.4, 2026-11-12)
 `python/services/sandbox-runner/` (`app/pool.py`, `backend.py`, `workspaces.py`, `api.py`; 28 tests

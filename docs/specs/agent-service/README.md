@@ -15,7 +15,8 @@
 
 | Milestone | What | Document |
 |---|---|---|
-| M1 | the runtime on the Codex SDK, with a temporary dev gateway (no control plane). **Done** (2026-11-12): replies paid by your subscription, interrupts in 10 ms; gVisor moves to CP2 | [agent-runtime.md](agent-runtime.md), [model-access.md](model-access.md) |
+| M1 | the runtime on the Codex SDK, with a temporary dev gateway (no control plane). **Done** (2026-11-12): replies paid by your subscription, interrupts in 10 ms; gVisor moves to CP2 |
+| CP2 | the sandbox worker: VM 200, sandbox-runner (pods, templates), gVisor, the Proxmox firewall. **Done** (2026-11-13): claims in 26 ms, ready in ~0.5 s, deployed by the pipeline | [sandbox-runner.md](sandbox-runner.md) | [agent-runtime.md](agent-runtime.md), [model-access.md](model-access.md) |
 | M2 | files as a mounted folder: a WebDAV view in file-management, a mounter sidecar, the gateway's files route, narrowed tokens | [files-and-mounts.md](files-and-mounts.md) |
 
 **Replaces and absorbs:**
