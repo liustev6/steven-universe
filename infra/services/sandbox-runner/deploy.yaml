@@ -4,8 +4,7 @@
 # Spec: docs/specs/agent-service/sandbox-runner.md; host: docs/sandbox-worker-setup.md.
 service: sandbox-runner
 host: sandbox-host
-# Joins the pipeline after its first hand deploy (lxc-setup.md, part 2): then pipeline: true.
-pipeline: false
+pipeline: true                         # since 2026-11-13, after its first hand deploy (lxc-setup.md, part 2)
 wave: 1
 code: python/services/sandbox-runner
 libs: [service-auth]                   # in the image (its Dockerfile copies libs/service-auth; CI checks)
