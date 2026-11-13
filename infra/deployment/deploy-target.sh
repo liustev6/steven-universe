@@ -114,6 +114,7 @@ fi
 if [ -n "$M_FILES" ]; then
     REGISTRY="$(dirname "$(docker compose config --images "$SERVICE")")"     # ghcr.io/<owner>/<repo>
     FILL_ARGS=()
+    declare -A PINNED_REF=()                  # image name -> the tag just pinned (kept by the prune below)
     for img in $M_IMAGES; do
         eval "$(python3 - "$SRC/infra/images/$img.yaml" <<'PY'
 import shlex, sys, yaml
@@ -131,6 +132,7 @@ PY
         [ "$I_LABEL" = "$I_SHA" ] || die "$I_REF says revision ${I_LABEL:0:7}, expected ${I_SHA:0:7}."
         I_PINNED="$(docker image inspect -f '{{index .RepoDigests 0}}' "$I_REF")"
         FILL_ARGS+=("$img=$I_PINNED")
+        PINNED_REF[$img]="$I_REF"
         I_DIGEST="${I_PINNED#*@}"
         ok "image $img: ${I_SHA:0:7} (${I_DIGEST:0:19}…)"
     done
@@ -275,6 +277,14 @@ fi
 
 # Old images of this service (a rollback pulls again: seconds).
 quiet docker image prune -af --filter "label=org.opencontainers.image.title=$SERVICE"
+# Old versions of the images it runs (manifest `images`): every tag but the one just pinned. Not
+# `image prune -a`: the new pods may not exist yet, and their image must stay. `docker rmi` refuses an
+# image a container still uses.
+for img in $M_IMAGES; do
+    while read -r ref; do
+        [ "$ref" = "${PINNED_REF[$img]}" ] || { docker rmi "$ref" >/dev/null 2>&1 && info "removed old $ref"; }
+    done < <(docker images --format '{{.Repository}}:{{.Tag}}' "$REGISTRY/$img" | grep -v ':<none>$')
+done
 record succeeded
 
 ##############################################################################

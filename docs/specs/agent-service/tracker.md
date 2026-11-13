@@ -61,7 +61,6 @@ plays agent-service.
 | ~5,800 tokens per call are still Codex's own tool and environment context, even with no tools: trim for cheaper voice calls | CP1 (Q3) | 4 |
 | An interrupted turn's `usage` repeats the previous call's figures | CP1 (Q4) | 3 |
 | The sandbox image is 840 MB, mostly the Codex binaries; it affects the pool's pull and disk size | CP1 (Q5) | 2 |
-| Old sandbox images need pruning (keep the last 2); the workspace half of this item became R13 | CP2 sizing (2.1) | 2 (2.6) |
 | A gateway holding long polls must cap its graceful shutdown (uvicorn `--timeout-graceful-shutdown`) so its shutdown work runs: releasing pods, flushing events | CP2 (2.5) | 3 |
 | Remove the temporary client `agent-dev` (policy, `disable-client`) when agent-service's own client takes over | CP2 (2.5) | 3 |
 | VM 200's internet egress (443/80) is broad: image pulls, packages, certificates, and the dev gateway's model calls. When the gateway leaves the VM (CP3), narrow it (registries and repositories, e.g. through an allowlisting proxy) | CP2 (2.7) | 3 |
