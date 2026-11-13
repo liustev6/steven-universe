@@ -22,4 +22,11 @@ expect_eq "and writes nothing" "$([ -e "$T/out2.yaml" ] && echo written || echo 
 
 o="$(python3 "$FILL" "$T/in.yaml" "$T/out3.yaml" "agent-runtime=ghcr.io/x/agent-runtime:latest" 2>&1; echo "exit=$?")"
 expect_contains "a ref not pinned by digest is refused" "$o" "expected <name>=<image>@sha256"
+
+printf '# comments may talk about images: image placeholders, image:agent-runtime\nimage: ${image:agent-runtime}\n' >"$T/doc.yaml"
+python3 "$FILL" "$T/doc.yaml" "$T/doc.out" "agent-runtime=$REF"
+expect_eq "prose about images is left alone" "$(head -1 "$T/doc.out")" "# comments may talk about images: image placeholders, image:agent-runtime"
+printf 'image: ${image:Agent-Runtime}\n' >"$T/typo.yaml"
+o="$(python3 "$FILL" "$T/typo.yaml" "$T/typo.out" "agent-runtime=$REF" 2>&1; echo "exit=$?")"
+expect_contains "something that looks like a placeholder but isn't one fails, with its line" "$o" "line 1: not a valid placeholder"
 finish

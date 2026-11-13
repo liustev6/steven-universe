@@ -1,6 +1,6 @@
 # The kinds of sandbox (sandbox-runner.md R14). A claim names one of these, never an image or a path.
-# Installed by every deploy as /etc/sandbox-runner/templates.yaml, with each ${image:<name>} replaced by
-# that image pinned by digest (images built by CI, infra/images/; R8).
+# Installed by every deploy as /etc/sandbox-runner/templates.yaml, with every image placeholder below
+# replaced by that image pinned by digest (images built by CI, infra/images/; R8).
 templates:
   chat:                                # voice and chat: small and fast
     image: ${image:agent-runtime}

@@ -14,14 +14,19 @@ import re
 import sys
 import tempfile
 
-PLACEHOLDER = re.compile(r"\$\{image:([^}]*)\}")
+PLACEHOLDER = re.compile(r"\$\{image:([a-z][a-z0-9-]*)\}")   # names as in the manifest schema
+ANYTHING_LIKE_ONE = "${image:"
 
 
 def fill(text: str, refs: dict[str, str]) -> str:
     unknown = sorted({m.group(1) for m in PLACEHOLDER.finditer(text)} - refs.keys())
     if unknown:
         raise SystemExit(f"fill-images: no image given for {', '.join(unknown)} (the manifest's `images`)")
-    return PLACEHOLDER.sub(lambda m: refs[m.group(1)], text)
+    filled = PLACEHOLDER.sub(lambda m: refs[m.group(1)], text)
+    if ANYTHING_LIKE_ONE in filled:
+        line = next(n for n, l in enumerate(filled.splitlines(), 1) if ANYTHING_LIKE_ONE in l)
+        raise SystemExit(f"fill-images: line {line}: not a valid placeholder (${{image:<lowercase name>}})")
+    return filled
 
 
 def main(argv: list[str]) -> None:
