@@ -4,6 +4,7 @@
                                          400 unknown template; 503 if none of that template
     POST /v1/sandboxes/{id}/release      destroy it (and warm up a replacement)
     GET  /v1/sandboxes                   the pool, per template
+    GET  /v1/status                      a public-safe summary for api-service's status page (status:read)
     GET  /health                         no auth: is the pool at its target?
 
 There is no route to run a command in a sandbox, read its files or change its network: the runner
@@ -17,6 +18,7 @@ which clients get them: agent-service only (in CP2, its stand-in `agent-dev`).
 from __future__ import annotations
 
 import logging
+import shutil
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -84,16 +86,47 @@ def create_app(settings: Settings, pool: Pool, auth: Auth | None = None) -> Fast
         return {"max": settings.MAX, "in_use": len(pool.pods), "templates": templates,
                 "pods": [p.describe(now) for p in pool.pods.values()]}
 
-    @app.get("/health")
-    async def health() -> dict:
+    def healthy() -> bool:
         def satisfied(name: str, t) -> bool:      # its warm target, or as many as its caps still allow
             room = min(pool.cap(name) - pool.count("claimed", template=name), settings.MAX - pool.count("claimed"))
             return pool.count("warm", template=name) >= min(t.warm, max(room, 0))
-        return {"ok": all(satisfied(n, t) for n, t in pool.templates.items()),
+        return all(satisfied(n, t) for n, t in pool.templates.items())
+
+    @app.get("/v1/status", dependencies=[Depends(auth.require("status:read"))])
+    async def status() -> dict:
+        """For the lab's public status page (api-service): counts, pods and disk, never an id."""
+        now = time.monotonic()
+        try:
+            disk = shutil.disk_usage(settings.WORKSPACE_ROOT)
+            workspace_disk = {"used_gb": round(disk.used / 2**30, 1), "size_gb": round(disk.total / 2**30, 1)}
+        except OSError:
+            workspace_disk = None
+        return {
+            "ok": healthy(),
+            "templates": {name: {"target_warm": t.warm, "max": pool.cap(name), "image": short_image(t.image),
+                                 **{state: pool.count(state, template=name) for state in ("warm", "starting", "claimed")}}
+                          for name, t in pool.templates.items()},
+            "pods": [{"template": p.template, "state": p.state, "age_s": round(now - p.created),
+                      "image": short_image(pool.templates[p.template].image)}
+                     for p in sorted(pool.pods.values(), key=lambda p: p.created) if p.state != "gone"],
+            "max": settings.MAX,
+            "workspace_disk": workspace_disk,
+        }
+
+    @app.get("/health")
+    async def health() -> dict:
+        return {"ok": healthy(),
                 "warm": {n: pool.count("warm", template=n) for n in pool.templates},
                 "claimed": pool.count("claimed")}
 
     return app
+
+
+def short_image(ref: str) -> str:
+    """An image as a status page shows it: its digest's first 12 hex digits, or its tag."""
+    if "@sha256:" in ref:
+        return ref.split("@sha256:", 1)[1][:12]
+    return ref.rsplit(":", 1)[1][:12] if ":" in ref.rsplit("/", 1)[-1] else ref.rsplit("/", 1)[-1]
 
 
 def app() -> FastAPI:  # pragma: no cover - uvicorn factory (the runner's container, 2.6)

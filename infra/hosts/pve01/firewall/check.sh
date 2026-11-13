@@ -28,12 +28,13 @@ check "VM -> auth-service (443)"             open   sandbox-host 192.168.50.235 
 check "VM -> router DNS (53)"                open   sandbox-host 192.168.50.1 53
 check "VM -> GHCR (443, internet)"           open   sandbox-host ghcr.io 443
 check "VM -> Debian (80, internet)"          open   sandbox-host deb.debian.org 80
-echo "== into VM 200: only pve01 and the deployer"
+echo "== into VM 200: pve01, the deployer (SSH), api-service (the runner's API only)"
 check "pve01 -> VM SSH (22)"                 open   pve01 $VM 22
 check "pve01 -> VM runner API (443)"         open   pve01 $VM 443
 check "deployer -> VM SSH (22)"              open   deployer-host $VM 22
 check "file-management host -> VM SSH (22)"  closed files-host $VM 22
 check "file-management host -> VM API (443)" closed files-host $VM 443
-check "api-service host -> VM API (443)"     closed api-host $VM 443
+check "api-service host -> VM API (443)"     open   api-host $VM 443          # the status page (S.1)
+check "api-service host -> VM SSH (22)"      closed api-host $VM 22
 echo
 [ "$FAILURES" -eq 0 ] && echo "ALL PASSED" || { echo "$FAILURES FAILED"; exit 1; }

@@ -10,6 +10,7 @@ from app.ratelimit import RateLimiter
 # The reviewed list of routes per mode (spec E2): a new public or proxy route must be added here.
 EXPECTED = {
     ("GET", "/health"): Mode.PUBLIC,
+    ("GET", "/v1/status"): Mode.PUBLIC,          # the lab's status page: public-safe by design
     ("POST", "/deploy/v1/deployments"): Mode.PROXY,
     ("GET", "/deploy/v1/deployments/{deployment_id}/events"): Mode.PROXY,
 }

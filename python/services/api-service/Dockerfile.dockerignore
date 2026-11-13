@@ -2,5 +2,7 @@
 **
 !services/api-service/requirements.txt
 !services/api-service/app/**
+!libs/service-auth/pyproject.toml
+!libs/service-auth/service_auth/**
 **/__pycache__
 **/*.pyc

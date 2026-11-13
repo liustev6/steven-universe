@@ -1,4 +1,5 @@
 # Local development and tests
 -r requirements.txt
+-e ../../libs/service-auth   # TokenClient (the status page's own token)
 
 pytest==9.2.0

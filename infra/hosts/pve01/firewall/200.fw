@@ -18,6 +18,7 @@ log_level_out: info
 IN SSH(ACCEPT) -source 192.168.50.101 # pve01: the jump host (the Mac, over Tailscale)
 IN SSH(ACCEPT) -source 192.168.50.50 # the deployer (CT 105): pipeline deploys
 IN HTTPS(ACCEPT) -source 192.168.50.101 # the runner's API, checked from the Mac through pve01
+IN HTTPS(ACCEPT) -source 192.168.50.192 # api-service (CT 106): the lab's status page reads the runner's /v1/status
 IN Ping(ACCEPT) -source 192.168.50.101 # diagnosis
 # CP3: IN HTTPS(ACCEPT) -source <agent-service, CT 107> # the runner's real caller
 

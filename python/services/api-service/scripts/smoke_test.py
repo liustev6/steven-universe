@@ -5,7 +5,8 @@ image with host networking, through DNS, port 443 and TLS (the way cloudflared r
 
     docker run --rm --network host --read-only -v <this file>:/t/smoke.py:ro --entrypoint python <image> /t/smoke.py
 
-Checks: health; nothing but the reviewed routes; junk is stopped at the edge; and the deploy proxy
+Checks: health; the lab's status page (answers, lists every service, api-service's own token works);
+nothing but the reviewed routes; junk is stopped at the edge; and the deploy proxy
 really reaches the deployer (a GitHub-shaped token with a fake signature gets past the edge's
 pre-checks and is refused by the deployer itself, which proves the whole path without deploying).
 """
@@ -45,6 +46,21 @@ def main() -> int:
         for path in ("/docs", "/openapi.json", "/status"):
             r = http.get(path)
             check(f"{path} does not exist (404)", r.status_code == 404, str(r.status_code))
+
+        # The lab's status page: it must answer and list everything; other services being down is
+        # reported, not a failure of this deploy. api-service's own token must work (no 401/403).
+        r = http.get("/v1/status")
+        page = r.json() if r.status_code == 200 else {}
+        services = page.get("services", {})
+        check("status page answers (200)", r.status_code == 200, f"{r.status_code} {r.text[:80]}")
+        check("status page lists every service", {"api-service", "auth-service", "file-management", "deployer",
+              "openbao", "sandbox-runner"} <= set(services), ", ".join(sorted(services)))
+        check("api-service itself ok", services.get("api-service", {}).get("ok") is True)
+        runner_error = services.get("sandbox-runner", {}).get("error", "")
+        check("api-service's own token works (the runner doesn't refuse it)", runner_error not in ("HTTP 401", "HTTP 403"),
+              runner_error)
+        for name, svc in sorted(services.items()):
+            print(f"      {name}: {'ok' if svc.get('ok') else 'NOT ok ' + str(svc.get('error', ''))}")
 
         r = http.post("/deploy/v1/deployments", content=body)
         check("deploy without a token: stopped at the edge (401)",

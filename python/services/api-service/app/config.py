@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,4 +30,18 @@ class Settings(BaseSettings):
     # The deployer streams progress (with heartbeats every 15 s); a deploy may take minutes.
     DEPLOY_READ_TIMEOUT_SECONDS: float = 120
 
+    # ---- /v1/status: the lab's public status page (spec "Status") ---------------------------------
+    # [{"name", "url", "kind": health|openbao|status, "audience"}]: kind status uses api-service's own
+    # token (scope status:read; SERVICE_AUTH_ISSUER, _CLIENT_ID, _CLIENT_SECRET_FILE).
+    STATUS_TARGETS: list[Any] = []
+    STATUS_CACHE_SECONDS: float = 5
+    STATUS_TIMEOUT_SECONDS: float = 2
+    STATUS_RATE_BURST: int = 30
+    STATUS_RATE_PER_MINUTE: float = 60
+    REVISION: str = "unknown"            # the image's commit (set in the Dockerfile from its build arg)
+
     LOG_LEVEL: str = "INFO"
+
+    def model_post_init(self, __context: Any) -> None:
+        from app.status import StatusTarget
+        self.STATUS_TARGETS = [StatusTarget.model_validate(t) for t in self.STATUS_TARGETS]

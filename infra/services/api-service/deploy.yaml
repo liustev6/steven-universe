@@ -9,6 +9,7 @@ host: api-host
 pipeline: true
 wave: 2                                # the edge: after the services it calls (wave 1)
 code: python/services/api-service
+libs: [service-auth]                   # in the image (its Dockerfile copies libs/service-auth; CI checks)
 compose: python/services/api-service/compose.yaml
 config: infra/services/api-service/config.env         # -> /etc/api-service/config.env
 url: https://api.liustev6.ca                          # public, through the Cloudflare tunnel
@@ -25,3 +26,8 @@ secrets:
     to: /root/.secrets/cloudflare.ini
     owner: "0:0"
     format: "dns_cloudflare_api_token = {value}\n"   # certbot's credentials file
+
+# Host-only: created on CT 106 by auth-service's add-client.sh and never copied anywhere, not even
+# into OpenBao. Its own identity, for the status page's token (scope status:read).
+host_only:
+  - /etc/api-service/credentials/client_secret

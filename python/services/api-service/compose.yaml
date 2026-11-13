@@ -26,6 +26,7 @@ services:
     ports: ["443:8443"]
     env_file: ${API_HOST_CONFIG:-/etc/api-service}/config.env
     volumes:
+      - ${API_HOST_CONFIG:-/etc/api-service}/credentials:/run/secrets:ro   # client_secret (host-only): its own token
       - ${API_HOST_CONFIG:-/etc/api-service}/tls:/etc/api-service/tls:ro
     logging:
       driver: json-file

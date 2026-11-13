@@ -8,6 +8,8 @@ ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN python -m venv /venv
 COPY services/api-service/requirements.txt /tmp/requirements.txt
 RUN /venv/bin/pip install -r /tmp/requirements.txt
+COPY libs/service-auth /tmp/service-auth
+RUN /venv/bin/pip install /tmp/service-auth          # its own token, for the status page (TokenClient)
 
 FROM python:3.11-slim
 ARG REVISION=unknown
@@ -16,7 +18,8 @@ LABEL org.opencontainers.image.title="api-service" \
       org.opencontainers.image.revision="${REVISION}"
 ENV PATH=/venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    API_REVISION=${REVISION}
 
 # Fixed uid/gid: /etc/api-service (certificate) on the host is owned by 10001.
 RUN groupadd --system --gid 10001 api \
