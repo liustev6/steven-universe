@@ -17,3 +17,8 @@ hosts:
     address: 192.168.50.192
     user: root
     host_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEnsM741IazUQodGBPtciM6M7VEfIZswQGlGPcucyJDp"
+  sandbox-host:                        # VM 200: runs sandbox-runner (agent sandboxes). A VM: its key is read
+                                       # through pve01 with `qm guest exec 200 -- cat …` (the guest agent)
+    address: 192.168.50.95
+    user: root
+    host_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHa5J52kJ2dAui4xl8BkUGCxNWgkvAjkPafUkIkSm/um"
