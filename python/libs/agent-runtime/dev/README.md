@@ -28,6 +28,18 @@ docker compose exec -e AGENT_DEV_TOKEN_FILE=/secrets/dev_token dev-gateway agent
   `MODEL_AUTH=apikey docker compose up -d --force-recreate`.
 - What the model route did: `docker compose logs dev-gateway | grep model` (`model POST /responses -> 200`).
 
+## Runner mode (CP2): the sandbox comes from sandbox-runner
+On VM 200, with the runner deployed (it keeps `chat` pods warm), the dev gateway claims a pod instead
+of running a runtime container of its own, using auth-service's client `agent-dev`
+(`secrets/agent_dev_client_secret`, created with `add-client.sh`; never in git):
+```sh
+docker compose -f compose.yaml -f compose.runner.yaml up -d dev-gateway
+docker compose exec -e AGENT_DEV_TOKEN_FILE=/secrets/dev_token dev-gateway agent-dev ask "hi"
+docker compose -f compose.yaml -f compose.runner.yaml down       # releases the pod
+```
+The session's capability then only works from its own pod: requests stamped with another pod's
+`X-Sandbox-Id` (by that pod's proxy) are refused (403).
+
 ## From another machine (the test VM)
 ```sh
 pip install httpx

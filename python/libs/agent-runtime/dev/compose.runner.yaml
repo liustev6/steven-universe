@@ -5,7 +5,7 @@
 services:
   dev-gateway:
     environment:
-      DEV_RUNNER_URL: http://192.168.50.95:8443          # the runner's API (HTTPS on its LAN name from 2.6)
+      DEV_RUNNER_URL: https://sandbox-runner.lan.liustev6.ca   # the deployed runner (TLS, auth-service tokens)
       DEV_TEMPLATE: ${TEMPLATE:-chat}
       SERVICE_AUTH_ISSUER: https://auth.lan.liustev6.ca
       SERVICE_AUTH_CLIENT_ID: agent-dev
