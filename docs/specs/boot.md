@@ -44,6 +44,10 @@ containers from 100, VMs from 200.
 | 106 | api-service | `onboot=1` | 3, `up=10` | Docker enabled; container `restart: unless-stopped` | yes |
 | **VM 200** | sandbox-worker | `onboot=1` | 4, `up=30` | Docker enabled, gVisor (`runsc`) registered; the sandbox runner arrives in CP2 ([sandbox-worker-setup.md](../sandbox-worker-setup.md)) | yes |
 
+**pve01's firewall** (`pve-firewall`, enabled since 2026-11-13) starts with the host; its policies are
+ACCEPT, so it filters only VM 200 (`infra/hosts/pve01/firewall/`). If VM 200 can't reach something it
+needs after a boot, check `/var/log/pve-firewall.log` on pve01.
+
 Also enabled on CT 102–106: `certbot.timer` (certificate renewal) and `unattended-upgrades`
 (security updates); on VM 200, `unattended-upgrades` and the QEMU guest agent.
 

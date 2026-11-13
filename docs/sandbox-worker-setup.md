@@ -115,8 +115,7 @@ qm config 200 | grep -o 'virtio=[^,]*'          # the MAC, for the DHCP reservat
 1. **DHCP reservation** for the MAC; if the IP changes, reboot the VM (`qm reboot 200`).
 2. **Cloudflare DNS:** `sandbox-runner.lan.liustev6.ca` → the IP, **DNS only** (grey cloud).
 
-The Proxmox firewall that limits what the VM can reach (R5, second layer) comes with CP2's
-isolation step (2.7), once everything it needs to allow exists.
+The Proxmox firewall that limits what the VM can reach (R5, second layer) is step 8.
 
 ## 4. The host key, then SSH from the Mac
 **On pve01's shell,** compare the key the guest agent reads from inside the VM with the key the
@@ -206,7 +205,32 @@ xfs_quota -x -c "state -p" /srv/workspaces | grep -E "Accounting|Enforcement"   
 To grow it later: `qm disk resize 200 scsi1 <size>` on pve01, then `xfs_growfs /srv/workspaces` on
 the VM (online). VM 200 got 200 GB, then 256 GB.
 
-## 8. Done when (sub-checkpoint 2.1)
+## 8. The Proxmox firewall (CP2 2.7, R5's second wall)
+VM 200 runs the least trusted code in the lab. Inside it, Docker's networks confine the sandboxes;
+**this** wall is enforced by pve01 at VM 200's network card, so even root inside the VM can't
+change it. VM 200 may reach only DNS, auth-service and the internet; only pve01 (and so the Mac,
+over Tailscale) and the deployer may reach it. The rules, with their reasons, are in git:
+[`infra/hosts/pve01/firewall/`](../infra/hosts/pve01/firewall/) (`cluster.fw`, `200.fw`, `check.sh`).
+
+**`cluster.fw` is the master switch,** and its policies also apply to pve01 itself: both are ACCEPT,
+so pve01 and every guest without rules behave as with the firewall off. Only a guest with its own
+`<vmid>.fw` **and** `firewall=1` on its NIC is filtered.
+
+**Apply or change it** (pve01's shell; `/etc/pve` refuses `chmod`, so `cp`, not `install -m`):
+```sh
+cp cluster.fw 200.fw /etc/pve/firewall/                      # from infra/hosts/pve01/firewall/
+pve-firewall compile | grep -iE "error|warn" || echo ok       # validate before it takes effect
+qm set 200 --net0 virtio=BC:24:11:C5:23:E8,bridge=vmbr0,firewall=1   # once; the link blips ~1 s
+pve-firewall restart && pve-firewall status
+```
+**Check it** from the Mac: `infra/hosts/pve01/firewall/check.sh` (21 probes; ALL PASSED). Drops are
+logged in `/var/log/pve-firewall.log` on pve01. **Undo:** `pve-firewall stop` (all rules off at
+once); VM 200's Proxmox console works regardless of the network.
+
+**When something new needs a path** (CP3: agent-service calling the runner), add the rule to
+`200.fw` in git first, then apply and re-run `check.sh` with a row for it.
+
+## 9. Done when (sub-checkpoint 2.1)
 - [x] `docker run --rm --runtime=runsc hello-world` works on the VM (2026-11-12: runsc
   release-20261109.0, Docker 29.9.3; `/dev/kvm` present, so gVisor's KVM platform can be measured)
 - [x] the host key was checked through pve01 before it was trusted

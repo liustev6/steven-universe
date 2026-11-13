@@ -1,0 +1,10 @@
+# pve01's datacenter firewall (Proxmox): installed as /etc/pve/firewall/cluster.fw.
+# The master switch: no guest's rules apply unless this is enabled. Its policies also apply to pve01
+# itself, so both are ACCEPT: pve01 and every guest without rules behave exactly as with the
+# firewall off. Only guests with their own <vmid>.fw and `firewall=1` on their NIC are filtered:
+# today, VM 200 only (200.fw). Spec: docs/specs/agent-service/sandbox-runner.md (R5);
+# runbook: docs/sandbox-worker-setup.md ("The Proxmox firewall").
+[OPTIONS]
+enable: 1
+policy_in: ACCEPT
+policy_out: ACCEPT

@@ -1,0 +1,30 @@
+# VM 200 (sandbox-worker)'s firewall, enforced by pve01 at its NIC: installed as /etc/pve/firewall/200.fw.
+# R5's second wall: even root inside the VM can't change it. Everything is dropped both ways except
+# the rules below (first match wins; replies to allowed connections pass: the firewall is stateful).
+# Traffic inside the VM (gateway, proxies, sandboxes) never crosses the NIC: unaffected.
+# Spec: docs/specs/agent-service/sandbox-runner.md (R5); runbook: docs/sandbox-worker-setup.md.
+# Check: infra/hosts/pve01/firewall/check.sh (from the Mac).
+[OPTIONS]
+enable: 1
+policy_in: DROP
+policy_out: DROP
+dhcp: 1
+macfilter: 1
+log_level_in: info
+log_level_out: info
+
+[RULES]
+# ---- in ---------------------------------------------------------------------------------------
+IN SSH(ACCEPT) -source 192.168.50.101 # pve01: the jump host (the Mac, over Tailscale)
+IN SSH(ACCEPT) -source 192.168.50.50 # the deployer (CT 105): pipeline deploys
+IN HTTPS(ACCEPT) -source 192.168.50.101 # the runner's API, checked from the Mac through pve01
+IN Ping(ACCEPT) -source 192.168.50.101 # diagnosis
+# CP3: IN HTTPS(ACCEPT) -source <agent-service, CT 107> # the runner's real caller
+
+# ---- out --------------------------------------------------------------------------------------
+OUT DNS(ACCEPT) -dest 192.168.50.1 # the router: name lookups
+OUT HTTPS(ACCEPT) -dest 192.168.50.235 # auth-service: token keys (the runner; the dev gateway's client)
+OUT DROP -dest 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,169.254.0.0/16 # nothing else private: no pve01, router admin, OpenBao, file-management, RustFS, Tailscale
+OUT HTTPS(ACCEPT) # the internet: GHCR, Debian/Docker/gVisor repositories, certbot (Let's Encrypt, Cloudflare); in CP2 also the dev gateway's model calls. Tighten in CP3.
+OUT HTTP(ACCEPT) # the internet: Debian's repositories
+OUT NTP(ACCEPT) # the internet: clock sync
