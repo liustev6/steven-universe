@@ -43,5 +43,5 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     def model_post_init(self, __context: Any) -> None:
-        from app.status import StatusTarget
+        from app.status.page import StatusTarget
         self.STATUS_TARGETS = [StatusTarget.model_validate(t) for t in self.STATUS_TARGETS]

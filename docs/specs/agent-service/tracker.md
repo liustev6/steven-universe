@@ -55,7 +55,7 @@ sandbox ids, prompts, tokens, secrets, internal addresses, who deployed.
 
 | Sub-CP | Status | What | Done when |
 |---|---|---|---|
-| S.1 | 🟡 | `status:read` on `sandbox-runner` for api-service; the runner's `/v1/status`; api-service's public `/v1/status` (service-auth and a client secret for api-service); VM 200's firewall lets CT 106 reach the runner | `curl https://api.liustev6.ca/v1/status` shows every service and the runner's pods; a stopped service shows as down without failing the page |
+| S.1 | ✅ 2026-11-13 | `status:read` on `sandbox-runner` for api-service; the runner's `/v1/status`; api-service's public `/v1/status` (service-auth and a client secret for api-service); VM 200's firewall lets CT 106 reach the runner | `curl https://api.liustev6.ca/v1/status` shows every service and the runner's pods; a stopped service shows as down without failing the page. **Live:** through Cloudflare, all 6 services ok (13–24 ms each), OpenBao unsealed, the runner's templates and pods, no ids or addresses; deployed by the pipeline with its smoke test. (api-service's never-delivered client secret from 2026-11-07 was rotated out.) |
 
 ## In progress: CP3, agent-service (with history)
 **Decided (2026-11-13):**
