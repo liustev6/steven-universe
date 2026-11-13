@@ -101,4 +101,14 @@ echo v2 >python/libs/img/x.py; C10="$(commit "the image changes")"
 o="$(run "$C10" push "$C9" "")"
 expect_eq "an image's change: builds it, deploys the service that runs it, and only that one" \
   "$(builds "$o")/$(svcs wave1 "$o")/$(svcs wave2 "$o")" "img/a/"
+
+# Config files: the compose must use their hash, or a new file never restarts the container.
+printf 'files: [infra/services/a/extra.yaml]\n' >>infra/services/a/deploy.yaml
+C11="$(commit "a has a config file, its compose ignores it")"
+o="$(run "$C11" push "$C10" "")"
+expect_contains "a service with config files whose compose doesn't use their hash fails the plan" "$o$(cat "$T/log")" "label its container"
+printf '    labels: {cfg: "${CONFIG_FILES_SHA:-none}"}\n' >>python/services/a/compose.yaml
+C12="$(commit "now it does")"
+o="$(run "$C12" push "$C11" "")"
+expect_eq "with the hash in its compose, it plans (and deploys a)" "$(svcs wave1 "$o")" "a"
 finish

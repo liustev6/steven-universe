@@ -134,13 +134,21 @@ PY
         I_DIGEST="${I_PINNED#*@}"
         ok "image $img: ${I_SHA:0:7} (${I_DIGEST:0:19}…)"
     done
+    INSTALLED=()
     for f in $M_FILES; do
         dest="$CFG/$(basename "$f")"
         python3 "$SRC/infra/deployment/fill-images.py" "$SRC/$f" "$dest.new" "${FILL_ARGS[@]}" \
             || die "Cannot install $f (see above)."
         chown 10001:10001 "$dest.new"; chmod 600 "$dest.new"; mv "$dest.new" "$dest"
+        INSTALLED+=("$dest")
         ok "$(basename "$f") from $f"
     done
+    # The files reach the container through a mount, which compose can't see change. Their hash goes
+    # into the container's configuration (compose.yaml labels it with CONFIG_FILES_SHA), so a change
+    # recreates it, as Helm's checksum/config annotation does. plan.sh checks the compose uses it.
+    CONFIG_FILES_SHA="$(cat "${INSTALLED[@]}" | sha256sum | cut -c1-16)"
+    export CONFIG_FILES_SHA
+    info "config files hash: $CONFIG_FILES_SHA (a change recreates the container)"
 fi
 
 # Secrets: write each one atomically (temp file in the same directory, then rename), mode 600.

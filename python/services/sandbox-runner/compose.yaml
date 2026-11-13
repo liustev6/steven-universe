@@ -18,6 +18,10 @@ services:
       args:
         REVISION: ${REVISION:-unknown}
     restart: unless-stopped
+    # The hash of its config files (templates.yaml), set by deploy-target.sh: a new templates.yaml
+    # (e.g. a new sandbox image) changes it, so compose recreates the runner, which reads them at start.
+    labels:
+      dev.steven-universe.config-files: ${CONFIG_FILES_SHA:-none}
     read_only: true
     tmpfs: ["/tmp"]
     # Root with every privilege: it holds the Docker socket (already root on the VM, R3), and XFS

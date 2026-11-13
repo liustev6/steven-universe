@@ -64,6 +64,11 @@ for m in infra/services/*/deploy.yaml; do
   context="$(realpath -m --relative-to=. "$(dirname "$compose")/$(q .build.context)")"
   dockerfile="$context/$(q .build.dockerfile)"
   [ -f "$dockerfile" ] || { echo "::error file=$compose::no Dockerfile at $dockerfile"; exit 1; }
+  # Config `files` reach the container through a mount compose can't see change: its compose must
+  # use their hash (deploy-target.sh sets CONFIG_FILES_SHA), or a new file never restarts it.
+  if [ "$(yq -r '.files // [] | length' "$m")" != 0 ] && ! grep -q 'CONFIG_FILES_SHA' "$compose"; then
+    echo "::error file=$compose::$svc has config files; label its container with \${CONFIG_FILES_SHA} (see sandbox-runner)"; exit 1
+  fi
 
   # Inputs (D1a): the code and the manifest's `libs` (checked against the Dockerfile). A library no
   # image includes changes no image.
