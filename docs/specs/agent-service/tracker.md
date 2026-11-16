@@ -61,10 +61,10 @@ sandbox ids, prompts, tokens, secrets, internal addresses, who deployed.
 **Decided (2026-11-13):**
 - **Callers see protocol B v0,** agent-service's own stream: full-fidelity events translated from
   protocol A (text, tools with their full input and output, tasks, turn results) plus the events
-  agent-service originates (sandbox ready, lost, retrying; session ended; errors), with **one
-  `seq` per session** across sandboxes (G10). **What a caller sees is set per profile:**
-  `visibility: full` (Steven AI: the full evidence), `summary`, or `text` (voice). Never sent: the
-  capability, sandbox ids, other sessions. Defined in agent-service now; moves to shared-schemas in CP4.
+  agent-service originates (session ready or ended, errors), with **one `seq` per session** (G10).
+  Every caller gets every event and filters for display (2026-11-16: no visibility levels yet;
+  `seq` may skip, so a server filter can come later). Never sent: the capability, sandbox ids, other
+  sessions. Defined in agent-service now; moves to shared-schemas in CP4.
 - **Two listeners on CT 107:** the sessions API for callers (443), the **gateway on its own port**
   (8443) for sandboxes; the firewall lets VM 200 reach only the gateway's.
 - **Callers in CP3:** `smoke-test` (deploy smoke tests); an `agent` CLI on CT 107 with its own
@@ -74,16 +74,19 @@ sandbox ids, prompts, tokens, secrets, internal addresses, who deployed.
   compose project on CT 107; SQLAlchemy 2 (psycopg 3) and Alembic migrations; the event log is a
   table; a new session continues a conversation with its last N turns as context; a nightly
   backup through file-management and a tested restore. **Summaries and memory extraction stay in CP7.**
-- **A session claims its pod at start;** released on end or after 5 idle minutes (G2).
+- **A session claims its pod at start;** released on end or after 5 idle minutes (G2). A lost
+  sandbox ends the session; a new session in the same conversation rebuilds the history.
+- **Who may start which profile** is auth-service's policy (`profile:<name>` scopes); the client id
+  owns the session. Events and turns are kept forever.
 - **Names:** CT 107 `agent-service`, `agent.lan.liustev6.ca`, SSH alias `agent-host`; profiles in
   `infra/services/agent-service/profiles.yaml` (the deployer's `files`, reviewed like templates).
 
 | Sub-CP | Status | What | Done when |
 |---|---|---|---|
-| 3.1 | 🟡 | **the design:** `control-plane.md`: sessions and ownership, protocol B v0 and visibility, the gateway, the auth broker, the PostgreSQL schema, context carry-over, backups; README's API and G5 updated | reviewed and agreed. **Written:** [control-plane.md](control-plane.md), 4 open questions |
-| 3.2 | ⏳ | **identity and secrets:** auth-service policy (audience `agent-service`; client `agent-service` with `sandbox-runner`, `secrets-manager`, `file-management` (backups); callers `smoke-test`, `agent-cli`; api-service relaying); OpenBao: role `agent-service`, a policy that may write only its login, the PostgreSQL password (OpenTofu) | `explain` shows the grants; `tofu plan` shows only these changes; deployed and applied |
+| 3.1 | ✅ 2026-11-16 | **the design:** `control-plane.md`: sessions and ownership, protocol B v0, the gateway, the auth broker, the PostgreSQL schema, context carry-over, backups; README's API and G5 updated | reviewed and agreed. **Agreed:** [control-plane.md](control-plane.md); review: no visibility levels, events kept forever, profiles as scopes, a lost sandbox ends the session |
+| 3.2 | ⏳ | **identity and secrets:** auth-service policy (audience `agent-service` with a `profile:<name>` scope per profile; client `agent-service` with `sandbox-runner`, `secrets-manager`, `file-management` (backups); callers `smoke-test`, `agent-cli`; api-service relaying); OpenBao: role `agent-service`, a policy that may write only its login, the PostgreSQL password (OpenTofu) | `explain` shows the grants; `tofu plan` shows only these changes; deployed and applied |
 | 3.3 | ⏳ | **CT 107:** the container (lxc-setup part 1), DNS name, certificate; client secrets delivered (`add-client.sh`) | host ready, like CT 103 |
-| 3.4 | ⏳ | **the service:** sessions API with ownership and protocol B v0; the runner client (claim at start, release, idle timeout); the gateway on 8443 (runtime routes, pairing by `X-Sandbox-Id`, the model route); the auth broker (login, refresh, save and restore with OpenBao); profiles from `profiles.yaml`; tested against fakes | tests: ownership, pairing, translation and visibility, resume, broker |
+| 3.4 | ⏳ | **the service:** sessions API with ownership and protocol B v0; the runner client (claim at start, release, idle timeout); the gateway on 8443 (runtime routes, pairing by `X-Sandbox-Id`, the model route); the auth broker (login, refresh, save and restore with OpenBao); profiles from `profiles.yaml`; tested against fakes | tests: ownership, profile scopes, pairing, translation, resume, broker |
 | 3.5 | ⏳ | **history:** PostgreSQL in the compose project, Alembic migrations; conversations, sessions, turns, the event log; context carry-over (the session file's `context`, read by the runtime); a cost policy per profile (turns carried); nightly `pg_dump` saved through file-management | a second session continues the first's conversation; a backup appears in `private/agent-service/backups/` |
 | 3.6 | ⏳ | **callers:** api-service's `/v1/agent/…` relay (token required); the `agent` CLI on CT 107; smoke tests for agent-service's and api-service's deploys | a session through api-service works with a token and is refused without |
 | 3.7 | ⏳ | **deploy:** by hand, then the pipeline (wave 1); the firewall (VM 200 → CT 107:8443, CT 107 → VM 200:443); the runner's `GATEWAY_URL` → agent-service | deployed by the pipeline; a pod's proxy reaches only the gateway port |
