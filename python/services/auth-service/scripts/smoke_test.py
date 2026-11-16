@@ -67,7 +67,8 @@ async def main() -> int:
         except InvalidToken:
             check("token for file-management is refused by api-service", True)
         try:
-            await client.token("api-service")
+            # sandbox-runner: only agent-service may claim pods; smoke-test must never get a token for it.
+            await client.token("sandbox-runner")
             check("no token for an audience it has no grant at", False)
         except TokenRequestError as e:
             check("no token for an audience it has no grant at", e.error == "invalid_target", e.error)

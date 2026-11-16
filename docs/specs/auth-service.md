@@ -89,7 +89,7 @@ This is enabled in the policy and tested; it goes into use when api-service adop
 | A12 | **The issuer is a name we own, over HTTPS with a public certificate** (`auth.lan.liustev6.ca`, Let's Encrypt via DNS-01). | Clients send secrets to it and trust its JWKS; no custom CA on any host; the IP can change without touching services. |
 | A13 | **Published on port 443.** The container listens on 8443; host 443 maps to it. | The issuer URL has no port, so discovery points clients to `:443`. |
 | A14 | **Hardened Docker Compose, deployed by hand** from a pushed commit, with the image built by GitHub Actions. | Same model as every service (deployer D1, D11); by hand because it is the root of trust (D13). |
-| A15 | **Every deploy ends with a smoke test as a dedicated `smoke-test` client** (only grant: `private/smoke-test/`). | Proves the live path works without touching a real client's credentials. |
+| A15 | **Every deploy ends with a smoke test as a dedicated `smoke-test` client** (its grants: `private/smoke-test/`, and its own chats at agent-service; never `sandbox-runner`, which the smoke test checks is refused). | Proves the live path works without touching a real client's credentials. |
 | A16 | **No per-audience `delegable_scopes`.** Delegated tokens get the same scopes as direct ones. | No current use case; added back if a scope must be direct-only. |
 
 ## Standards
