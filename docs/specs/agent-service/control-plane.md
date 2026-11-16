@@ -32,7 +32,7 @@ project: the service and its own **PostgreSQL**.
 | ID | Decision | Why |
 |---|---|---|
 | C1 | **Two listeners:** the sessions API on 443 (callers), the **gateway on 8443** (sandboxes). VM 200's firewall reaches only 8443; nothing else is exposed on it. | A compromised sandbox can't even reach the sessions API. |
-| C2 | **A session belongs to its caller:** the token's client, or, when a trusted relay (api-service) passes a caller on, that caller (`on_behalf_of`). Only the owner (or `sessions:admin`) can use, read or end it; anyone else gets 404, not 403 (no probing for ids). **Which profiles a caller may start is auth-service's policy:** the request names the profile, and the token must carry its scope (`profile:<name>`). Identity is only the client id: no "acting as a person" until there's more than one. | One client can't read another's sessions (CP3's "done when"); who may use what stays in one reviewed place. |
+| C2 | **A session belongs to its caller:** the token's client, or, when a trusted relay (api-service) passes a caller on, that caller (`on_behalf_of`). Only the owner (or `chat:admin`) can use, read or end it; anyone else gets 404, not 403 (no probing for ids). **Scopes are verbs, not profiles:** `chat:read`, `chat:write`, `chat:admin`; the request names the profile, and any caller with `chat:write` may start any profile. Identity is only the client id: no "acting as a person" until there's more than one. | One client can't read another's sessions (CP3's "done when"). A fixed set of scopes, not one per profile; a profile's cost is bounded by its own limits (C13). Limiting callers to some profiles, skills or tools later is an `authorization_details` type (RFC 9396, like file-management's `file_access`), not more scopes. |
 | C3 | **Callers see protocol B v0** (below): protocol A translated at full fidelity, plus agent-service's own events, one `seq` per session. **Every caller gets every event;** a client shows what it needs (a voice client reads only `message.*`). `seq` only increases and **may skip numbers**, so a server-side filter can be added later without breaking callers. | A stable, caller-shaped contract. Every caller today is trusted and holds a token; filtering on the server matters once a reader is trusted less than the data. |
 | C4 | **Every event is written to PostgreSQL before anyone sees it** (G10). Listeners get it from memory; a reconnect (`?after=`) reads the rest from the table. | Nothing lost to a dropped connection or a restart. |
 | C5 | **Sessions survive an agent-service restart.** Their state (sandbox, capability hash, owner) is in PostgreSQL; on start, agent-service reloads active sessions, and their runtimes' long polls reconnect to the new process. | Deploys of agent-service don't end conversations. |
@@ -44,24 +44,23 @@ project: the service and its own **PostgreSQL**.
 | C11 | **The auth broker (model-access.md MA1–MA6) lives here:** your ChatGPT login in `/var/lib/agent-service/codex-home`, refreshed by Codex in this one process, each refreshed bundle written to OpenBao (`kv/services/agent-service/codex_auth`); restored from there if the disk is new. | One owner of the login (MA2); a rebuilt host comes back without a new login (MA3). |
 | C12 | **Profiles are a reviewed file:** `infra/services/agent-service/profiles.yaml`, installed by every deploy (the deployer's `files`). | Changing what an agent may do is a reviewed diff (G5). |
 | C13 | **Budgets are enforced at the gateway** (G14): turns per session, tokens per turn (from the runtime's usage events), and the profile's wall time; past one, the model route refuses and the turn fails with a clear `error`. | The sandbox is assumed compromised; only the gateway's limits are real. |
-| C14 | **The kill switch:** `DELETE` a session; `POST /v1/admin/stop` (`sessions:admin`) ends every session and refuses new ones until `…/start`; or stop the runner. | One call stops everything, without touching hosts. |
+| C14 | **The kill switch:** `DELETE` a session; `POST /v1/admin/stop` (`chat:admin`) ends every session and refuses new ones until `…/start`; or stop the runner. | One call stops everything, without touching hosts. |
 
 ## The sessions API (443, callers)
-Auth: an auth-service token, `aud=agent-service`. Scopes: `sessions:use` (your own sessions),
-`profile:<name>` (may start that profile, one per profile in `profiles.yaml`), `sessions:admin` (all,
-and the kill switch), `status:read` (api-service's status page). A new profile is a reviewed change in
-both files: `profiles.yaml` and auth-service's policy.
+Auth: an auth-service token, `aud=agent-service`. Scopes: `chat:write` (start, talk in and end
+your own sessions), `chat:read` (read them and their history), `chat:admin` (everyone's, and the
+kill switch), `status:read` (api-service's status page). The scope each route needs is in its row.
 
 | Route | What |
 |---|---|
-| `POST /v1/sessions` `{profile, conversation_id?}` | start a session: a new conversation, or continue one you own (C9). `403` without `profile:<name>`. Claims a pod; returns `{session_id, conversation_id, state}`. `503` (`Retry-After`) if no sandbox. |
-| `POST /v1/sessions/{id}/turns` `{text}` | one turn: streams protocol B (NDJSON) until its `turn.completed`. `409` if a turn is running. |
-| `GET /v1/sessions/{id}/events?after=<seq>` | everything after `seq`, then live until the session ends (reconnect, G10) |
-| `GET /v1/sessions/{id}` | its state: `starting`, `ready`, `busy`, `ended` (with the reason) |
-| `POST /v1/sessions/{id}/cancel` | interrupt the running turn |
-| `DELETE /v1/sessions/{id}` | end it: the pod is released |
-| `GET /v1/conversations/{id}/turns` | the conversation's history (text, timings, usage); a turn's full events with `?events=true` |
-| `POST /v1/admin/stop`, `POST /v1/admin/start` | the kill switch (`sessions:admin`) |
+| `POST /v1/sessions` `{profile, conversation_id?}` | `chat:write`: start a session: a new conversation, or continue one you own (C9). Claims a pod; returns `{session_id, conversation_id, state}`. `503` (`Retry-After`) if no sandbox. |
+| `POST /v1/sessions/{id}/turns` `{text}` | `chat:write`: one turn: streams protocol B (NDJSON) until its `turn.completed`. `409` if a turn is running. |
+| `GET /v1/sessions/{id}/events?after=<seq>` | `chat:read`: everything after `seq`, then live until the session ends (reconnect, G10) |
+| `GET /v1/sessions/{id}` | `chat:read`: its state: `starting`, `ready`, `busy`, `ended` (with the reason) |
+| `POST /v1/sessions/{id}/cancel` | `chat:write`: interrupt the running turn |
+| `DELETE /v1/sessions/{id}` | `chat:write`: end it: the pod is released |
+| `GET /v1/conversations/{id}/turns` | `chat:read`: the conversation's history (text, timings, usage); a turn's full events with `?events=true` |
+| `POST /v1/admin/stop`, `POST /v1/admin/start` | `chat:admin`: the kill switch |
 | `GET /v1/status` | for the lab's status page (`status:read`): sessions by state, pods held, PostgreSQL, the login's age, the last backup |
 | `GET /health` | liveness only |
 
@@ -164,11 +163,11 @@ What reaches the runtime (protocol A's `Profile` in the session file) is the sub
 | Client | Gets | Why |
 |---|---|---|
 | `agent-service` | sandbox-runner: claim, release, read; secrets-manager: `secrets:read`; file-management: all on `private/agent-service/backups/` | pods; its login in OpenBao; backups |
-| `agent-cli` | agent-service: `sessions:use`, `sessions:admin`, every `profile:*` | your operator tool on CT 107, kill switch included |
-| `smoke-test` | agent-service: `sessions:use`, `profile:smoke`; api-service: `sessions:use` | deploy checks, directly and through the relay |
+| `agent-cli` | agent-service: `chat:read`, `chat:write`, `chat:admin` | your operator tool on CT 107, kill switch included |
+| `smoke-test` | agent-service and api-service: `chat:read`, `chat:write` | deploy checks (the `smoke` profile), directly and through the relay |
 | `api-service` | agent-service: `status:read` | the status page. It relays `/v1/agent/…` with `can_relay_clients` (grant 3): the relayed token carries the **caller's own** agent-service grants, never api-service's |
 
-The audience `api-service` gains `sessions:use`: the scope its `/v1/agent/…` route requires.
+The audience `api-service` gains `chat:read` and `chat:write`: the scopes its `/v1/agent/…` routes require.
 
 **OpenBao** (`infra/secrets-manager/tofu/main.tf`): role `agent-service` (`sub=service:agent-service`,
 10-minute tokens) with the policy `agent-service-login`: **read, create and update only**
@@ -189,11 +188,12 @@ internet egress narrows in 3.9: model calls now leave from CT 107.
 | Rebuilding context on every turn | caching and reasoning state lost (decision 2) |
 | Visibility per profile (`full`, `summary`, `text`), filtered on the server | every caller is trusted today; a client filters for display. Comes back as a server filter when untrusted readers exist (C3's `seq` gaps allow it) |
 | Events deleted after 30 days | small at home scale; one rule fewer |
+| A scope per profile (`profile:<name>`) | scopes growing with every profile; which profile is a resource choice, not a permission. If callers must be limited to some profiles, skills or tools, an `authorization_details` type does it |
 | Callers acting as a person (a user identity) | one person; the client id is enough for ownership |
 | Replacing a lost sandbox inside the same session | a second way to recover; a new session in the same conversation already rebuilds the history (C9) |
 
 ## Resolved in review (2026-11-16)
 1. **Visibility:** none for now; callers get every event and filter for display (C3).
 2. **Events retention:** kept forever (History).
-3. **Identity:** the client id owns sessions; profiles are granted as scopes by auth-service (C2).
+3. **Identity:** the client id owns sessions; scopes are `chat:read`, `chat:write`, `chat:admin`, any profile (C2).
 4. **A lost sandbox:** the session ends; a new session in the same conversation rebuilds the history (C6).

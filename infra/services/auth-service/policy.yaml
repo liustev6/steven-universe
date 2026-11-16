@@ -17,9 +17,11 @@ downscoped_max_ttl_seconds: 3600         # downscoped (grant 4) tokens: at most 
 max_delegation_depth: 3                  # longest `act` chain allowed (grant 3)
 
 audiences:
-  api-service:                           # the public edge; scopes its routes require from authenticated callers
-    scopes: [files:read, files:write, files:delete, files:list,
-             sessions:use]                # /v1/agent/…, relayed to agent-service (grant 3)
+  # The public edge: the scopes its routes require from authenticated callers.
+  # chat:read and chat:write are /v1/agent/…, relayed to agent-service (grant 3).
+  api-service:
+    scopes: [files:read, files:write, files:delete, files:list, chat:read, chat:write]
+
   file-management:
     scopes: [files:read, files:write, files:delete, files:list]
     detail_types:
@@ -28,56 +30,61 @@ audiences:
         location_syntax: prefix          # "<bucket>/<key prefix>"; subset = string prefix
         location_roots: [public/, private/]   # file-management's buckets (its spec, D10); keep in sync
 
-  sandbox-runner:                        # creates and destroys agent sandboxes on VM 200
-                                         # (docs/specs/agent-service/sandbox-runner.md). Only agent-service may call it.
+  # Creates and destroys agent sandboxes on VM 200 (docs/specs/agent-service/sandbox-runner.md).
+  # Only agent-service may call it.
+  sandbox-runner:
     scopes: [sandboxes:claim, sandboxes:release, sandboxes:read, status:read]
 
-  agent-service:                         # the agents' control plane on CT 107 (docs/specs/agent-service/control-plane.md).
-                                         # sessions:use = your own sessions; profile:<name> = may start that profile
-                                         # (one per profile in infra/services/agent-service/profiles.yaml, C2).
-    scopes: [sessions:use, sessions:admin, status:read,
-             profile:steven-ai, profile:voice, profile:smoke]
+  # The agents' control plane on CT 107 (docs/specs/agent-service/control-plane.md).
+  # chat:write = start, talk in and end your own sessions; chat:read = read them and their history;
+  # chat:admin = everyone's, and the kill switch. Any profile: what a profile may do is its own limits.
+  agent-service:
+    scopes: [chat:read, chat:write, chat:admin, status:read]
 
-  secrets-manager:                       # OpenBao: services log in with a token for this audience.
-                                         # What a login may read is OpenBao's policy (generated from the
-                                         # manifests, infra/secrets-manager/tofu/), not a scope here.
+  # OpenBao: services log in with a token for this audience. What a login may read is OpenBao's
+  # policy (generated from the manifests, infra/secrets-manager/tofu/), not a scope here.
+  secrets-manager:
     scopes: [secrets:read]
 
 clients:
-  deployer:                              # deploys services (docs/specs/deployer.md); logs in to OpenBao
-                                         # as role "deployer" (sub=service:deployer). Secret host-only on CT 105.
+  # Deploys services (docs/specs/deployer.md); logs in to OpenBao as role "deployer"
+  # (sub=service:deployer). Secret host-only on CT 105.
+  deployer:
     grants:
       secrets-manager:
         scopes: [secrets:read]
 
-  agent-dev:                             # TEMPORARY (agent-service CP2): the dev gateway on VM 200, standing in for
-                                         # agent-service until it exists (CP3), then removed. Secret host-only on VM 200,
-                                         # in the dev stack's secrets/ (gitignored).
+  # TEMPORARY (agent-service CP2): the dev gateway on VM 200, standing in for agent-service until
+  # it exists (CP3), then removed. Secret host-only on VM 200, in the dev stack's secrets/ (gitignored).
+  agent-dev:
     grants:
       sandbox-runner:
         scopes: [sandboxes:claim, sandboxes:release, sandboxes:read]
 
-  agent-service:                         # the control plane: claims pods, keeps its login in OpenBao, backs up
-                                         # its database. Secret host-only on CT 107.
+  # The control plane: claims pods, keeps its login in OpenBao, backs up its database.
+  # Secret host-only on CT 107.
+  agent-service:
     grants:
       sandbox-runner:
         scopes: [sandboxes:claim, sandboxes:release, sandboxes:read]
-      secrets-manager:                   # OpenBao role "agent-service": read and write only its ChatGPT login (C11)
+      secrets-manager:                   # OpenBao role "agent-service": only its ChatGPT login (C11)
         scopes: [secrets:read]
       file-management:                   # nightly pg_dump (C10)
         scopes: [files:read, files:write, files:delete, files:list]
         authorization_details:
           - {type: file_access, actions: [read, write, delete, list], locations: ["private/${client}/backups/"]}
 
-  agent-cli:                             # the `agent` CLI on CT 107, your operator tool: your sessions, any profile,
-                                         # and the kill switch. Secret host-only on CT 107, root-only.
+  # The `agent` CLI on CT 107, your operator tool: your sessions, and the kill switch.
+  # Secret host-only on CT 107, root-only.
+  agent-cli:
     grants:
       agent-service:
-        scopes: [sessions:use, sessions:admin, profile:steven-ai, profile:voice, profile:smoke]
+        scopes: [chat:read, chat:write, chat:admin]
 
+  # can_relay_clients: may pass an outside machine client's own identity downstream (grant 3).
+  # Relayed to agent-service, a caller gets ITS OWN agent-service grants, never these.
   api-service:
-    can_relay_clients: true              # may pass an outside machine client's own identity downstream (grant 3).
-                                         # Relayed to agent-service, a caller gets ITS OWN agent-service grants.
+    can_relay_clients: true
     grants:
       sandbox-runner:                    # its public /v1/status reads the runner's pods (S.1)
         scopes: [status:read]
@@ -89,7 +96,8 @@ clients:
           # what anonymous visitors may do, and nothing more
           - {type: file_access, actions: [read, list], locations: ["public/"]}
 
-  pi-server:                             # Hey Pi's backend (BFF); the Flutter UI only talks to
+  # Hey Pi's backend (BFF); the Flutter UI only talks to it.
+  pi-server:
     grants:
       api-service:
         scopes: [files:read, files:write, files:delete, files:list]
@@ -99,14 +107,14 @@ clients:
           # its own folder; its agent's workspaces are sub-folders (private/pi-server/workspaces/...)
           - {type: file_access, actions: [read, write, delete, list], locations: ["private/${client}/"]}
 
-  smoke-test:                            # synthetic client for deploy checks (scripts/smoke_test.py);
-                                         # secret only on the auth host, root-only. Its own folder, and
-                                         # one cheap agent profile (directly, and through api-service's relay).
+  # Synthetic client for deploy checks (scripts/smoke_test.py); secret only on the auth host,
+  # root-only. Its own folder, and its own chats (directly, and through api-service's relay).
+  smoke-test:
     grants:
       api-service:
-        scopes: [sessions:use]
+        scopes: [chat:read, chat:write]
       agent-service:
-        scopes: [sessions:use, profile:smoke]
+        scopes: [chat:read, chat:write]
       file-management:
         scopes: [files:read, files:write, files:delete, files:list]
         authorization_details:
