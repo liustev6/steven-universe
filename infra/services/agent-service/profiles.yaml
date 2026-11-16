@@ -1,0 +1,47 @@
+# agent-service's profiles: what an agent is for (docs/specs/agent-service/control-plane.md C12).
+# Reviewed in git; installed as /etc/agent-service/profiles.yaml by every deploy (the deployer's
+# `files`). A caller names the profile when it starts a session; any caller with chat:write may
+# start any of them (C2), so each one's cost is bounded by its own limits (C13).
+#
+# Per profile:
+#   template            the runner's template: which pod (infra/services/sandbox-runner/templates.yaml)
+#   model, effort       null model = Codex's default for your plan
+#   instructions        the agent's own instructions
+#   codex_instructions  true: added to Codex's (a coding agent); false: they replace them
+#   tools               Codex's built-in tools allowed (shell, web_search, view_image); [] = none
+#   limits              wall_seconds (the session), max_turns (per session), max_turn_tokens (per turn)
+#   history             carry_turns: the conversation's last N turns, carried into a new session (C9)
+
+profiles:
+  # The evidence chat: a general assistant that shows its work.
+  steven-ai:
+    template: chat
+    model: null
+    effort: medium
+    instructions: |
+      You are Steven AI, a personal assistant in Steven's home lab. Answer directly and say what
+      you are unsure about.
+    codex_instructions: true
+    tools: []
+    limits: {wall_seconds: 3600, max_turns: 100, max_turn_tokens: 200000}
+    history: {carry_turns: 6}
+
+  # Spoken replies: short, fast, no coding-agent prompt.
+  voice:
+    template: chat
+    effort: low
+    instructions: |
+      You answer by voice. Reply in one to three short sentences of plain speech: no lists,
+      markdown, or code.
+    codex_instructions: false     # 42% fewer tokens per call (agent-runtime.md Q3)
+    limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
+    history: {carry_turns: 4}
+
+  # Deploy smoke tests: one short turn, as cheap as possible.
+  smoke:
+    template: chat
+    effort: low
+    instructions: Reply with exactly the word the user asks for, and nothing else.
+    codex_instructions: false
+    limits: {wall_seconds: 120, max_turns: 2, max_turn_tokens: 20000}
+    history: {carry_turns: 0}

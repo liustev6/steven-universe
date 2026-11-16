@@ -36,10 +36,10 @@ project: the service and its own **PostgreSQL**.
 | C3 | **Callers see protocol B v0** (below): protocol A translated at full fidelity, plus agent-service's own events, one `seq` per session. **Every caller gets every event;** a client shows what it needs (a voice client reads only `message.*`). `seq` only increases and **may skip numbers**, so a server-side filter can be added later without breaking callers. | A stable, caller-shaped contract. Every caller today is trusted and holds a token; filtering on the server matters once a reader is trusted less than the data. |
 | C4 | **Every event is written to PostgreSQL before anyone sees it** (G10). Listeners get it from memory; a reconnect (`?after=`) reads the rest from the table. | Nothing lost to a dropped connection or a restart. |
 | C5 | **Sessions survive an agent-service restart.** Their state (sandbox, capability hash, owner) is in PostgreSQL; on start, agent-service reloads active sessions, and their runtimes' long polls reconnect to the new process. | Deploys of agent-service don't end conversations. |
-| C6 | **A session claims its pod at start** (the profile's template), and releases it on `DELETE`, after **5 idle minutes**, or at the profile's wall time. **A lost sandbox ends the session** (`session.status` `ended`, reason `sandbox_lost`): the caller starts a new session in the same conversation, and agent-service rebuilds its history from `turns` (C9). The CLI and api-service's relay do this by themselves. | Ready by the first turn (~0.5 s); single-use pods (R6). One way to recover, the same as any new session; a runner deploy (which ends its pods) costs a reconnect, not the conversation. |
+| C6 | **A session claims its pod at start** (the profile's template), and releases it on `DELETE`, after **5 idle minutes**, or at the profile's wall time. **A lost sandbox ends the session** (`session.status` `ended`, reason `sandbox_lost`): the caller starts a new session in the same conversation, and agent-service rebuilds its history from `turns` (C9). The CLI and api-service's relay do this by themselves. **One live session per conversation:** continuing a conversation that has a live session returns that session (no new pod); a new pod is claimed only once it has ended. **A conversation keeps its profile:** continuing it with another is `409`. | Ready by the first turn (~0.5 s); single-use pods (R6). One way to recover, the same as any new session; a runner deploy (which ends its pods) costs a reconnect, not the conversation. One live session keeps a conversation one thread: two sandboxes would each see only half of it. The database enforces it (a partial unique index), so racing starts can't both claim. |
 | C7 | **The capability** is 256 random bits, given only to the runner (the session file); agent-service stores only its SHA-256. A request needs it **and** the pod's `X-Sandbox-Id`. It dies with the session. | A stolen capability is useless from another pod (the CP2 theft test) and after the session. |
 | C8 | **History lives in PostgreSQL** (decision 2): conversations, sessions, turns, events. | Continuity, and the cost policy (C9). |
-| C9 | **A new session in an existing conversation gets its last N turns as context** (the profile's `carry_turns`, default 6), as text after its instructions (the session file's `context`, read by the runtime). Within a session, the conversation only grows (decision 2: caching, reasoning state). | Continuity at a bounded, chosen cost. Summaries of older turns come in CP7. |
+| C9 | **A new session in an existing conversation gets its last N turns as context** (the profile's `carry_turns`, default 6), as text after its instructions: agent-service appends it to the profile's `instructions` in the session file, so protocol A and the runtime need nothing new. Within a session, the conversation only grows (decision 2: caching, reasoning state). | Continuity at a bounded, chosen cost. Summaries of older turns come in CP7. |
 | C10 | **Nightly backup:** `pg_dump` saved **through file-management** to `private/agent-service/backups/` (it stays the only S3 client, F3), kept 14 days; a restore is tested. | History is the lab's first data that can't be rebuilt. |
 | C11 | **The auth broker (model-access.md MA1–MA6) lives here:** your ChatGPT login in `/var/lib/agent-service/codex-home`, refreshed by Codex in this one process, each refreshed bundle written to OpenBao (`kv/services/agent-service/codex_auth`); restored from there if the disk is new. | One owner of the login (MA2); a rebuilt host comes back without a new login (MA3). |
 | C12 | **Profiles are a reviewed file:** `infra/services/agent-service/profiles.yaml`, installed by every deploy (the deployer's `files`). | Changing what an agent may do is a reviewed diff (G5). |
@@ -53,7 +53,7 @@ kill switch), `status:read` (api-service's status page). The scope each route ne
 
 | Route | What |
 |---|---|
-| `POST /v1/sessions` `{profile, conversation_id?}` | `chat:write`: start a session: a new conversation, or continue one you own (C9). Claims a pod; returns `{session_id, conversation_id, state}`. `503` (`Retry-After`) if no sandbox. |
+| `POST /v1/sessions` `{profile, conversation_id?}` | `chat:write`: a session for a new conversation, or for one you own (C9). **`201`** a new session (a pod claimed); **`200`** the conversation's live session, already running (C6). Returns `{session_id, conversation_id, state}`. `409` if `profile` isn't the conversation's; `503` (`Retry-After`) if no sandbox. |
 | `POST /v1/sessions/{id}/turns` `{text}` | `chat:write`: one turn: streams protocol B (NDJSON) until its `turn.completed`. `409` if a turn is running. |
 | `GET /v1/sessions/{id}/events?after=<seq>` | `chat:read`: everything after `seq`, then live until the session ends (reconnect, G10) |
 | `GET /v1/sessions/{id}` | `chat:read`: its state: `starting`, `ready`, `busy`, `ended` (with the reason) |
@@ -127,15 +127,16 @@ profiles:
     history: {carry_turns: 0}
 ```
 What reaches the runtime (protocol A's `Profile` in the session file) is the subset it needs
-(model, effort, instructions, `codex_instructions`, tools, wall time), plus `context` (C9).
+(model, effort, instructions with the carried-over turns appended (C9), `codex_instructions`, tools, wall
+time): `AgentProfile.runtime()` in `app/profiles.py`.
 
 ## History (PostgreSQL)
 **Tables** (Alembic migrations, reviewed in git; SQLAlchemy 2 with psycopg 3):
 
 | Table | Holds | Key |
 |---|---|---|
-| `conversations` | owner, profile, created, last active | `id` (UUID) |
-| `sessions` | conversation, owner, profile, sandbox id, capability hash, state, started, ended, end reason | `id` |
+| `conversations` | owner, profile (fixed for its life), created, last active | `id` (UUID) |
+| `sessions` | conversation, owner, sandbox id, capability hash, state, `next_seq`, turns used, started, last activity, ended, end reason | `id`; at most one not `ended` per conversation |
 | `turns` | conversation, session, user text, reply text, status, timings, usage | `id`; ordered per conversation |
 | `events` | session, `seq`, `ts`, `type`, turn, payload (the protocol B event, full fidelity) | (`session_id`, `seq`) |
 
@@ -189,6 +190,8 @@ internet egress narrows in 3.9: model calls now leave from CT 107.
 | Visibility per profile (`full`, `summary`, `text`), filtered on the server | every caller is trusted today; a client filters for display. Comes back as a server filter when untrusted readers exist (C3's `seq` gaps allow it) |
 | Events deleted after 30 days | small at home scale; one rule fewer |
 | A scope per profile (`profile:<name>`) | scopes growing with every profile; which profile is a resource choice, not a permission. If callers must be limited to some profiles, skills or tools, an `authorization_details` type does it |
+| Two live sessions in one conversation | each sandbox would see half the conversation; continuing returns the live session instead |
+| Switching a conversation's profile | clients keep to their profile; a fixed one keeps history and budgets consistent |
 | Callers acting as a person (a user identity) | one person; the client id is enough for ownership |
 | Replacing a lost sandbox inside the same session | a second way to recover; a new session in the same conversation already rebuilds the history (C9) |
 
