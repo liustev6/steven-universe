@@ -60,3 +60,27 @@ resource "vault_jwt_auth_backend_role" "deployer" {
   token_ttl       = 600
   token_max_ttl   = 600
 }
+
+# agent-service (CT 107; docs/specs/agent-service/control-plane.md C11): a token for
+# aud=secrets-manager, sub=service:agent-service, gets a 10-minute OpenBao token that may read and
+# write ONE secret: its ChatGPT login, saved after every refresh and restored on a new disk. The
+# only service that writes to OpenBao; everything else it needs comes through the deployer.
+resource "vault_policy" "agent_service_login" {
+  name   = "agent-service-login"
+  policy = <<-EOT
+    # agent-service's ChatGPT login (the auth broker, model-access.md MA3): read and write, nothing else.
+    path "kv/data/services/agent-service/codex_auth" { capabilities = ["read", "create", "update"] }
+  EOT
+}
+
+resource "vault_jwt_auth_backend_role" "agent_service" {
+  backend         = vault_jwt_auth_backend.auth_service.path
+  role_name       = "agent-service"
+  role_type       = "jwt"
+  bound_audiences = ["secrets-manager"]
+  bound_subject   = "service:agent-service"
+  user_claim      = "sub"
+  token_policies  = [vault_policy.agent_service_login.name]
+  token_ttl       = 600
+  token_max_ttl   = 600
+}

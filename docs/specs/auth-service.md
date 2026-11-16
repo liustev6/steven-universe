@@ -141,9 +141,12 @@ which the tests use. Tokens live 10 minutes (`token_ttl_seconds: 600`), downscop
 | Client | Audience: what it gets | Notes |
 |---|---|---|
 | `deployer` | secrets-manager: `secrets:read` | OpenBao login as role `deployer` (`sub=service:deployer`); secret host-only on CT 105 |
-| `api-service` | file-management: `read`, `list` on `public/` | its own token = what anonymous visitors may do; `can_relay_clients` |
+| `api-service` | file-management: `read`, `list` on `public/`; sandbox-runner and agent-service: `status:read` | its own token = what anonymous visitors may do; `can_relay_clients` |
 | `pi-server` | api-service: all `files:*`; file-management: all on `private/${client}/` | Hey Pi's backend |
-| `smoke-test` | file-management: all on `private/${client}/` | deploy checks only (A15) |
+| `smoke-test` | file-management: all on `private/${client}/`; agent-service: `sessions:use`, `profile:smoke`; api-service: `sessions:use` | deploy checks only (A15) |
+| `agent-service` | sandbox-runner: claim, release, read; secrets-manager: `secrets:read`; file-management: all on `private/${client}/backups/` | the agents' control plane on CT 107 ([control-plane.md](agent-service/control-plane.md)) |
+| `agent-cli` | agent-service: `sessions:use`, `sessions:admin`, every `profile:*` | the `agent` CLI on CT 107 |
+| `agent-dev` | sandbox-runner: claim, release, read | **temporary** (agent-service CP2's dev gateway), removed in CP3 |
 
 **Templates:** `${client}` is the requesting client (when relayed, the **relayed** client);
 `${user}` is the user from a delegated `sub` (`user:42` → `42`), and a template using it is

@@ -5,7 +5,7 @@
 #   .venv/bin/python -m app.admin --config-dir /tmp check-policy --file ../../../infra/services/auth-service/policy.yaml
 # Spec: docs/specs/auth-service.md ("Policy").
 #
-# Starting small: api-service, file-management, pi-server, and the deployer (OpenBao logins). Only relaying is enabled:
+# Starting small: api-service, file-management, pi-server, the deployer (OpenBao logins), and agent-service. Only relaying is enabled:
 # no users yet (no `${user}` grants, no `can_assert_users`) and nothing hands out narrow
 # tokens yet (no `can_downscope`; see the README before enabling it). Add audiences and clients (gpu-server,
 # stevenai-service, ...) as each service adopts service-auth; tests/fixtures/policy.yaml
@@ -18,7 +18,8 @@ max_delegation_depth: 3                  # longest `act` chain allowed (grant 3)
 
 audiences:
   api-service:                           # the public edge; scopes its routes require from authenticated callers
-    scopes: [files:read, files:write, files:delete, files:list]
+    scopes: [files:read, files:write, files:delete, files:list,
+             sessions:use]                # /v1/agent/…, relayed to agent-service (grant 3)
   file-management:
     scopes: [files:read, files:write, files:delete, files:list]
     detail_types:
@@ -30,6 +31,12 @@ audiences:
   sandbox-runner:                        # creates and destroys agent sandboxes on VM 200
                                          # (docs/specs/agent-service/sandbox-runner.md). Only agent-service may call it.
     scopes: [sandboxes:claim, sandboxes:release, sandboxes:read, status:read]
+
+  agent-service:                         # the agents' control plane on CT 107 (docs/specs/agent-service/control-plane.md).
+                                         # sessions:use = your own sessions; profile:<name> = may start that profile
+                                         # (one per profile in infra/services/agent-service/profiles.yaml, C2).
+    scopes: [sessions:use, sessions:admin, status:read,
+             profile:steven-ai, profile:voice, profile:smoke]
 
   secrets-manager:                       # OpenBao: services log in with a token for this audience.
                                          # What a login may read is OpenBao's policy (generated from the
@@ -50,10 +57,31 @@ clients:
       sandbox-runner:
         scopes: [sandboxes:claim, sandboxes:release, sandboxes:read]
 
+  agent-service:                         # the control plane: claims pods, keeps its login in OpenBao, backs up
+                                         # its database. Secret host-only on CT 107.
+    grants:
+      sandbox-runner:
+        scopes: [sandboxes:claim, sandboxes:release, sandboxes:read]
+      secrets-manager:                   # OpenBao role "agent-service": read and write only its ChatGPT login (C11)
+        scopes: [secrets:read]
+      file-management:                   # nightly pg_dump (C10)
+        scopes: [files:read, files:write, files:delete, files:list]
+        authorization_details:
+          - {type: file_access, actions: [read, write, delete, list], locations: ["private/${client}/backups/"]}
+
+  agent-cli:                             # the `agent` CLI on CT 107, your operator tool: your sessions, any profile,
+                                         # and the kill switch. Secret host-only on CT 107, root-only.
+    grants:
+      agent-service:
+        scopes: [sessions:use, sessions:admin, profile:steven-ai, profile:voice, profile:smoke]
+
   api-service:
-    can_relay_clients: true              # may pass an outside machine client's own identity downstream (grant 3)
+    can_relay_clients: true              # may pass an outside machine client's own identity downstream (grant 3).
+                                         # Relayed to agent-service, a caller gets ITS OWN agent-service grants.
     grants:
       sandbox-runner:                    # its public /v1/status reads the runner's pods (S.1)
+        scopes: [status:read]
+      agent-service:                     # the status page reads agent-service too (S rule)
         scopes: [status:read]
       file-management:
         scopes: [files:read, files:list]
@@ -72,8 +100,13 @@ clients:
           - {type: file_access, actions: [read, write, delete, list], locations: ["private/${client}/"]}
 
   smoke-test:                            # synthetic client for deploy checks (scripts/smoke_test.py);
-                                         # secret only on the auth host, root-only. Its own folder, nothing else.
+                                         # secret only on the auth host, root-only. Its own folder, and
+                                         # one cheap agent profile (directly, and through api-service's relay).
     grants:
+      api-service:
+        scopes: [sessions:use]
+      agent-service:
+        scopes: [sessions:use, profile:smoke]
       file-management:
         scopes: [files:read, files:write, files:delete, files:list]
         authorization_details:

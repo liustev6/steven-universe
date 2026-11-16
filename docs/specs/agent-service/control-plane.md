@@ -120,6 +120,12 @@ profiles:
     codex_instructions: false      # 42% fewer tokens per call (agent-runtime.md Q3)
     limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
     history: {carry_turns: 4}
+  smoke:                           # deploy smoke tests: one short turn, as cheap as possible
+    template: chat
+    effort: low
+    codex_instructions: false
+    limits: {wall_seconds: 120, max_turns: 2, max_turn_tokens: 20000}
+    history: {carry_turns: 0}
 ```
 What reaches the runtime (protocol A's `Profile` in the session file) is the subset it needs
 (model, effort, instructions, `codex_instructions`, tools, wall time), plus `context` (C9).
@@ -153,15 +159,22 @@ What reaches the runtime (protocol A's `Profile` in the session file) is the sub
 | PostgreSQL's password | `/etc/agent-service/credentials/postgres_password` | the deployer, from OpenBao |
 | your ChatGPT login | `/var/lib/agent-service/codex-home/auth.json`, and OpenBao | the auth broker itself (C11): device code, once |
 
-**auth-service policy:** audience `agent-service` (`sessions:use`, `sessions:admin`, `status:read`);
-client `agent-service` granted `sandbox-runner` (`sandboxes:claim`, `:release`, `:read`),
-`secrets-manager` (`secrets:read`), `file-management` (read, write, delete, list on
-`private/agent-service/`); callers `smoke-test` and `agent-cli` granted `sessions:use` and their profiles' `profile:<name>`; api-service
-granted `status:read` here, and relaying for `/v1/agent/…`.
+**auth-service policy** (`infra/services/auth-service/policy.yaml`):
 
-**OpenBao:** role `agent-service` (auth-service tokens), a policy that may **read and write only**
-`kv/services/agent-service/codex_auth` (OpenTofu; the generated `service-agent-service` policy covers
-reading the PostgreSQL password).
+| Client | Gets | Why |
+|---|---|---|
+| `agent-service` | sandbox-runner: claim, release, read; secrets-manager: `secrets:read`; file-management: all on `private/agent-service/backups/` | pods; its login in OpenBao; backups |
+| `agent-cli` | agent-service: `sessions:use`, `sessions:admin`, every `profile:*` | your operator tool on CT 107, kill switch included |
+| `smoke-test` | agent-service: `sessions:use`, `profile:smoke`; api-service: `sessions:use` | deploy checks, directly and through the relay |
+| `api-service` | agent-service: `status:read` | the status page. It relays `/v1/agent/…` with `can_relay_clients` (grant 3): the relayed token carries the **caller's own** agent-service grants, never api-service's |
+
+The audience `api-service` gains `sessions:use`: the scope its `/v1/agent/…` route requires.
+
+**OpenBao** (`infra/secrets-manager/tofu/main.tf`): role `agent-service` (`sub=service:agent-service`,
+10-minute tokens) with the policy `agent-service-login`: **read, create and update only**
+`kv/services/agent-service/codex_auth`. The PostgreSQL password (`kv/services/agent-service/postgres_password`)
+is written by hand with `bao kv put` and delivered by the deployer; its read policies are generated
+once agent-service's manifest declares it (3.7).
 
 **The firewall (VM 200):** in, 443 from CT 107 (claims); out, 8443 to CT 107 (the gateway). VM 200's
 internet egress narrows in 3.9: model calls now leave from CT 107.
