@@ -43,7 +43,7 @@ project: the service and its own **PostgreSQL**.
 | C10 | **Nightly backup:** `pg_dump` saved **through file-management** to `private/agent-service/backups/` (it stays the only S3 client, F3), kept 14 days; a restore is tested. | History is the lab's first data that can't be rebuilt. |
 | C11 | **The auth broker (model-access.md MA1–MA6) lives here:** your ChatGPT login in `/var/lib/agent-service/codex-home`, refreshed by Codex in this one process, each refreshed bundle written to OpenBao (`kv/services/agent-service/codex_auth`); restored from there if the disk is new. | One owner of the login (MA2); a rebuilt host comes back without a new login (MA3). |
 | C12 | **Profiles are a reviewed file:** `infra/services/agent-service/profiles.yaml`, installed by every deploy (the deployer's `files`). | Changing what an agent may do is a reviewed diff (G5). |
-| C13 | **Budgets are enforced at the gateway** (G14): turns per session, tokens per turn (from the runtime's usage events), and the profile's wall time; past one, the model route refuses and the turn fails with a clear `error`. | The sandbox is assumed compromised; only the gateway's limits are real. |
+| C13 | **Budgets are enforced at the gateway** (G14): turns per session, tokens per turn (counted from the model responses the gateway relays, never from what the sandbox reports), and the profile's wall time; past one, the model route refuses and the turn fails with a clear `error`. | The sandbox is assumed compromised; only the gateway's limits are real. |
 | C14 | **The kill switch:** `DELETE` a session; `POST /v1/admin/stop` (`chat:admin`) ends every session and refuses new ones until `…/start`; or stop the runner. | One call stops everything, without touching hosts. |
 
 ## The sessions API (443, callers)
@@ -81,8 +81,13 @@ caller at `/v1/agent/…` (it's the public edge: a token is required; grant 3, `
 | `tool.started` | `tool_id`, `name`, `input`, `server` | A `tool.started` |
 | `tool.completed` | `tool_id`, `is_error`, `output`, `truncated` | A `tool.completed` |
 | `task.started` / `task.progress` / `task.completed` | `task_id`, `description`, `status`, `summary` | A `task.*` |
-| `turn.completed` | `status`, `reason`, `first_text_ms`, `duration_ms`, `usage` | A `turn.completed` (agent-service adds `seq`, drops the engine's figures it doesn't own) |
+| `turn.completed` | `status`, `reason`, `first_text_ms`, `duration_ms`, `usage` (**this turn's** tokens: `input_tokens`, `cached_input_tokens`, `output_tokens`, `reasoning_tokens`, `total_tokens`; null if unknown) | A `turn.completed`: Codex reports the thread's running total, so agent-service subtracts the total at the turn's start; the engine's other figures stay internal |
 | `error` | `code` (`no_sandbox`, `rate_limited`, `budget`, `runtime`, `internal`), `message` | agent-service, A `runtime.error`, A `model.rate_limited` |
+
+**From the sandbox, checked, not trusted:** each protocol A event is parsed on its own (a bad one is
+dropped and logged); its `session_id` must be the session's and its `turn_id` a turn agent-service
+started; tool output and error messages are capped again. Code: `app/translate.py`; B's models:
+`app/events.py`.
 
 **Never sent:** the capability, sandbox ids, internal addresses, other sessions,
 your plan's account details (A's `model.usage_updated` stays internal: the gateway uses it for C13).
