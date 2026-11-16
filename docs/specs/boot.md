@@ -25,8 +25,9 @@ power on ─▶ pve01 (Proxmox VE 9, 192.168.50.101)
  order 2   CT 105 deployer          Docker → deployer container              ready
            ... wait 10 s
  order 3   CT 106 api-service       Docker → api-service container           ready
+ order 3   CT 107 agent-service     Docker → nothing yet (CP3)               ready
            ... wait 10 s
- order 4   VM 200 sandbox-worker    Docker (+ gVisor) → nothing yet (CP2)    ready
+ order 4   VM 200 sandbox-worker    Docker (+ gVisor) → sandbox-runner       ready
            ... wait 30 s (a VM boots its own kernel)
  no order  CT 100 cloudflared       systemd cloudflared (Cloudflare tunnel)  ready
 ```
@@ -42,13 +43,14 @@ containers from 100, VMs from 200.
 | 104 | secrets-manager | `onboot=1` | 1, `up=10` | Docker enabled; container `restart: unless-stopped` | yes (comes back sealed) |
 | 105 | deployer | `onboot=1` | 2, `up=10` | Docker enabled; container `restart: unless-stopped` | yes |
 | 106 | api-service | `onboot=1` | 3, `up=10` | Docker enabled; container `restart: unless-stopped` | yes |
-| **VM 200** | sandbox-worker | `onboot=1` | 4, `up=30` | Docker enabled, gVisor (`runsc`) registered; the sandbox runner arrives in CP2 ([sandbox-worker-setup.md](../sandbox-worker-setup.md)) | yes |
+| 107 | agent-service | `onboot=1` | 3, `up=10` | Docker enabled; agent-service and its PostgreSQL arrive in CP3 ([control-plane.md](agent-service/control-plane.md)) | yes |
+| **VM 200** | sandbox-worker | `onboot=1` | 4, `up=30` | Docker enabled, gVisor (`runsc`) registered; sandbox-runner, container `restart: unless-stopped` ([sandbox-worker-setup.md](../sandbox-worker-setup.md)) | yes |
 
 **pve01's firewall** (`pve-firewall`, enabled since 2026-11-13) starts with the host; its policies are
 ACCEPT, so it filters only VM 200 (`infra/hosts/pve01/firewall/`). If VM 200 can't reach something it
 needs after a boot, check `/var/log/pve-firewall.log` on pve01.
 
-Also enabled on CT 102–106: `certbot.timer` (certificate renewal) and `unattended-upgrades`
+Also enabled on CT 102–107: `certbot.timer` (certificate renewal) and `unattended-upgrades`
 (security updates); on VM 200, `unattended-upgrades` and the QEMU guest agent.
 
 ## Why this order
@@ -60,6 +62,7 @@ Also enabled on CT 102–106: `certbot.timer` (certificate renewal) and `unatten
 | file-management (2) | auth-service (JWKS on first request), rustfs (health check) | after both |
 | deployer (2) | auth-service and OpenBao (only when a deploy runs: token, then secrets) | after both; deploys wait for the unseal |
 | api-service (3) | the deployer (for `/deploy/*`) | after it; before cloudflared, which publishes it |
+| agent-service (3) | auth-service, OpenBao (its login, restored on a new disk), file-management (nightly backups); the runner only when a session starts (it retries) | after its dependencies, before the worker whose sandboxes reach only its gateway |
 | sandbox-worker (4) | agent-service's gateway (its sandboxes reach only that), when it exists | after the control plane; nothing depends on it at boot |
 | cloudflared (last) | api-service | the public entry comes up last |
 
