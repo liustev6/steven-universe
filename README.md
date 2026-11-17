@@ -16,9 +16,9 @@ steven-universe/
 │   │   ├── file-management/      # File management microservice (MinIO/S3)
 │   │   ├── web-gateway/          # Backend API gateway
 │   │   ├── stevenai-service/     # RAG-powered AI chatbot
-│   │   └── gpu-server/           # GPU task execution service
+│   │   └── gpu-server/           # GPU task execution service (archived)
 │   └── workers/
-│       └── gpu-server/           # GPU worker container images
+│       └── gpu-server/           # GPU worker container images (archived)
 └── .github/
     └── workflows/                # CI/CD pipelines
 ```
@@ -128,7 +128,11 @@ curl -X POST http://localhost:8002/chat/stream \
 
 ---
 
-### GPU Service
+### GPU Service (archived)
+
+> **Archived (2026-11-17).** Not deployed and not maintained. pve01's one GPU (an RTX 5060) now serves
+> only the voice services, starting with [tts-service](docs/specs/tts-service.md). A general GPU service
+> will be redesigned from scratch when the lab has several GPUs; the text below describes the old design.
 
 Session-based GPU task execution service with real-time event streaming and automatic resource management.
 

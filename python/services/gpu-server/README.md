@@ -1,3 +1,7 @@
+> **Archived (2026-11-17).** This service is not deployed and not maintained. pve01's one GPU now
+> serves only the voice services ([tts-service](../../../docs/specs/tts-service.md)). A general GPU
+> service will be redesigned when the lab has several GPUs; this document is kept as a reference.
+
 # GPU Service Architecture
 
 A session-based GPU execution system with bounded queues, automatic model reuse, SSE streaming, and dynamic GPU allocation.  
