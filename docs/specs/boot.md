@@ -1,7 +1,9 @@
 # Boot and recovery (pve01)
 
-**Status:** settings checked 2026-11-08; not yet proven by a full reboot of pve01 (see "Test
-reboot"). Related: [auth-service.md](auth-service.md), [file-management.md](file-management.md),
+**Status:** settings checked 2026-11-17 (every guest `onboot` with its order, Docker enabled
+everywhere, every container `restart: unless-stopped`, pve01's network names pinned, agent-service
+recovering by itself from PostgreSQL starting late); not yet proven by a full reboot of pve01: the
+GPU shutdown is the first one (see "Shutting down for hardware" and "Test reboot"). Related: [auth-service.md](auth-service.md), [file-management.md](file-management.md),
 [rustfs.md](rustfs.md), [secrets-manager.md](secrets-manager.md)
 
 ## What it is
@@ -25,7 +27,7 @@ power on ─▶ pve01 (Proxmox VE 9, 192.168.50.101)
  order 2   CT 105 deployer          Docker → deployer container              ready
            ... wait 10 s
  order 3   CT 106 api-service       Docker → api-service container           ready
- order 3   CT 107 agent-service     Docker → nothing yet (CP3)               ready
+ order 3   CT 107 agent-service     Docker → agent-service, PostgreSQL       ready
            ... wait 10 s
  order 4   VM 200 sandbox-worker    Docker (+ gVisor) → sandbox-runner       ready
            ... wait 30 s (a VM boots its own kernel)
@@ -43,7 +45,7 @@ containers from 100, VMs from 200.
 | 104 | secrets-manager | `onboot=1` | 1, `up=10` | Docker enabled; container `restart: unless-stopped` | yes (comes back sealed) |
 | 105 | deployer | `onboot=1` | 2, `up=10` | Docker enabled; container `restart: unless-stopped` | yes |
 | 106 | api-service | `onboot=1` | 3, `up=10` | Docker enabled; container `restart: unless-stopped` | yes |
-| 107 | agent-service | `onboot=1` | 3, `up=10` | Docker enabled; agent-service and its PostgreSQL arrive in CP3 ([control-plane.md](agent-service/control-plane.md)) | yes |
+| 107 | agent-service | `onboot=1` | 3, `up=10` | Docker enabled; agent-service and its PostgreSQL, both `restart: unless-stopped` ([control-plane.md](agent-service/control-plane.md)) | yes |
 | **VM 200** | sandbox-worker | `onboot=1` | 4, `up=30` | Docker enabled, gVisor (`runsc`) registered; sandbox-runner, container `restart: unless-stopped` ([sandbox-worker-setup.md](../sandbox-worker-setup.md)) | yes |
 
 **pve01's firewall** (`pve-firewall`, enabled since 2026-11-13) starts with the host; its policies are
@@ -80,7 +82,12 @@ ssh -t bao-host docker exec -it secrets-manager-openbao-1 bao operator unseal   
 ssh -t bao-host docker exec -it secrets-manager-openbao-1 bao operator unseal   # share 2
 ```
 **While it's sealed nothing breaks:** services get secrets as files at deploy time and never read
-OpenBao while running. Only deploys that need managed secrets wait (once the deployer uses it).
+OpenBao while running. What waits:
+- **deploys** (the deployer reads managed secrets from it): pipeline and hand deploys fail until it's
+  unsealed;
+- **agent-service's login copy:** it runs from the login on its own disk; saving a refreshed login to
+  OpenBao (and reading it at start) fails until the unseal, then catches up by itself within 10
+  minutes. Meanwhile the status page shows agent-service's `login.saved_to_openbao: false`.
 
 ### 2. Power-on after a power cut (one-time BIOS setting)
 pve01 only starts by itself after a power cut if the BIOS says so: set **"Restore on AC Power
@@ -93,9 +100,17 @@ Loss" / "After Power Failure" = Power On**. Not checkable from software; check o
 | **Router slow to boot** | containers get their DHCP addresses late (all have reservations) | wait; Docker restarts anything that failed |
 | **The NVMe** (it had I/O errors before the reinstall) | containers fail to start or remount read-only | `dmesg`, `smartctl -a /dev/nvme0`. Suspected cause: NVMe power saving; the proposed fix (not applied yet) is the kernel parameters `nvme_core.default_ps_max_latency_us=0 pcie_aspm=off` |
 | **A certificate expired while powered off** | HTTPS fails for that service | `certbot renew` on that container (the hook installs it) |
+| **agent-service starts before its PostgreSQL is ready** (Docker doesn't wait for `depends_on` at boot) | agent-service exits and Docker restarts it until PostgreSQL answers | nothing: checked 2026-11-17, healthy within ~12 s of PostgreSQL |
+| **Agent sessions that were live at shutdown** | their pods are gone (VM 200 restarted); agent-service ends them as `sandbox_lost` within ~15 s of the runner being back | nothing: callers start a new session; the conversation carries over |
+| **New PCIe hardware (a GPU)** | could renumber PCI devices, which renames network interfaces on many hosts and leaves `vmbr0` without its port | nothing on pve01: its NICs are pinned by MAC (`/usr/local/lib/systemd/network/50-pmx-nic0.link`, Proxmox 9's `pve-network-interface-pinning`), so `nic0` stays `nic0`. If the network doesn't come up anyway: the console, `ip -br link`, compare with `/etc/network/interfaces` |
 
 ## Checking that everything is back
-From the Mac (Tailscale on; the subnet route gives direct access to `192.168.50.x`):
+**One look first:** the lab's status page checks every service (OpenBao reads `ok` even sealed, with
+`sealed: true` in its details):
+```sh
+curl -s https://api.liustev6.ca/v1/status | python3 -m json.tool | less
+```
+Then, individually, from the Mac (Tailscale on; the subnet route gives direct access to `192.168.50.x`):
 ```sh
 curl -s https://auth.lan.liustev6.ca/health                        # auth-service: "healthy"
 curl -s https://files.lan.liustev6.ca/health                       # file-management: storage "ok"
@@ -103,20 +118,38 @@ curl -s https://bao.lan.liustev6.ca:8200/v1/sys/seal-status        # OpenBao: "s
 curl -s https://deploy.lan.liustev6.ca/health                      # deployer: "healthy"
 curl -s https://api.liustev6.ca/health                             # api-service, through Cloudflare: "ok"
 curl -s -o /dev/null -w "%{http_code}\n" http://192.168.50.123:9000/   # RustFS: 403 = up (no credentials)
-ssh pve01 'pct list; pct exec 100 -- systemctl is-active cloudflared'
+curl -s https://sandbox-runner.lan.liustev6.ca/health                # sandbox-runner: warm pods
+curl -s https://agent.lan.liustev6.ca/health                       # agent-service: "healthy"
+ssh agent-host 'agent ask -p voice "say ok"'                       # a real turn, end to end
+ssh pve01 'pct list; qm list; pct exec 100 -- systemctl is-active cloudflared'
 ```
 The deeper check is the deploy: re-running `infra/deployment/deploy.sh auth-service` and
 `infra/deployment/deploy.sh file-management` (no change, a few seconds each; needs OpenBao
 unsealed and your login, since deploys deliver secrets from it) runs their health
 checks and smoke tests against the real services.
 
+## Shutting down for hardware (e.g. adding a GPU)
+1. Nothing needs stopping first; optionally `ssh agent-host agent stop` so no agent session is cut
+   mid-turn (and `agent start` afterwards).
+2. `ssh pve01 shutdown -h now` (or pve01 → Shutdown in the UI): Proxmox stops the guests in reverse
+   boot order (cloudflared first, then VM 200 through its guest agent, ... auth-service last).
+3. Power off at the wall only after pve01 is off; install the hardware.
+4. Power on. In the BIOS, check once that the new card didn't change the boot device or "Restore on
+   AC Power Loss" (step 2 above), and that SVM / IOMMU stay enabled (needed to pass a GPU to a VM).
+5. Then "Test reboot" from step 3.
+
 ## Test reboot (to do once)
 1. Pick a quiet time; nothing runs that needs to be stopped first.
 2. `ssh pve01 reboot` (or the Proxmox UI: pve01 → Reboot).
-3. After ~2 minutes: the checks above; all except OpenBao should be up without any action.
+3. After ~3 minutes (VM 200 waits its turn, then boots its own kernel): the checks above; all except
+   OpenBao should be up without any action.
 4. Unseal OpenBao (this also activates the pending "no client-certificate prompt" setting).
-5. Re-run both deploy scripts for their smoke tests.
-6. Record the date and anything that didn't come back here.
+5. Re-run the deploy scripts of auth-service and file-management for their smoke tests (the
+   pipeline's services get theirs on their next deploy).
+6. agent-service: within 10 minutes of the unseal, the status page shows its login
+   `saved_to_openbao: true`; if the login was over 6 hours old, its log shows "login refreshed" then
+   "login saved to OpenBao" (CP3's last open check).
+7. Record the date and anything that didn't come back here.
 
 ## Adding a new service
 Follow [lxc-setup.md](../lxc-setup.md): the container (`--onboot 1 --startup order=<n>`, with `<n>`
@@ -125,4 +158,4 @@ it to the tables and checks above.
 
 ## Not covered
 The Pi (pi-server, hey-pi) is separate hardware with its own systemd services; the GPU server is
-currently shut down.
+currently shut down. A new GPU in pve01 gets its own entry here once it's given to a guest.
