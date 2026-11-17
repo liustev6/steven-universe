@@ -73,6 +73,12 @@ file-management fetches auth-service's keys lazily on the first request (and ret
 health check reports `degraded` until RustFS answers; Docker keeps restarting a crashed container.
 
 ## What needs a person
+**After any boot, one command does it all:** `ssh pve01`, then `./setup.sh` (it's `/root/setup.sh`,
+installed from `infra/hosts/pve01/setup.sh`). It waits for the guests, asks for the OpenBao unseal
+shares (hidden), resumes agents if the kill switch is on, checks every service through the status
+page, and waits for agent-service's login to be saved to OpenBao again. Before hardware work,
+`./setup.sh shutdown` pauses agents and shuts pve01 down cleanly. The steps it automates:
+
 
 ### 1. Unseal OpenBao (every boot, by design)
 OpenBao keeps its decryption key only in memory, so every start (reboot, container restart,
@@ -129,14 +135,14 @@ unsealed and your login, since deploys deliver secrets from it) runs their healt
 checks and smoke tests against the real services.
 
 ## Shutting down for hardware (e.g. adding a GPU)
-1. Nothing needs stopping first; optionally `ssh agent-host agent stop` so no agent session is cut
-   mid-turn (and `agent start` afterwards).
-2. `ssh pve01 shutdown -h now` (or pve01 → Shutdown in the UI): Proxmox stops the guests in reverse
-   boot order (cloudflared first, then VM 200 through its guest agent, ... auth-service last).
+1. On pve01: `./setup.sh shutdown` (asks you to type `yes`): pauses agents (the kill switch, so no
+   session is cut mid-turn), then `shutdown -h now`: Proxmox stops the guests in reverse boot order
+   (cloudflared first, then VM 200 through its guest agent, ... auth-service last).
+2. (By hand instead: `ssh agent-host agent stop`, then pve01 → Shutdown in the UI.)
 3. Power off at the wall only after pve01 is off; install the hardware.
 4. Power on. In the BIOS, check once that the new card didn't change the boot device or "Restore on
    AC Power Loss" (step 2 above), and that SVM / IOMMU stay enabled (needed to pass a GPU to a VM).
-5. Then "Test reboot" from step 3.
+5. On pve01: `./setup.sh` (unseal, resume agents, check). Then "Test reboot" step 7.
 
 ## Test reboot (to do once)
 1. Pick a quiet time; nothing runs that needs to be stopped first.
