@@ -22,7 +22,6 @@ VM 200: pods ──proxy──▶ :8443 gateway (sandboxes only)   │
                          └─ model: + your token (auth broker) ──▶ OpenAI
 agent-service ──(token, aud=sandbox-runner)──▶ sandbox-runner (claim/release)
 agent-service ──(token, aud=secrets-manager)──▶ OpenBao (its login's durable copy)
-agent-service ──(token, aud=file-management)──▶ file-management (nightly backups)
 ```
 
 **It runs on CT 107** (`agent.lan.liustev6.ca`), deployed by the pipeline (wave 1), as one compose
@@ -50,7 +49,7 @@ project: the service and its own **PostgreSQL** (`python/services/agent-service/
 | C7 | **The capability** is 256 random bits, given only to the runner (the session file); agent-service stores only its SHA-256. A request needs it **and** the pod's `X-Sandbox-Id`. It dies with the session. | A stolen capability is useless from another pod (the CP2 theft test) and after the session. |
 | C8 | **History lives in PostgreSQL** (decision 2): conversations, sessions, turns, events. | Continuity, and the cost policy (C9). |
 | C9 | **A new session in an existing conversation gets its last N turns as context** (the profile's `carry_turns`, default 6), as text after its instructions: agent-service appends it to the profile's `instructions` in the session file, so protocol A and the runtime need nothing new. Within a session, the conversation only grows (decision 2: caching, reasoning state). | Continuity at a bounded, chosen cost. Summaries of older turns come in CP7. |
-| C10 | **Nightly backup:** `pg_dump` saved **through file-management** to `private/agent-service/backups/` (it stays the only S3 client, F3), kept 14 days; a restore is tested. | History is the lab's first data that can't be rebuilt. |
+| C10 | **No backups for now** (decided 2026-11-17): chat history isn't important enough yet to back up. PostgreSQL's data lives on CT 107's disk (`/var/lib/agent-service/postgres`), covered only by whatever protects that disk. | Revisit when history matters (CP7's summaries and memory make it more valuable): the plan was a nightly `pg_dump` through file-management, kept 14 days, with a scripted restore check. |
 | C11 | **The auth broker (model-access.md MA1–MA6) lives here:** your ChatGPT login in `/var/lib/agent-service/codex-home`, refreshed by Codex in this one process, each refreshed bundle written to OpenBao (`kv/services/agent-service/codex_auth`); restored from there if the disk is new. | One owner of the login (MA2); a rebuilt host comes back without a new login (MA3). |
 | C12 | **Profiles are a reviewed file:** `infra/services/agent-service/profiles.yaml`, installed by every deploy (the deployer's `files`). | Changing what an agent may do is a reviewed diff (G5). |
 | C13 | **Budgets are enforced at the gateway** (G14): turns per session, tokens per turn (counted from the model responses the gateway relays, never from what the sandbox reports), and the profile's wall time; past one, the model route refuses and the turn fails with a clear `error`. | The sandbox is assumed compromised; only the gateway's limits are real. |
@@ -246,9 +245,7 @@ time): `AgentProfile.runtime()` in `app/profiles.py`.
 - **The database:** `postgres:17`, a container in agent-service's compose project, on an internal
   network only, data in `/var/lib/agent-service/postgres`; its password a managed secret
   (`kv/services/agent-service/postgres_password`), delivered by the deployer.
-- **Backups (C10):** agent-service runs `pg_dump --format=custom` nightly and uploads it through
-  file-management with its own token (`private/agent-service/backups/<date>.dump`); deletes those older
-  than 14 days. **Restore:** `pg_restore` into an empty database (a runbook step); tested in 3.10.
+- **Backups (C10):** none for now; the data is on CT 107's disk only.
 
 ## Identity and secrets
 | What | Where | Delivered |
