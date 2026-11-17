@@ -2,6 +2,7 @@
 # setup.sh: the one command after pve01 boots (and before a planned shutdown). Run it by hand, as
 # root on pve01:  ./setup.sh            after a boot: wait, unseal OpenBao, resume agents, check
 #                 ./setup.sh shutdown   before hardware work: pause agents, shut pve01 down cleanly
+#                 ./setup.sh reboot     the same, but restart (e.g. into a new kernel)
 #
 # Installed as /root/setup.sh from infra/hosts/pve01/setup.sh (reviewed in git; reinstall it the same
 # way when it changes). Spec: docs/specs/boot.md ("What needs a person", "Shutting down for hardware").
@@ -28,20 +29,33 @@ except Exception: sys.exit(1)
 print($1)"
 }
 
+# The kernel pve01 boots next: GRUB's default is the newest installed one (the kernel isn't pinned:
+# docs/lxc-gpu-passthrough-setup.md, step 5). Installed kernels are /boot/vmlinuz-*; /lib/modules
+# also has folders for kernels whose headers alone are installed.
+next_kernel() { ls /boot/vmlinuz-* | sed 's#.*/vmlinuz-##' | sort -V | tail -1; }
+
 # ---- shutdown ---------------------------------------------------------------------------------------
-if [ "${1:-}" = "shutdown" ]; then
-    step "Planned shutdown of pve01"
-    read -r -p "  Shut down pve01 and every guest now? Type 'yes': " answer
+if [ "${1:-}" = "shutdown" ] || [ "${1:-}" = "reboot" ]; then
+    ACTION="$1"
+    step "Planned $ACTION of pve01"
+    K="$(next_kernel)"
+    if command -v dkms >/dev/null && ! dkms status -m nvidia -k "$K" 2>/dev/null | grep -q installed; then
+        fail "the GPU driver isn't built for $K, the kernel pve01 boots next: the GPU would be gone after the reboot"
+        echo "     fix first: docs/lxc-gpu-passthrough-setup.md, \"Updating later\" (or type 'yes' to shut down anyway)"
+    else
+        ok "the GPU driver is built for $K, the kernel pve01 boots next"
+    fi
+    read -r -p "  $ACTION pve01 and every guest now? Type 'yes': " answer
     [ "$answer" = yes ] || { echo "  cancelled"; exit 1; }
     if pct exec "$AGENT_CT" -- /usr/local/bin/agent stop >/dev/null 2>&1; then
         ok "agents paused (the kill switch: no session is cut mid-turn; ./setup.sh resumes them)"
     else
         warn "couldn't pause agents (agent-service down?); shutting down anyway"
     fi
-    ok "shutting down: Proxmox stops the guests in reverse boot order"
-    exec shutdown -h now
+    ok "$ACTION: Proxmox stops the guests in reverse boot order"
+    if [ "$ACTION" = reboot ]; then exec reboot; else exec shutdown -h now; fi
 fi
-[ -z "${1:-}" ] || { echo "usage: $0 [shutdown]"; exit 2; }
+[ -z "${1:-}" ] || { echo "usage: $0 [shutdown|reboot]"; exit 2; }
 
 # ---- 1. guests ---------------------------------------------------------------------------------------
 step "1/5 Guests (they start by themselves, in boot order; VM 200 last)"
@@ -52,6 +66,14 @@ for i in $(seq 1 90); do
     sleep 5
 done
 if [ -n "$stopped" ]; then fail "still not running after 7.5 min: $(echo $stopped)"; else ok "every container and VM 200 running"; fi
+
+# ---- GPU ----------------------------------------------------------------------------------------------
+step "GPU (NVIDIA's driver, for the voice containers)"
+if gpu="$(nvidia-smi --query-gpu=name,driver_version,memory.used,memory.total --format=csv,noheader 2>/dev/null)"; then
+    ok "$gpu (kernel $(uname -r))"
+else
+    fail "nvidia-smi doesn't answer: is the module built for $(uname -r)? (dkms status; docs/lxc-gpu-passthrough-setup.md)"
+fi
 
 # ---- 2. OpenBao --------------------------------------------------------------------------------------
 step "2/5 OpenBao (manual by design: its key lives only in memory)"
