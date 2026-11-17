@@ -115,14 +115,24 @@ async def test_a_login_made_by_another_process_is_saved_by_the_running_service(h
     assert json.loads(store.value)["tokens"]["access_token"] == "from-the-cli"
 
 
-async def test_keep_fresh_refreshes_when_due(home):
-    write(home, bundle("old"))
+async def test_keep_fresh_follows_the_logins_own_age_not_the_process(home):
+    """A restart (a new broker) doesn't reset the clock: the login's last_refresh decides."""
     calls = []
-    b = AuthBroker(home, FakeStore(), refresh_every=0.1, refresher=codex_refresh_to("new", calls))
+    write(home, bundle("old", hours_ago=7))                    # refreshed 7 h ago, by an earlier process
+    b = AuthBroker(home, FakeStore(), refresh_every=6 * 3600, refresher=codex_refresh_to("new", calls))
+    assert b.refresh_due()
     keeper = asyncio.create_task(b.keep_fresh(tick=0.02))
-    await asyncio.sleep(0.35)
+    await asyncio.sleep(0.2)
     keeper.cancel()
-    assert calls and b.headers()["authorization"] == "Bearer new"
+    assert calls == ["new"]                                    # once: the new login is 0 h old
+    assert not b.refresh_due()
+
+
+def test_not_due_when_fresh_or_signed_out(home):
+    b = AuthBroker(home, None, refresh_every=6 * 3600)
+    assert not b.refresh_due()                                 # signed out: nothing to refresh
+    write(home, bundle("tok", hours_ago=1))
+    assert not b.refresh_due()
 
 
 # ---- restore at start (MA3) -----------------------------------------------------------------------

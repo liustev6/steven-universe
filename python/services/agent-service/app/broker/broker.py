@@ -5,8 +5,9 @@
     headers()     per model request: the current access token and account id, read from auth.json
                   (a refresh may have just rewritten it)
     refresh()     Codex refreshes it; one at a time, and callers who waited behind a refresh reuse it
-    keep_fresh()  every few hours, so the refresh token stays in use and never lapses (MA4); and
-                  every 10 minutes, OpenBao caught up with the disk (a CLI login, a failed save)
+    keep_fresh()  every 10 minutes: a refresh once the login's own last_refresh is 6 hours old (so the
+                  refresh token stays in use, MA4, whatever restarts happen); else OpenBao caught
+                  up with the disk (a CLI login, a failed save)
     status()      for the status page: signed in, the login's age, whether OpenBao has it
 
 Every refresh that changes the login is saved to OpenBao. A failed save is logged and shown on the
@@ -86,19 +87,25 @@ class AuthBroker:
         await self.save()
 
     async def keep_fresh(self, tick: float = 600) -> None:
-        """Refresh every `refresh_every`; in between, every `tick`, catch OpenBao up with the disk: a
-        login made by `python -m app.broker login` (another process), or a save that failed."""
-        next_refresh = time.monotonic() + self.refresh_every
+        """Every `tick`: refresh if the login's own `last_refresh` (Codex writes it into auth.json) is
+        older than `refresh_every`, so restarts and deploys never reset the clock; otherwise catch
+        OpenBao up with the disk (a login made by `python -m app.broker login`, or a save that failed)."""
         while True:
-            await asyncio.sleep(max(0.0, min(tick, next_refresh - time.monotonic())))
+            await asyncio.sleep(tick)
             try:
-                if time.monotonic() >= next_refresh:
-                    next_refresh = time.monotonic() + self.refresh_every
+                if self.refresh_due():
                     await self.refresh()
                 else:
                     await self.save()
             except Exception:                        # the next request's 401 retries; status shows its age
                 logger.exception("scheduled refresh or save failed")
+
+    def refresh_due(self) -> bool:
+        """Signed in, and the login was last refreshed more than `refresh_every` ago (or we can't tell)."""
+        disk = self._read_disk()
+        if disk is None:
+            return False
+        return (datetime.now(UTC) - _refreshed(disk)).total_seconds() >= self.refresh_every
 
     # ---- the durable copy in OpenBao (MA3) -------------------------------------------------------
     async def save(self) -> None:
