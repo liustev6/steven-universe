@@ -122,6 +122,10 @@ fi
 
 # ---- 3. One SSH session: the host's wrapper checks out the commit and runs deploy-target.sh ---------
 # /usr/local/sbin/deploy-target is installed by hand on each host (deploy-target-wrapper.sh).
-REMOTE="/usr/local/sbin/deploy-target deploy $([ "$COLOR" = 1 ] && echo --color) $SERVICE $SHA"
+# (Not `$([ "$COLOR" = 1 ] && echo --color)`: without a terminal that $(...) exits 1, and set -e
+# then ends the script silently at this assignment.)
+COLOR_ARG=""
+if [ "$COLOR" = 1 ]; then COLOR_ARG="--color"; fi
+REMOTE="/usr/local/sbin/deploy-target deploy $COLOR_ARG $SERVICE $SHA"
 
 printf '%s' "$PAYLOAD" | ssh -o BatchMode=yes "$HOST" "$REMOTE"
