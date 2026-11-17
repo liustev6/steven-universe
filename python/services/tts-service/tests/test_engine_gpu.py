@@ -45,6 +45,13 @@ def predictor(engine, request):
     engine.predictor = "qwen"
 
 
+@pytest.fixture
+def talker(engine, request):
+    engine.talker = request.param
+    yield request.param
+    engine.talker = "qwen"
+
+
 @pytest.mark.parametrize("predictor", ["qwen", "ours", "ours-static", "ours-graph"], indirect=True)
 @pytest.mark.parametrize("voice, text", SENTENCES)
 def test_streamed_codes_are_qwens_own(engine, predictor, voice, text):
@@ -52,6 +59,28 @@ def test_streamed_codes_are_qwens_own(engine, predictor, voice, text):
     official = engine.official_codes(text, voice)
     assert ours.shape == official.shape, (ours.shape, official.shape)
     assert torch.equal(ours.cpu(), official.cpu())
+
+
+@pytest.mark.parametrize("talker", ["ours"], indirect=True)
+@pytest.mark.parametrize("predictor", ["qwen", "ours-graph"], indirect=True)
+@pytest.mark.parametrize("voice, text", SENTENCES)
+def test_our_talker_gives_qwens_codes(engine, talker, predictor, voice, text):
+    """Our talker loop (bit-exact layers), with Qwen's predictor and with our graph: Qwen's codes."""
+    ours = torch.stack(list(engine.frames(text, voice, sample=False)))
+    official = engine.official_codes(text, voice)
+    assert ours.shape == official.shape, (ours.shape, official.shape)
+    assert torch.equal(ours.cpu(), official.cpu())
+
+
+@pytest.mark.parametrize("talker", ["ours"], indirect=True)
+@pytest.mark.parametrize("predictor", ["ours-fused"], indirect=True)
+def test_our_talker_samples_and_stops(engine, talker, predictor):
+    """Sampled, our talker's speech ends by itself (the end code), about as long as Qwen's."""
+    seconds = len(np.concatenate(list(engine.stream("Sure. Tomorrow looks cloudy in the morning.", "ryan")))) / 24000
+    assert 1.5 < seconds < 6, seconds
+    n = sum(1 for _ in engine.frames("Warming up.", "ryan", sample=False))      # and the limit holds
+    from app.engine.qwen import max_frames
+    assert n <= max_frames("Warming up.")
 
 
 @pytest.mark.parametrize("predictor", ["ours", "ours-static", "ours-graph", "ours-fused"], indirect=True)

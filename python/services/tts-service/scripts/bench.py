@@ -1,6 +1,6 @@
 """How fast each predictor is, on the real model and GPU (CT 108):
 
-    TTS_MODEL=/models/Qwen3-TTS-12Hz-0.6B-CustomVoice python scripts/bench.py [predictor ...]
+    TTS_MODEL=/models/Qwen3-TTS-12Hz-0.6B-CustomVoice python scripts/bench.py [predictor[:talker] ...]
 
 Per predictor, after one warm-up: each sentence 3 times, the medians of
     ms/frame      one frame's 16 codes (the talker's step + the code predictor's 15 passes)
@@ -43,13 +43,14 @@ def main(names):
     engine = QwenEngine(os.environ["TTS_MODEL"])
     engine.load()
     engine.warm_up()
-    print(f"{'predictor':<12} {'ms/frame':>9} {'first audio':>12} {'RTF':>6}")
+    print(f"{'predictor:talker':<20} {'ms/frame':>9} {'first audio':>12} {'RTF':>6}")
     for name in names:
-        engine.predictor = name
+        engine.predictor, _, talker = name.partition(":")
+        engine.talker = talker or "qwen"
         one(engine, "ryan", "Hi, how can I help you today?")
         runs = [one(engine, voice, text) for voice, text in SENTENCES for _ in range(3)]
         ms, first, rtf = (statistics.median(r[i] for r in runs) for i in range(3))
-        print(f"{name:<12} {ms:>9.1f} {first:>10.0f} ms {rtf:>6.2f}")
+        print(f"{engine.predictor + ':' + engine.talker:<20} {ms:>9.1f} {first:>10.0f} ms {rtf:>6.2f}")
 
 
 if __name__ == "__main__":

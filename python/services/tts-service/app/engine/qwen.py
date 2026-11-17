@@ -17,10 +17,15 @@ runs it. "qwen" is Hugging Face's `generate`, as Qwen ships it; "ours" is our ow
 modules (step 2); "ours-static" our own forward over the same modules, with a fixed 16-position cache
 read in fixed slices (graph-ready, step 3); "ours-graph" that loop as a CUDA graph (step 4);
 "ours-fused" the graph with our own fused kernels (kernels.py).
+
+The talker (each frame's first code, talker.py): `talker` picks whose loop runs it. "qwen" is Hugging
+Face's `generate`; "ours" our own loop over Qwen's modules with our fixed cache (stage 2), which hands
+each frame to the stream itself (the forward hook then has nothing to catch).
 """
 
 from __future__ import annotations
 
+import functools
 import queue
 import threading
 from collections.abc import Iterator
@@ -30,12 +35,14 @@ import numpy as np
 from app.engine.base import Cancelled, Voice
 from app.engine.chunker import ChunkDecoder
 from app.engine.predictor import CodePredictor, GraphCodePredictor, StaticCodePredictor
+from app.engine.talker import TalkerLoop
 
 # Each preset voice's native language (Qwen's README: speakers sound best in their own language).
 NATIVE = {"vivian": "Chinese", "serena": "Chinese", "uncle_fu": "Chinese", "dylan": "Chinese",
           "eric": "Chinese", "ryan": "English", "aiden": "English", "ono_anna": "Japanese", "sohee": "Korean"}
 _DONE = object()
 PREDICTORS = ("qwen", "ours", "ours-static", "ours-graph", "ours-fused")
+TALKERS = ("qwen", "ours")
 
 
 def max_frames(text: str) -> int:
@@ -47,9 +54,9 @@ def max_frames(text: str) -> int:
 
 class QwenEngine:
     def __init__(self, model_path: str, *, device: str = "cuda:0", chunks: int | tuple[int, ...] = (1, 1, 2, 4),
-                 context: int = 25, predictor: str = "qwen"):
+                 context: int = 25, predictor: str = "qwen", talker: str = "qwen"):
         self.model_path, self.device, self.chunks, self.context = model_path, device, chunks, context
-        self.predictor = predictor                            # may change between sentences
+        self.predictor, self.talker = predictor, talker       # may change between sentences
         self.sample_rate = 24000
         self._tts = None
 
@@ -67,6 +74,7 @@ class QwenEngine:
         self._predictors = {"ours": CodePredictor(cp), "ours-static": StaticCodePredictor(cp),
                             "ours-graph": GraphCodePredictor(cp),
                             "ours-fused": GraphCodePredictor(cp, fused=True)}
+        self._talkers = {"ours": TalkerLoop(self._talker)}
         # sample_rate stays 24,000: the 12 Hz codec's output_sample_rate (its config); the GPU tests check
         # it against what the codec's own decode reports.
 
@@ -90,12 +98,16 @@ class QwenEngine:
         tts._validate_languages([language])
         tts._validate_speakers([voice])
 
-        def hook(module, args, out):                          # each talker step: one frame's codes
+        def emit(codes):                                      # one frame's codes, (1, 16)
             if cancel is not None and cancel.is_set():
                 raise Cancelled("cancelled")
-            codes = out.hidden_states[1]
-            if codes is not None:
-                got.put(codes[0].detach().clone())
+            got.put(codes[0].detach().clone())
+
+        def hook(module, args, out):                          # each step of Qwen's talker: one frame
+            if out.hidden_states[1] is not None:
+                emit(out.hidden_states[1])
+            elif cancel is not None and cancel.is_set():
+                raise Cancelled("cancelled")
 
         input_ids = tts._tokenize_texts([tts._build_assistant_text(text)])
         kwargs = tts._merge_generate_kwargs(do_sample=sample, subtalker_dosample=sample,
@@ -112,11 +124,14 @@ class QwenEngine:
             finally:
                 got.put(_DONE)
 
-        if self.predictor not in PREDICTORS:
-            raise ValueError(f"predictor must be one of {PREDICTORS}")
+        if self.predictor not in PREDICTORS or self.talker not in TALKERS:
+            raise ValueError(f"predictor must be one of {PREDICTORS}, talker one of {TALKERS}")
         cp = self._talker.code_predictor
         if self.predictor != "qwen":                          # an instance attribute shadows the method
             cp.generate = self._predictors[self.predictor]
+        if self.talker != "qwen":
+            self._talker.generate = functools.partial(self._talkers[self.talker].generate,
+                                                      predictor=cp.generate, emit=emit)
         handle = self._talker.register_forward_hook(hook)
         worker = threading.Thread(target=run, name="tts-generate", daemon=True)
         worker.start()
@@ -129,6 +144,7 @@ class QwenEngine:
             worker.join()
             handle.remove()
             cp.__dict__.pop("generate", None)                 # Qwen's own again (official_codes uses it)
+            self._talker.__dict__.pop("generate", None)
         if errors:
             raise errors[0]
 

@@ -120,6 +120,11 @@ PyTorch 2.15.0 (CUDA 13.2), `qwen-tts` 0.1.1
   rounds twice). **17.0 ms a frame**, RTF 0.25; with 1, 1, 2, 4: first audio 39 ms, margin 60 ms. The
   predictor's GPU time 11.8 → 8.5 ms, 83% of it matrix multiplies (the weights' floor: ~5.2 ms): the
   talker is the larger target now.
+- **Stage 2, step 2: our own talker loop** ([07](../../python/services/tts-service/spikes/07-talker-loop/)):
+  Qwen's `generate` replaced by our loop over Qwen's modules on our fixed cache, with its generation rules
+  (repetition penalty, suppressed control codes, minimum length) as GPU operations: Qwen's exact codes,
+  **12.9 ms a frame** (from 17.0), RTF 0.21. Next: a decode-attention kernel reading the length from GPU
+  memory (option c, agreed), then the talker's graph.
 - **The chunk schedule** ([03](../../python/services/tts-service/spikes/03-chunk-schedule/)): decode after 1, 1, 2,
   then every 4 frames: first audio **52 ms** (from 143) at the same cost (RTF 0.41), 43 ms of margin
   before a gap. The standard from here on.

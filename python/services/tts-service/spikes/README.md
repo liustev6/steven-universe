@@ -12,6 +12,7 @@ the model Qwen3-TTS-12Hz-0.6B-CustomVoice at revision `85e237c`.
 | [04](04-frame-split/) | 2026-11-17 | With the predictor graphed, where does a frame's 20 ms go? | Predictor 11.5, talker 7.7, loop 0.7. GPU busy 16 ms: 6,658 tiny kernels a frame. Graphing the talker wins ~3 ms; fusing kernels could win ~8 |
 | [05](05-fused-rmsnorm/) | 2026-11-17 | A fused RMSNorm (Triton): how much faster, how exact? | 8 kernels → 1: 18.3 ms a frame (−10%), RTF 0.27. 1 element in 735,000 one bfloat16 step off; 0.2% of steps flip, all near-ties |
 | [06](06-fused-rope/) | 2026-11-17 | The rotary + cache write as one kernel: faster, bit-exact? | 14 kernels → 1, bit-exact once FMA contraction is off: 17.0 ms a frame, RTF 0.25, first audio 39 ms, margin 60 ms |
+| [07](07-talker-loop/) | 2026-11-17 | Our own talker loop instead of Hugging Face's `generate`: exact, and faster? | Qwen's exact codes; 12.9 ms a frame (from 17.0), RTF 0.21, no graph yet |
 
 **The tools that stay** (in `scripts/`, reused at each step): `bench.py` (each predictor: ms per frame,
 first audio, RTF) and `chunks.py` (each chunk schedule: first audio, RTF, stalls, margin, SNR, WAVs).

@@ -120,60 +120,25 @@ class StaticCodePredictor:
 
     def _setup(self, x) -> SimpleNamespace:
         """The fixed buffers, once per batch size: each layer's keys and values for 16 positions, and
-        the rotary angles (cos, sin) for positions 0-15, computed by Qwen's own rotary module."""
-        import torch
+        the rotary angles (cos, sin) for positions 0-15 (layers.py)."""
+        from app.engine.layers import new_cache, rotary_table
 
         if self._buffers is not None and self._buffers.batch == x.shape[0]:
             return self._buffers
         model = self.cp.model
-        attn = model.layers[0].self_attn
-        kv_heads = self.cp.config.num_key_value_heads
-        shape = (x.shape[0], kv_heads, self.length, attn.head_dim)
-        cos, sin = model.rotary_emb(x, torch.arange(self.length, device=x.device)[None])
-        self._buffers = SimpleNamespace(
-            batch=x.shape[0],
-            keys=[torch.zeros(shape, dtype=x.dtype, device=x.device) for _ in model.layers],
-            values=[torch.zeros(shape, dtype=x.dtype, device=x.device) for _ in model.layers],
-            cos=cos.unsqueeze(1), sin=sin.unsqueeze(1))           # (1, 1, 16, head_dim): broadcast over heads
+        keys, values = new_cache(len(model.layers), x.shape[0], self.cp.config.num_key_value_heads, self.length,
+                                 model.layers[0].self_attn.head_dim, dtype=x.dtype, device=x.device)
+        cos, sin = rotary_table(model.rotary_emb, x, self.length)
+        self._buffers = SimpleNamespace(batch=x.shape[0], keys=keys, values=values, cos=cos, sin=sin)
         return self._buffers
 
     def _layers(self, h, start: int, n: int, b: SimpleNamespace):
-        """The 5 decoder layers on positions start…start+n-1: Qwen3TTSDecoderLayer and Qwen3TTSAttention's
-        forward, op for op, with our cache in place of Hugging Face's."""
-        import torch.nn.functional as F
+        """The 5 decoder layers on positions start…start+n-1 (layers.py), with this predictor's cache."""
+        from app.engine.layers import decoder_layers
 
-        model, end, norm = self.cp.model, start + n, self._norm
-        cos, sin = b.cos[:, :, start:end], b.sin[:, :, start:end]
-        for layer, keys, values in zip(model.layers, b.keys, b.values):
-            a = layer.self_attn
-            residual, h = h, norm(layer.input_layernorm, h)
-            shape = (*h.shape[:-1], -1, a.head_dim)               # (batch, n, heads, head_dim)
-            q, k = norm(a.q_norm, a.q_proj(h).view(shape)), norm(a.k_norm, a.k_proj(h).view(shape))
-            v = a.v_proj(h).view(shape)
-            if self.fused:                                        # rotate, and write k, v into the cache
-                from app.engine.kernels import rope_and_cache
-
-                q = rope_and_cache(q, k, v, b.cos[0, 0], b.sin[0, 0], keys, values, start)
-            else:
-                q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
-                q, k = q * cos + rotate_half(q) * sin, k * cos + rotate_half(k) * sin
-                keys[:, :, start:end].copy_(k)                    # write into the fixed cache…
-                values[:, :, start:end].copy_(v)
-            out = F.scaled_dot_product_attention(                 # …and read the written slice only
-                q, keys[:, :, :end], values[:, :, :end], scale=a.scaling, is_causal=n > 1, enable_gqa=True)
-            out = out.transpose(1, 2).contiguous().reshape(*h.shape[:-1], -1)
-            h = residual + a.o_proj(out)
-            residual, h = h, norm(layer.post_attention_layernorm, h)
-            h = residual + layer.mlp(h)
-        return norm(model.norm, h)
-
-    def _norm(self, module, x):
-        """One of Qwen's RMSNorms: its own forward, or the same math as our fused kernel."""
-        if not self.fused:
-            return module(x)
-        from app.engine.kernels import rms_norm
-
-        return rms_norm(x, module.weight, module.variance_epsilon)
+        model = self.cp.model
+        return decoder_layers(model.layers, model.norm, h, start, n, b.keys, b.values, b.cos, b.sin,
+                              fused=self.fused)
 
 
 class GraphCodePredictor:
@@ -231,14 +196,6 @@ class GraphCodePredictor:
         entry = SimpleNamespace(graph=graph, input=x_in, output=out, static=static)
         self._graphs[key] = entry
         return entry
-
-
-def rotate_half(x):
-    """Qwen's (and Llama's) rotary helper: the second half of the last dimension, negated, then the first."""
-    import torch
-
-    half = x.shape[-1] // 2
-    return torch.cat((-x[..., half:], x[..., :half]), dim=-1)
 
 
 def pick(logits, *, do_sample: bool, top_k: int | None = None, top_p: float | None = None,
