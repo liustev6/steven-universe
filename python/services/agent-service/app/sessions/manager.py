@@ -41,52 +41,22 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app import events as b
+from app.protocol import events as b
 from app.config import Settings
 from app.db.models import ChatSession, Conversation, EndReason, Flag, SessionState, Turn, TurnStatus
-from app.eventlog import EventLog
-from app.history import context_text, recent_turns
+from app.history.carry import context_text, recent_turns
+from app.history.eventlog import EventLog
 from app.profiles import AgentProfile
-from app.runner import NoSandbox, Runner, RunnerError
-from app.translate import Translator
+from app.protocol.translate import Translator
+from app.sessions.errors import (
+    Busy, BudgetExceeded, Ended, NotFound, ProfileMismatch, Stopped, UnknownProfile,
+)
+from app.sessions.runner import NoSandbox, Runner, RunnerError
 
 logger = logging.getLogger(__name__)
 
 LIVE = (SessionState.STARTING, SessionState.READY, SessionState.BUSY)
 KILL_SWITCH = "stopped"
-
-
-# ---- errors: each maps to one HTTP answer in the sessions API ------------------------------------
-class SessionError(Exception):
-    """Base class; `str()` is safe to show the caller."""
-
-
-class NotFound(SessionError):          # 404: doesn't exist, or isn't yours (never say which, C2)
-    pass
-
-
-class UnknownProfile(SessionError):    # 400
-    pass
-
-
-class ProfileMismatch(SessionError):   # 409: a conversation keeps its profile (C6)
-    pass
-
-
-class Busy(SessionError):              # 409: a turn is already running
-    pass
-
-
-class Ended(SessionError):             # 409: the session is over; start a new one in the conversation
-    pass
-
-
-class BudgetExceeded(SessionError):    # 429: the profile's max_turns (C13)
-    pass
-
-
-class Stopped(SessionError):           # 503: the kill switch is on (C14)
-    pass
 
 
 def capability_hash(capability: str) -> bytes:

@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 
 from app.profiles import load_profiles
-from app.runner import NoSandbox
+from app.sessions.runner import NoSandbox
 from core.types import build_event
 
 PROFILES = load_profiles(Path(__file__).resolve().parents[4] / "infra/services/agent-service/profiles.yaml")

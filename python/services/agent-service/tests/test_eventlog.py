@@ -5,7 +5,7 @@ import uuid
 
 import pytest
 
-from app.eventlog import EventLog, NewEvent, UnknownSession
+from app.history.eventlog import EventLog, NewEvent, UnknownSession
 
 
 def text(t: str, source_seq: int | None = None, turn: uuid.UUID | None = None) -> NewEvent:

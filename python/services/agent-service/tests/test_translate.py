@@ -5,9 +5,9 @@ import uuid
 
 import pytest
 
-from app.events import BType, json_schema, parse_body
-from app.eventlog import EventLog
-from app.translate import Translator
+from app.protocol.events import BType, json_schema, parse_body
+from app.history.eventlog import EventLog
+from app.protocol.translate import Translator
 from core.types import OUTPUT_CHARS, build_event
 
 SESSION = uuid.uuid4()

@@ -86,13 +86,13 @@ caller at `/v1/agent/…` (it's the public edge: a token is required; grant 3, `
 
 **From the sandbox, checked, not trusted:** each protocol A event is parsed on its own (a bad one is
 dropped and logged); its `session_id` must be the session's and its `turn_id` a turn agent-service
-started; tool output and error messages are capped again. Code: `app/translate.py`; B's models:
-`app/events.py`.
+started; tool output and error messages are capped again. Code: `app/protocol/translate.py`; B's models:
+`app/protocol/events.py`.
 
 **Never sent:** the capability, sandbox ids, internal addresses, other sessions,
 your plan's account details (A's `model.usage_updated` stays internal: the gateway uses it for C13).
 
-## The sessions core (`app/sessions.py`)
+## The sessions core (`app/sessions/`)
 ```
 starting ──runtime.ready──▶ ready ◀──turn.completed── busy
    │  └──────────turn (queued until the runtime is ready)──▶ │
@@ -115,7 +115,7 @@ starting ──runtime.ready──▶ ready ◀──turn.completed── busy
   the pod.
 
 ## The gateway (8443, sandboxes)
-Reached only through a pod's proxy (R12), which stamps `X-Sandbox-Id`. Code: `app/gateway.py`.
+Reached only through a pod's proxy (R12), which stamps `X-Sandbox-Id`. Code: `app/gateway/` (`pairing.py`, `runtime.py`, `model.py`).
 
 | Route | What |
 |---|---|

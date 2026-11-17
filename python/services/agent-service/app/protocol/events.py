@@ -36,7 +36,7 @@ from typing import Annotated, Any, Literal, Union
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from app.db.models import EndReason
-from app.eventlog import ENVELOPE, NewEvent
+from app.history.eventlog import ENVELOPE, NewEvent
 
 
 class BType(StrEnum):

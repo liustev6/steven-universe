@@ -7,8 +7,9 @@ import pytest
 
 from app.broker import NotSignedIn
 from app.config import Settings
-from app.eventlog import EventLog
-from app.gateway import UsageCounter, create_gateway
+from app.history.eventlog import EventLog
+from app.gateway import create_gateway
+from app.gateway.model import UsageCounter
 from app.sessions import Sessions
 from tests.helpers import ME, PROFILES, FakeRunner, Runtime
 

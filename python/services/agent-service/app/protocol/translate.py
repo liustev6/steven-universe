@@ -34,8 +34,8 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from app import events as b
-from app.eventlog import NewEvent
+from app.protocol import events as b
+from app.history.eventlog import NewEvent
 from core.types import OUTPUT_CHARS, EventType, parse_event
 
 logger = logging.getLogger(__name__)
