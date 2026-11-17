@@ -113,9 +113,9 @@ For "pi-server asks the agent to summarize its notes and save the summary":
 |---|---|---|
 | WebDAV read view (`/dav/{bucket}/…`: `PROPFIND`, `GET` with ranges; the same grant checks) | file-management | **yes**: unit tests, then `rclone` against it with a test client |
 | Mounter image (rclone; a mount script for the session's read locations) | `python/services/sandbox-runner/mounter/` or its own folder | yes: on the test VM with a test token |
-| The gateway's files routes: WebDAV reads → file-management with T2; `POST /publish` with the checks; the `artifact.created` client event | the dev gateway first, then agent-service | with the dev gateway |
+| The gateway's files routes: WebDAV reads → file-management with T2; `POST /publish` with the checks; the `artifact.created` client event | agent-service's gateway | yes |
 | `publish` as a tool in the runtime (an MCP tool, served by the gateway or the runtime, that Codex calls) | agent-runtime | yes |
-| Token exchange for a session (relay, narrowed) | the dev gateway first (a dev client `agent-dev` with `can_relay_clients`), then agent-service | yes, against the live auth-service |
+| Token exchange for a session (relay, narrowed) | agent-service (its own client, with `can_relay_clients`) | yes, against the live auth-service |
 | Runner support (mounter per sandbox, the read-only bind mount, local `work/` and `outputs/`) | sandbox-runner, or a script on the test VM | on the test VM |
 
 **What milestone 2 must answer:**
@@ -128,7 +128,7 @@ For "pi-server asks the agent to summarize its notes and save the summary":
 | M4 | Publish checks: a publish outside the write grant, over the size limit, or of a refused type is refused at the gateway, with a clear error to the agent. |
 | M5 | Token renewal: a session longer than 10 minutes keeps reading with no error visible to rclone. |
 
-**Done when:** a sandbox on the test VM reads `inputs/private/agent-dev/…`, works in `work/`, and
-publishes `outputs/report.md` to `private/agent-dev/reports/`; a publish to a forbidden location is
-refused; file-management's audit shows *agent-service (dev) on behalf of the requester* for every
+**Done when:** a sandbox reads `inputs/private/<requester>/…`, works in `work/`, and publishes
+`outputs/report.md` to `private/<requester>/reports/`; a publish to a forbidden location is
+refused; file-management's audit shows *agent-service on behalf of the requester* for every
 access; and nothing on the VM ever held a real token.

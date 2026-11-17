@@ -1,13 +1,17 @@
 # Spec: agent-service (the assistant that answers and acts for you)
 
-**Status: proposed** (2026-11-09): a design being decided one question at a time; nothing built.
+**Status: live** (2026-11-17). The runtime (CP1), the sandbox worker (CP2) and the control plane (CP3)
+run in the lab: agent-service on CT 107 ([control-plane.md](control-plane.md)), sandbox-runner on VM 200
+([sandbox-runner.md](sandbox-runner.md)). What's next is in [tracker.md](tracker.md) (CP4: voice). Parts of
+this document are the original design and its reasoning; where it and a component's spec differ,
+the component's spec is what's built.
 
 **Locked decisions so far:**
 
 | # | Decision | Document |
 |---|---|---|
 | 1 | Who runs sandboxes: sandbox-runner, a container on a dedicated VM, starting Docker sandboxes under gVisor | [sandbox-runner.md](sandbox-runner.md) |
-| 2 | Conversation history: PostgreSQL in the control plane owns history and memory; context is curated at session start; append-only within a session. **Built in CP3** (history, carry-over, backups); summaries and memory in CP7 | "Conversation history and cost" below |
+| 2 | Conversation history: PostgreSQL in the control plane owns history and memory; context is curated at session start; append-only within a session. **Built in CP3** (history, carry-over; no backups for now, C10); summaries and memory in CP7 | "Conversation history and cost" below |
 | 3 | The engine: the **Codex SDK** (OpenAI's `openai-codex`) runs the agent loop in the sandbox, replacing the Claude Agent SDK, so that your ChatGPT Pro subscription pays for the model | [agent-runtime.md](agent-runtime.md) |
 | 4 | Model access: your subscription's login lives only in a trusted **auth broker** in agent-service (one owner refreshes it; the durable copy is in OpenBao); sandboxes hold only a capability; personal use only. The gateway adds your token on the way out (route A, proven in milestone 1) | [model-access.md](model-access.md) |
 
@@ -16,7 +20,8 @@
 | Milestone | What | Document |
 |---|---|---|
 | M1 | the runtime on the Codex SDK, with a temporary dev gateway (no control plane). **Done** (2026-11-12): replies paid by your subscription, interrupts in 10 ms; gVisor moves to CP2 |
-| CP2 | the sandbox worker: VM 200, sandbox-runner (pods, templates), gVisor, the Proxmox firewall. **Done** (2026-11-13): claims in 26 ms, ready in ~0.5 s, deployed by the pipeline | [sandbox-runner.md](sandbox-runner.md) | [agent-runtime.md](agent-runtime.md), [model-access.md](model-access.md) |
+| CP2 | the sandbox worker: VM 200, sandbox-runner (pods, templates), gVisor, the Proxmox firewall. **Done** (2026-11-13): claims in 26 ms, ready in ~0.5 s, deployed by the pipeline | [sandbox-runner.md](sandbox-runner.md) |
+| CP3 | the control plane: agent-service on CT 107 (sessions API, gateway, auth broker, PostgreSQL history), the `agent` CLI, api-service's relay. **Done** (2026-11-17): live end to end, through the deployer's pipeline | [control-plane.md](control-plane.md) |
 | M2 | files as a mounted folder: a WebDAV view in file-management, a mounter sidecar, the gateway's files route, narrowed tokens | [files-and-mounts.md](files-and-mounts.md) |
 
 **Replaces and absorbs:**
@@ -174,29 +179,30 @@ alternative stays the fallback for model access (route B in [model-access.md](mo
    - the sandbox is destroyed.
 
 ## API
-**In detail, with the protocol callers see:** [control-plane.md](control-plane.md) (CP3). The outline:
+**As built (CP3), in detail:** [control-plane.md](control-plane.md): the sessions API (443), protocol
+B v0, the gateway (8443). Outline:
 
-**agent-service**, for clients (pi-server today; api-service for the phone later). Authentication is
-an auth-service token with `aud=agent-service`.
+**agent-service**, for callers: an auth-service token with `aud=agent-service` and a `chat:*` scope;
+outside clients go through api-service's relay (`https://api.liustev6.ca/v1/agent/…`, grant 3).
 
 | Route | What |
 |---|---|
-| `POST /v1/sessions` `{profile}` | start a session; returns `id` |
-| `POST /v1/sessions/{id}/turns` `{text}` | one turn; a stream of events (Server-Sent Events), the last one `turn.completed` |
-| `GET /v1/sessions/{id}/events?after=<seq>` | reconnect after a dropped stream |
-| `POST /v1/sessions/{id}/confirmations/{call_id}` `{approve: true\|false}` | answer a `confirmation_required` event |
-| `POST /v1/sessions/{id}/cancel`, `DELETE /v1/sessions/{id}` | stop the turn, or end the session |
-| `GET /health` | liveness and pool status |
+| `POST /v1/sessions` `{profile, conversation_id?}` | a new session (201), or the conversation's live one (200) |
+| `POST /v1/sessions/{id}/turns` `{text}` | one turn, streamed as Server-Sent Events until `turn.completed` |
+| `GET /v1/sessions/{id}/events` (`Last-Event-ID` or `?after=`) | reconnect: everything after a `seq`, then live |
+| `GET /v1/sessions/{id}`, `POST …/cancel`, `DELETE …` | its state; interrupt the turn; end it (the pod is released) |
+| `GET /v1/conversations`, `GET /v1/conversations/{id}/turns` | history, across sessions |
+| `POST /v1/admin/stop`, `/start` | the kill switch (`chat:admin`) |
 
-**The gateway**, for sandboxes only: reachable only from the sandbox network, authenticated with
-the session capability.
+**The gateway**, for sandboxes only (VM 200's firewall reaches only its port), authenticated with the
+session capability and the pod's `X-Sandbox-Id`:
 
-| Route | Forwards to | Adds |
+| Route | What | Status |
 |---|---|---|
-| `/model/v1/responses` (OpenAI's Responses API) | OpenAI | your subscription's token, from the auth broker ([model-access.md](model-access.md)); the profile's model and limits are enforced |
-| `/mcp/{server}` (streamable HTTP MCP) | weather, Home Assistant, knowledge, … | that server's credential; the profile's allowlist and confirmation policy |
-| `/files/…` (WebDAV reads, for the mounter) and `POST /publish` (saving outputs) | file-management | the session's narrowed token; publish also checks destination, size and type ([files-and-mounts.md](files-and-mounts.md)) |
-| `/session`, `/events` | agent-service | the runtime's config, and the events it pushes |
+| `GET /v1/runtime/turns`, `POST /v1/runtime/events` | the runtime's long poll, and its events (protocol A) | built |
+| `/model/…` (OpenAI's Responses API) | your subscription's token added (the auth broker); the profile's model and token budget enforced | built |
+| `/mcp/{server}` (streamable HTTP MCP) | weather, Home Assistant, knowledge, …: that server's credential; the profile's allowlist and confirmations (`POST /v1/sessions/{id}/confirmations/{call_id}` on the callers' side) | CP5 |
+| `/files/…` (WebDAV reads, for the mounter), `POST /publish` | file-management with the session's narrowed token ([files-and-mounts.md](files-and-mounts.md)) | later |
 
 ## Tools and skills
 - **MCP servers run outside the sandbox,** as trusted code with their own credentials:
@@ -234,7 +240,7 @@ the session capability.
 | Sessions in flight | agent-service memory | no |
 | Conversations and turns (user text, reply, tools, usage, cost) | **PostgreSQL** in the control plane (decision 2) | **yes** |
 | Memory ("I like the lights at 40 % in the evening"), summaries | **PostgreSQL** (decision 2) | **yes** |
-| The raw event log per session (G10) | appended as events arrive; JSONL in the bucket, or a table | either |
+| The raw event log per session (G10) | **PostgreSQL**, the `events` table: written before anyone sees it (control-plane.md C4) | yes (built) |
 | Search index | derived from the bucket, rebuildable | a vector index file, not a database you manage |
 
 **1. Does agent-service need a database for file metadata?** No; I agree with your take. A list of

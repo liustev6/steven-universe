@@ -1,8 +1,10 @@
 # Spec: model access (how a session calls the model, paid by your ChatGPT subscription)
 
-**Status: milestone 1, route A chosen** (2026-11-11; 2026-11-12: C1 passed, your Pro plan answers
-through the gateway). The rules below are agreed. C5 (watching a refresh) is deferred to CP3, when
-the broker saves the login to OpenBao ([tracker.md](tracker.md)). Part of
+**Status: live, route A** (chosen 2026-11-11; C1 passed 2026-11-12; since CP3, 2026-11-17, the auth
+broker is part of agent-service on CT 107: [control-plane.md](control-plane.md) "The auth broker").
+Your login is on CT 107 and in OpenBao only; it's refreshed by Codex when the login itself is 6 hours
+old, and each refresh is saved to OpenBao. The milestone-1 sections below are the record of how the
+route was chosen. Part of
 [agent-service](README.md). Related: [agent-runtime.md](agent-runtime.md),
 [secrets-manager.md](../secrets-manager.md).
 

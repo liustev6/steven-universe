@@ -1,6 +1,6 @@
 # Spec: the control plane (agent-service on CT 107)
 
-**Status: agreed** (2026-11-16; proposed 2026-11-13). CP3's design (3.1, [tracker.md](tracker.md)). Part of
+**Status: live** (2026-11-17, CP3; designed 2026-11-13–16). Part of
 [agent-service](README.md). Related: [agent-runtime.md](agent-runtime.md) (protocol A),
 [model-access.md](model-access.md) (the auth broker), [sandbox-runner.md](sandbox-runner.md) (pods),
 [files-and-mounts.md](files-and-mounts.md) (later: files), [auth-service.md](../auth-service.md),
@@ -8,8 +8,8 @@
 
 ## What it is
 agent-service is the **trusted control plane**: it decides who may do what, holds every real
-credential, keeps the history, and gives each session a sandbox from the runner. It replaces the
-dev gateway (CP1, CP2).
+credential, keeps the history, and gives each session a sandbox from the runner. (In CP1 and CP2 a
+temporary dev gateway stood in for it; deleted in CP3.)
 
 ```
 callers ──(token, aud=agent-service)──▶ :443  sessions API
@@ -268,8 +268,8 @@ The audience `api-service` gains `chat:read` and `chat:write`: the scopes its `/
 **OpenBao** (`infra/secrets-manager/tofu/main.tf`): role `agent-service` (`sub=service:agent-service`,
 10-minute tokens) with the policy `agent-service-login`: **read, create and update only**
 `kv/services/agent-service/codex_auth`. The PostgreSQL password (`kv/services/agent-service/postgres_password`)
-is written by hand with `bao kv put` and delivered by the deployer; its read policies are generated
-once agent-service's manifest declares it (3.7).
+is written by hand with `bao kv put` and delivered by the deployer (its read policies are generated
+from agent-service's manifest).
 
 **The firewall (VM 200):** in, 443 from CT 107 (claims); out, 8443 to CT 107 (the gateway). VM 200's
 internet egress narrows in 3.9: model calls now leave from CT 107.

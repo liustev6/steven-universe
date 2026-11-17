@@ -2,7 +2,10 @@
 
 **Status: live** (decided 2026-11-09, agent-service decision 1; built and locked by CP2, 2026-11-13).
 Deployed on VM 200 by the pipeline (wave 1); behind the Proxmox firewall (R5). The decisions below
-are measured, not proposed ([tracker.md](tracker.md) CP2).
+are measured, not proposed ([tracker.md](tracker.md) CP2). Since CP3 (2026-11-17) its caller is
+agent-service, and the pods' proxies forward to agent-service's gateway
+(`https://agent.lan.liustev6.ca:8443`); the CP2 results below were measured with a temporary dev
+gateway in that place.
 The worker VM exists (VM 200, [sandbox-worker-setup.md](../../sandbox-worker-setup.md)); gVisor
 measured (below).
 **Planned paths:**

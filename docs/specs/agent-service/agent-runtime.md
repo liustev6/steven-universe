@@ -1,18 +1,14 @@
 # Spec: agent-runtime (what runs inside every sandbox)
 
-**Status: milestone 1 done** (2026-11-09; 2026-11-11: the engine is the Codex SDK; 2026-11-12:
-replies paid by your ChatGPT subscription through the gateway, results below). The results lock the
-design described here. **Deferred:** gVisor (Q6, C2) to the sandbox worker ([tracker.md](tracker.md)
-CP2); the login refresh (C5) to agent-service with OpenBao (CP3). Build the runtime and test it with a temporary
-**dev gateway**: no agent-service, no sandbox-runner, no public route yet. Details get locked as
-milestone 1 answers its questions (below). Part of [agent-service](README.md); model access is in
-[model-access.md](model-access.md).
+**Status: live** (milestone 1 done 2026-11-12; running in every pod since CP2; its gateway is
+agent-service's since CP3, 2026-11-17). Milestone 1 tested it behind a temporary **dev gateway**, which
+was deleted in CP3; the sections below on milestone 1 are kept as the record of what it measured.
+Part of [agent-service](README.md); model access is in [model-access.md](model-access.md); its gateway
+is [control-plane.md](control-plane.md) "The gateway".
 
-**Planned paths:**
-- `python/libs/agent-runtime/`: the package `core` (protocol A in `core/types/`), the sandbox
-  image's `Dockerfile`, tests;
-- `python/libs/agent-runtime/dev/`: the dev gateway and a small CLI. Temporary: deleted when
-  agent-service's gateway exists.
+**Paths:** `python/libs/agent-runtime/`: the package `core` (protocol A in `core/types/`), the sandbox
+image's `Dockerfile` (built by CI as `infra/images/agent-runtime.yaml`), tests (the end-to-end one runs
+the real loop against an in-test gateway).
 
 ## What it is
 The one program inside every sandbox: one image for every profile (`voice`, `general`, `local`).
