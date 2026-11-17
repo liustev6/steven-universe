@@ -1,0 +1,75 @@
+
+********
+Warning: flash-attn is not installed. Will only run the manual PyTorch version. Please install flash-attn for faster inference.
+********
+ 
+/bin/sh: 1: sox: not found
+SoX could not be found!
+
+    If you do not have SoX, proceed here:
+     - - - http://sox.sourceforge.net/ - - -
+
+    If you do (or think that you should) have SoX, double-check your
+    path variables.
+    
+loaded in 1694 ms; VRAM 2.01 GiB
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+/usr/local/lib/python3.12/dist-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+warm-up 10147 ms
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+RESULT {"run": "A official, whole sentence (first packet = the whole sentence)", "sentences": 6, "rtf_median": 0.471, "rtf_max": 0.513, "audio_s_total": 30.8, "first_packet_ms_median": 1735, "first_packet_ms_max": 4177}
+    {"text": "Hi, how can I help y", "audio_s": 3.2, "total_ms": 1597.004, "first_ms": 1597.004}
+    {"text": "The kitchen lights a", "audio_s": 2.8, "total_ms": 1435.927, "first_ms": 1435.927}
+    {"text": "\u597d\u7684\uff0c\u6211\u73b0\u5728\u5e2e\u4f60\u628a\u5ba2\u5385\u7684\u706f\u5173\u6389\u3002", "audio_s": 4.08, "total_ms": 1872.443, "first_ms": 1872.443}
+    {"text": "\u4eca\u5929\u897f\u96c5\u56fe\u591a\u4e91\uff0c\u6700\u9ad8\u6c14\u6e29\u5341\u4e8c\u5ea6\u3002", "audio_s": 3.12, "total_ms": 1435.721, "first_ms": 1435.721}
+    {"text": "Sure. Tomorrow looks", "audio_s": 8.64, "total_ms": 4103.12, "first_ms": 4103.12}
+    {"text": "\u660e\u5929\u65e9\u4e0a\u4f1a\u6709\u70b9\u51b7\uff0c\u8bb0\u5f97\u591a\u7a7f\u4e00\u4ef6\u5916\u5957\uff1b\u4e0b\u5348", "audio_s": 8.96, "total_ms": 4177.017, "first_ms": 4177.017}
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+RESULT {"run": "B ours, streaming, plain PyTorch, chunk 4 frames (0.32 s of audio)", "sentences": 6, "rtf_median": 0.505, "rtf_max": 0.514, "audio_s_total": 35.7, "first_packet_ms_median": 169, "first_packet_ms_max": 173}
+    {"text": "Hi, how can I help y", "audio_s": 6.56, "total_ms": 3278.581, "first_ms": 167.879}
+    {"text": "The kitchen lights a", "audio_s": 3.6, "total_ms": 1795.703, "first_ms": 168.327}
+    {"text": "\u597d\u7684\uff0c\u6211\u73b0\u5728\u5e2e\u4f60\u628a\u5ba2\u5385\u7684\u706f\u5173\u6389\u3002", "audio_s": 3.92, "total_ms": 2014.24, "first_ms": 168.589}
+    {"text": "\u4eca\u5929\u897f\u96c5\u56fe\u591a\u4e91\uff0c\u6700\u9ad8\u6c14\u6e29\u5341\u4e8c\u5ea6\u3002", "audio_s": 3.52, "total_ms": 1766.354, "first_ms": 171.32}
+    {"text": "Sure. Tomorrow looks", "audio_s": 9.68, "total_ms": 4933.573, "first_ms": 169.015}
+    {"text": "\u660e\u5929\u65e9\u4e0a\u4f1a\u6709\u70b9\u51b7\uff0c\u8bb0\u5f97\u591a\u7a7f\u4e00\u4ef6\u5916\u5957\uff1b\u4e0b\u5348", "audio_s": 8.4, "total_ms": 4273.909, "first_ms": 172.893}
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+RESULT {"run": "B ours, streaming, plain PyTorch, chunk 12 frames (0.96 s of audio)", "sentences": 6, "rtf_median": 0.473, "rtf_max": 0.486, "audio_s_total": 31.9, "first_packet_ms_median": 457, "first_packet_ms_max": 461}
+    {"text": "Hi, how can I help y", "audio_s": 3.44, "total_ms": 1670.476, "first_ms": 456.17}
+    {"text": "The kitchen lights a", "audio_s": 3.44, "total_ms": 1620.342, "first_ms": 459.18}
+    {"text": "\u597d\u7684\uff0c\u6211\u73b0\u5728\u5e2e\u4f60\u628a\u5ba2\u5385\u7684\u706f\u5173\u6389\u3002", "audio_s": 4.8, "total_ms": 2260.163, "first_ms": 460.919}
+    {"text": "\u4eca\u5929\u897f\u96c5\u56fe\u591a\u4e91\uff0c\u6700\u9ad8\u6c14\u6e29\u5341\u4e8c\u5ea6\u3002", "audio_s": 3.28, "total_ms": 1550.348, "first_ms": 457.079}
+    {"text": "Sure. Tomorrow looks", "audio_s": 8.16, "total_ms": 3860.16, "first_ms": 457.274}
+    {"text": "\u660e\u5929\u65e9\u4e0a\u4f1a\u6709\u70b9\u51b7\uff0c\u8bb0\u5f97\u591a\u7a7f\u4e00\u4ef6\u5916\u5957\uff1b\u4e0b\u5348", "audio_s": 8.8, "total_ms": 4169.815, "first_ms": 457.075}
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+Setting `pad_token_id` to `eos_token_id`:2150 for open-end generation.
+RESULT {"run": "C a batch of 2 (total_ms) vs one at a time (one_by_one_ms)", "sentences": 3, "rtf_median": 0.277, "rtf_max": 0.353, "audio_s_total": 32.8}
+    {"pair": "0+1", "audio_s": 8.48, "total_ms": 2993.137, "one_by_one_ms": 3069.634, "speedup": 1.026}
+    {"pair": "2+3", "audio_s": 7.28, "total_ms": 2016.159, "one_by_one_ms": 3729.548, "speedup": 1.85}
+    {"pair": "4+5", "audio_s": 17.04, "total_ms": 4482.847, "one_by_one_ms": 7853.736, "speedup": 1.752}
+peak VRAM 2.52 GiB
+exit 0

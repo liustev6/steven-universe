@@ -1,0 +1,39 @@
+
+/bin/sh: 1: sox: not found
+SoX could not be found!
+
+    If you do not have SoX, proceed here:
+     - - - http://sox.sourceforge.net/ - - -
+
+    If you do (or think that you should) have SoX, double-check your
+    path variables.
+    
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/402 [00:00<?, ?it/s]Loading weights:  46%|████▌     | 183/402 [00:00<00:00, 1825.67it/s]Loading weights:  91%|█████████▏| 367/402 [00:00<00:00, 1825.45it/s]Loading weights: 100%|██████████| 402/402 [00:00<00:00, 915.96it/s] 
+Loading weights:   0%|          | 0/496 [00:00<?, ?it/s]Loading weights:  78%|███████▊  | 385/496 [00:00<00:00, 3799.64it/s]Loading weights: 100%|██████████| 496/496 [00:00<00:00, 4158.52it/s]
+Could not infer sample rate from base model; defaulting to 24000 Hz.
+loaded (graphs captured) in 3423 ms; VRAM 2.01 GiB
+Warming up predictor (3 runs)...
+/usr/local/lib/python3.12/dist-packages/triton/knobs.py:504: UserWarning: TRITON_DEFAULT_FP_FUSION is unset: defaulting to FP fusion ENABLED for backward compatibility in Triton 3.9. The default will change to DISABLED in Triton 3.10; set TRITON_DEFAULT_FP_FUSION=1 to keep fusion enabled or =0 to adopt the new default early and silence this warning.
+  warn_once(FP_FUSION_DEFAULT_WARNING)
+Capturing CUDA graph for predictor...
+CUDA graph captured!
+Warming up talker graph (3 runs)...
+Capturing CUDA graph for talker decode...
+Talker CUDA graph captured!
+RESULT {"run": "D faster-qwen3-tts, CUDA graphs, streaming, chunk 4 frames", "sentences": 6, "rtf_median": 0.332, "rtf_max": 0.35, "audio_s_total": 31.4, "first_packet_ms_median": 112, "first_packet_ms_max": 179}
+    {"text": "Hi, how can I help y", "audio_s": 2.8, "total_ms": 979.554, "first_ms": 169.547}
+    {"text": "The kitchen lights a", "audio_s": 2.72, "total_ms": 897.092, "first_ms": 112.395}
+    {"text": "\u597d\u7684\uff0c\u6211\u73b0\u5728\u5e2e\u4f60\u628a\u5ba2\u5385\u7684\u706f\u5173\u6389\u3002", "audio_s": 3.68, "total_ms": 1217.356, "first_ms": 112.052}
+    {"text": "\u4eca\u5929\u897f\u96c5\u56fe\u591a\u4e91\uff0c\u6700\u9ad8\u6c14\u6e29\u5341\u4e8c\u5ea6\u3002", "audio_s": 3.04, "total_ms": 1003.86, "first_ms": 111.778}
+    {"text": "Sure. Tomorrow looks", "audio_s": 9.28, "total_ms": 3151.397, "first_ms": 178.885}
+    {"text": "\u660e\u5929\u65e9\u4e0a\u4f1a\u6709\u70b9\u51b7\uff0c\u8bb0\u5f97\u591a\u7a7f\u4e00\u4ef6\u5916\u5957\uff1b\u4e0b\u5348", "audio_s": 9.84, "total_ms": 3274.758, "first_ms": 112.234}
+RESULT {"run": "D faster-qwen3-tts, CUDA graphs, streaming, chunk 12 frames", "sentences": 6, "rtf_median": 0.311, "rtf_max": 0.346, "audio_s_total": 31.8, "first_packet_ms_median": 301, "first_packet_ms_max": 302}
+    {"text": "Hi, how can I help y", "audio_s": 4.16, "total_ms": 1437.821, "first_ms": 301.271}
+    {"text": "The kitchen lights a", "audio_s": 2.48, "total_ms": 773.81, "first_ms": 301.166}
+    {"text": "\u597d\u7684\uff0c\u6211\u73b0\u5728\u5e2e\u4f60\u628a\u5ba2\u5385\u7684\u706f\u5173\u6389\u3002", "audio_s": 3.76, "total_ms": 1165.404, "first_ms": 302.373}
+    {"text": "\u4eca\u5929\u897f\u96c5\u56fe\u591a\u4e91\uff0c\u6700\u9ad8\u6c14\u6e29\u5341\u4e8c\u5ea6\u3002", "audio_s": 3.68, "total_ms": 1141.916, "first_ms": 301.382}
+    {"text": "Sure. Tomorrow looks", "audio_s": 8.72, "total_ms": 2715.421, "first_ms": 302.335}
+    {"text": "\u660e\u5929\u65e9\u4e0a\u4f1a\u6709\u70b9\u51b7\uff0c\u8bb0\u5f97\u591a\u7a7f\u4e00\u4ef6\u5916\u5957\uff1b\u4e0b\u5348", "audio_s": 8.96, "total_ms": 2783.865, "first_ms": 301.481}
+peak VRAM 2.32 GiB
+exit 0

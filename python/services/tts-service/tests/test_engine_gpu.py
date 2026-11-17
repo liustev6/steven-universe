@@ -32,12 +32,28 @@ def engine():
     return e
 
 
+@pytest.fixture
+def predictor(engine, request):
+    engine.predictor = request.param
+    yield request.param
+    engine.predictor = "qwen"
+
+
+@pytest.mark.parametrize("predictor", ["qwen", "ours", "ours-static"], indirect=True)
 @pytest.mark.parametrize("voice, text", SENTENCES)
-def test_streamed_codes_are_qwens_own(engine, voice, text):
+def test_streamed_codes_are_qwens_own(engine, predictor, voice, text):
     ours = torch.stack(list(engine.frames(text, voice, sample=False)))
     official = engine.official_codes(text, voice)
     assert ours.shape == official.shape, (ours.shape, official.shape)
     assert torch.equal(ours.cpu(), official.cpu())
+
+
+@pytest.mark.parametrize("predictor", ["ours", "ours-static"], indirect=True)
+def test_our_predictor_samples(engine, predictor):
+    """With sampling on (the default), our loop's speech still ends: about as long as Qwen's."""
+    text = "Sure. Tomorrow looks cloudy in the morning."
+    seconds = len(np.concatenate(list(engine.stream(text, "ryan")))) / 24000
+    assert 1.5 < seconds < 6, seconds
 
 
 @pytest.mark.parametrize("voice, text", SENTENCES)
@@ -53,6 +69,14 @@ def test_streamed_audio_matches_the_whole_decode(engine, voice, text):
     noise = np.sum((streamed[:n] - whole[:n]) ** 2)
     snr_db = 10 * np.log10(np.sum(whole[:n] ** 2) / max(noise, 1e-12))
     assert snr_db > 20, f"streamed vs whole: {snr_db:.1f} dB"
+
+
+def test_a_sentence_that_never_ends_is_cut_off(engine):
+    """Greedy "Warming up." never produces the end code: the limit stops it (50 + 8 a character)."""
+    from app.engine.qwen import max_frames
+
+    n = sum(1 for _ in engine.frames("Warming up.", "ryan", sample=False))
+    assert n <= max_frames("Warming up.") == 138
 
 
 def test_voices(engine):
