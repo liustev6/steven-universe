@@ -14,7 +14,7 @@ Callers' side (the sessions API, piece e):
     end(session, reason)                   for good: release the pod, tell listeners
 
 The runtime's side (the gateway, piece d):
-    by_capability(capability)              which session a request belongs to
+    live_for(capability)                   which session a request belongs to
     next_messages(session, wait)           the long poll: turns, interrupts, end
     ingest(session, events)                protocol A in → protocol B stored, and the state it implies
 
@@ -97,9 +97,14 @@ def capability_hash(capability: str) -> bytes:
 class Live:
     """What memory holds for a live session; rebuilt from the table by `load()`."""
     session_id: uuid.UUID
+    profile: str
+    sandbox_id: uuid.UUID
+    capability_hash: bytes
     translator: Translator
     outbox: asyncio.Queue = field(default_factory=asyncio.Queue)   # protocol A messages to the runtime
     turn_id: uuid.UUID | None = None                               # the running turn
+    turn_tokens: int = 0              # the running turn's tokens, counted by the gateway (C13)
+    over_budget: bool = False         # the running turn hit max_turn_tokens (reported once)
 
 
 class Sessions:
@@ -107,6 +112,7 @@ class Sessions:
                  profiles: dict[str, AgentProfile], settings: Settings):
         self.db, self.log, self.runner, self.profiles, self.s = db, log, runner, profiles, settings
         self._live: dict[uuid.UUID, Live] = {}
+        self._by_hash: dict[bytes, Live] = {}          # the gateway's lookup (C7)
         self.stopped = False
 
     # ==== start-up (C5) ===========================================================================
@@ -116,20 +122,21 @@ class Sessions:
         async with self.db() as db:
             flag = await db.get(Flag, KILL_SWITCH)
             self.stopped = bool(flag and flag.value)
-            rows = (await db.scalars(select(ChatSession).where(ChatSession.state.in_(LIVE)))).all()
+            rows = (await db.execute(select(ChatSession, Conversation.profile).join(Conversation)
+                                     .where(ChatSession.state.in_(LIVE)))).all()
             running = {t.session_id: t for t in await db.scalars(
-                select(Turn).where(Turn.session_id.in_([r.id for r in rows]), Turn.status == TurnStatus.RUNNING))}
-        for row in rows:
-            if row.sandbox_id is None:               # we died between inserting it and claiming its pod
+                select(Turn).where(Turn.session_id.in_([r.id for r, _ in rows]), Turn.status == TurnStatus.RUNNING))}
+        for row, profile in rows:
+            if row.sandbox_id is None or row.capability_hash is None:   # we died before its pod was claimed
                 await self.end(row.id, EndReason.FAILED)
                 continue
-            live = Live(row.id, Translator(row.id, fresh=False))
+            live = Live(row.id, profile, row.sandbox_id, row.capability_hash, Translator(row.id, fresh=False))
             turn = running.get(row.id)
             if turn is not None:
                 live.turn_id = turn.id
                 if turn.delivered_at is None:        # queued but never picked up: send it again
                     live.outbox.put_nowait({"type": "turn", "turn_id": str(turn.id), "text": turn.user_text})
-            self._live[row.id] = live
+            self._remember(live)
         logger.info("loaded %d live session(s)%s", len(self._live), "; the kill switch is ON" if self.stopped else "")
 
     # ==== callers' side ===========================================================================
@@ -180,7 +187,7 @@ class Sessions:
         if not still_live:                                      # ended while we claimed (the kill switch)
             await self.runner.release(sandbox_id)
             return row, True
-        self._live[row.id] = Live(row.id, Translator(row.id))
+        self._remember(Live(row.id, profile, sandbox_id, capability_hash(capability), Translator(row.id)))
         logger.info("session %s started (profile %s, sandbox %s, %d turn(s) carried)", row.id, profile,
                     sandbox_id, len(carried))
         return row, True
@@ -216,7 +223,7 @@ class Sessions:
             after = row.next_seq - 1
         live = self._live.get(session_id)
         if live is not None:
-            live.turn_id = turn.id
+            live.turn_id, live.turn_tokens, live.over_budget = turn.id, 0, False
             live.outbox.put_nowait({"type": "turn", "turn_id": str(turn.id), "text": text})
         return turn, after
 
@@ -247,6 +254,7 @@ class Sessions:
         await self.log.publish(session_id, stored)
         live = self._live.pop(session_id, None)
         if live is not None:
+            self._by_hash.pop(live.capability_hash, None)
             live.outbox.put_nowait({"type": "end"})
         if sandbox_id is not None:
             await self.runner.release(sandbox_id)
@@ -254,11 +262,10 @@ class Sessions:
         return True
 
     # ==== the runtime's side (the gateway) ========================================================
-    async def by_capability(self, capability: str) -> ChatSession | None:
-        """The live session holding this capability, or None. The gateway also checks the pod (C7)."""
-        async with self.db() as db:
-            return await db.scalar(select(ChatSession).where(
-                ChatSession.capability_hash == capability_hash(capability), ChatSession.state.in_(LIVE)))
+    def live_for(self, capability: str) -> Live | None:
+        """The live session holding this capability, or None. The gateway also checks the pod (C7).
+        From memory: every request of every runtime asks, and `load()` rebuilds it from the table."""
+        return self._by_hash.get(capability_hash(capability))
 
     async def next_messages(self, session_id: uuid.UUID, wait: float) -> list[dict[str, Any]]:
         """The runtime's long poll: whatever is queued, waiting up to `wait` seconds for the first."""
@@ -366,6 +373,10 @@ class Sessions:
         logger.warning("kill switch OFF (by %s)", by)
 
     # ==== helpers =================================================================================
+    def _remember(self, live: Live) -> None:
+        self._live[live.session_id] = live
+        self._by_hash[live.capability_hash] = live
+
     async def _set_flag(self, name: str, value: bool, by: str) -> None:
         async with self.db.begin() as db:
             flag = await db.get(Flag, name)

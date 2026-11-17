@@ -115,17 +115,32 @@ starting ──runtime.ready──▶ ready ◀──turn.completed── busy
   the pod.
 
 ## The gateway (8443, sandboxes)
-Reached only through a pod's proxy (R12), which stamps `X-Sandbox-Id`.
+Reached only through a pod's proxy (R12), which stamps `X-Sandbox-Id`. Code: `app/gateway.py`.
 
 | Route | What |
 |---|---|
-| `GET /v1/runtime/turns?wait=` | the runtime's long poll: turns, interrupts, end |
-| `POST /v1/runtime/events` | protocol A events: each parsed alone (a bad one is dropped), translated to B, written (C4), sent on |
-| `/model/{path}` | to OpenAI with your token (C11); the profile's model enforced; C13's budgets |
+| `GET /v1/runtime/turns?wait=` | the runtime's long poll: turns, interrupts, end (at most 30 s) |
+| `POST /v1/runtime/events` | protocol A events (a batch, at most 1 MB): each parsed alone (a bad one is dropped), translated to B, written (C4), sent on |
+| `/model/{path}` | to OpenAI with your token (C11); the profile's model enforced; C13's budgets (a request at most 16 MB) |
 
-**Every request:** capability hash → its session; `X-Sandbox-Id` must be that session's pod (else 403,
-logged); the session must be active. `X-Sandbox-Id` and `X-Forwarded-For` are never forwarded.
-Shutdown waits at most 5 s for open long polls (the CP2 lesson), so its own shutdown work runs.
+**Every request:** capability hash → its live session (from memory, rebuilt at start; else 401);
+`X-Sandbox-Id` must be that session's pod (else 403, logged). `X-Sandbox-Id`, `X-Forwarded-For`,
+`X-Real-IP` and the capability are never forwarded. Shutdown waits at most 5 s for open long polls
+(the CP2 lesson), so its own shutdown work runs.
+
+**The model route** is a pass-through with four jobs:
+- **the credential:** the capability is swapped for your login's headers; an upstream `401` refreshes
+  the login once and retries;
+- **the model:** a profile that pins `model` refuses any other (`403 model_not_allowed`), and fails
+  closed on a body it can't read (compressed, not JSON); `model: null` takes Codex's choice;
+- **the token budget:** it reads the `usage` of each response's final server-sent event
+  (`response.completed`, `.incomplete`, `.failed`) as the bytes pass, untouched, and adds it to the
+  running turn. Once the turn reaches `max_turn_tokens`, further calls get `403 budget_exceeded` and
+  the caller one `error {code: budget}`; the runtime's turn then fails. The response that crosses
+  the line completes (a turn can overshoot by one response). It counts OpenAI's figures, never the
+  sandbox's;
+- **refusals in OpenAI's error shape**, so Codex shows the message, and `403`, not `429`: Codex
+  retries a `429`.
 
 ## Profiles (`profiles.yaml`)
 ```yaml

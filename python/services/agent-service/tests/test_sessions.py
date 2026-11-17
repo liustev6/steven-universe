@@ -3,7 +3,6 @@
 import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
 from sqlalchemy import select, update
@@ -12,43 +11,11 @@ from app.config import Settings
 from app.db.models import ChatSession, Conversation, EndReason, SessionState, Turn, TurnStatus
 from app.eventlog import EventLog
 from app.history import HEADER
-from app.profiles import load_profiles
 from app.runner import NoSandbox
 from app.sessions import (
     Busy, BudgetExceeded, Ended, NotFound, ProfileMismatch, Sessions, Stopped, UnknownProfile, capability_hash,
 )
-from core.types import build_event
-
-PROFILES = load_profiles(Path(__file__).resolve().parents[4] / "infra/services/agent-service/profiles.yaml")
-ME, OTHER = "service:agent-cli", "service:smoke-test"
-
-
-class FakeRunner:
-    def __init__(self):
-        self.claims: list[dict] = []
-        self.released: list[uuid.UUID] = []
-        self.pods: set[uuid.UUID] = set()
-        self.no_sandbox = False
-        self.unreachable = False
-        self.claim_delay = 0.0
-
-    async def claim(self, template, session_id, capability, profile):
-        await asyncio.sleep(self.claim_delay)
-        if self.no_sandbox:
-            raise NoSandbox(7)
-        sandbox = uuid.uuid4()
-        self.claims.append({"template": template, "session_id": session_id, "capability": capability,
-                            "profile": profile, "sandbox_id": sandbox})
-        self.pods.add(sandbox)
-        return sandbox
-
-    async def release(self, sandbox_id):
-        self.released.append(sandbox_id)
-        self.pods.discard(sandbox_id)
-
-    async def claimed(self):
-        return None if self.unreachable else set(self.pods)
-
+from tests.helpers import ME, OTHER, PROFILES, FakeRunner, Runtime
 
 @pytest.fixture
 def runner():
@@ -60,29 +27,6 @@ def make(db, runner):
     def make_sessions() -> Sessions:            # a new one = agent-service restarted
         return Sessions(db, EventLog(db), runner, PROFILES, Settings())
     return make_sessions
-
-
-class Runtime:
-    """What the sandbox's runtime would send, numbered like its EventSink."""
-
-    def __init__(self, session_id):
-        self.session_id, self.seq = session_id, 0
-
-    def __call__(self, payload, turn=None):
-        e = build_event(payload, session_id=str(self.session_id), turn_id=str(turn) if turn else None,
-                        seq=self.seq, ts=1.0)
-        self.seq += 1
-        return e.model_dump(mode="json")
-
-    def ready(self):
-        return self({"type": "runtime.ready", "startup_ms": 400, "profile": "x", "model": None, "tools": []})
-
-    def answer(self, turn, text="Hello", total=100):
-        return [self({"type": "turn.started"}, turn), self({"type": "text.delta", "text": text}, turn),
-                self({"type": "text.completed", "text": text}, turn),
-                self({"type": "turn.completed", "status": "completed", "duration_ms": 50,
-                      "usage": {"total": {"input_tokens": total - 10, "cached_input_tokens": 0, "output_tokens": 10,
-                                          "reasoning_output_tokens": 0, "total_tokens": total}}}, turn)]
 
 
 async def ready_session(sessions, profile="steven-ai", conversation=None):
@@ -242,14 +186,14 @@ async def test_end_releases_announces_and_kills_the_capability(make, runner, db)
     sessions = make()
     row, _ = await ready_session(sessions)
     capability = runner.claims[0]["capability"]
-    assert (await sessions.by_capability(capability)).id == row.id
+    assert sessions.live_for(capability).session_id == row.id
     turn, _ = await sessions.turn(row.id, ME, "unfinished")
     await sessions.next_messages(row.id, 1)
     assert await sessions.end(row.id, EndReason.DELETED, ME)
     assert not await sessions.end(row.id, EndReason.DELETED, ME)    # once
     s = await state(db, row.id)
     assert s.state == SessionState.ENDED and s.end_reason == EndReason.DELETED and s.capability_hash is None
-    assert await sessions.by_capability(capability) is None          # dead with the session (C7)
+    assert sessions.live_for(capability) is None                     # dead with the session (C7)
     assert runner.released == [runner.claims[0]["sandbox_id"]]
     async with db() as d:
         assert (await d.get(Turn, turn.id)).status == TurnStatus.FAILED
@@ -325,12 +269,13 @@ async def test_a_lost_sandbox_ends_the_session(make, runner, db):
 
 
 # ---- a restart (C5) -------------------------------------------------------------------------------
-async def test_a_restart_keeps_live_sessions(make, db):
+async def test_a_restart_keeps_live_sessions(make, db, runner):
     before = make()
     row, rt = await ready_session(before)
     turn, _ = await before.turn(row.id, ME, "never picked up")
     after = make()                                                   # memory gone
     await after.load()
+    assert after.live_for(runner.claims[0]["capability"]).session_id == row.id   # rebuilt from the hash
     assert await after.next_messages(row.id, 1) == [{"type": "turn", "turn_id": str(turn.id), "text": "never picked up"}]
     await after.ingest(row.id, rt.answer(turn.id))                   # the runtime carries on
     async with db() as d:
