@@ -29,4 +29,12 @@ expect_eq "prose about images is left alone" "$(head -1 "$T/doc.out")" "# commen
 printf 'image: ${image:Agent-Runtime}\n' >"$T/typo.yaml"
 o="$(python3 "$FILL" "$T/typo.yaml" "$T/typo.out" "agent-runtime=$REF" 2>&1; echo "exit=$?")"
 expect_contains "something that looks like a placeholder but isn't one fails, with its line" "$o" "line 1: not a valid placeholder"
+
+# A service whose manifest lists no `images` (agent-service's profiles.yaml): no pairs at all.
+printf 'profiles:\n  voice: {template: chat}\n' >"$T/plain.yaml"
+python3 "$FILL" "$T/plain.yaml" "$T/plain.out"
+expect_eq "no images: the file is copied as it is" "$(cmp -s "$T/plain.yaml" "$T/plain.out" && echo same || echo differs)" "same"
+o="$(python3 "$FILL" "$T/in.yaml" "$T/none.out" 2>&1; echo "exit=$?")"
+expect_contains "no images, but a placeholder: refused" "$o" "no image given for agent-runtime"
+expect_eq "and writes nothing" "$([ -e "$T/none.out" ] && echo written || echo none)" "none"
 finish

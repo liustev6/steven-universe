@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Fill in a deployed file's image references (deployer: manifest `files` and `images`).
 
-    fill-images.py <in> <out> <name>=<ref> [<name>=<ref> ...]
+    fill-images.py <in> <out> [<name>=<ref> ...]
 
 Replaces every ${image:<name>} in <in> with <ref> (an image pinned by digest, e.g.
 ghcr.io/…/agent-runtime@sha256:…) and writes <out>. Fails, writing nothing, if the file names an
-image that wasn't given: a deployed file never keeps a placeholder. Standard library only (it runs
-on every host).
+image that wasn't given: a deployed file never keeps a placeholder. With no <name>=<ref> (a service
+whose manifest lists no `images`), the file is copied as it is, still refused if it holds a
+placeholder. Standard library only (it runs on every host).
 """
 
 import os
@@ -30,7 +31,7 @@ def fill(text: str, refs: dict[str, str]) -> str:
 
 
 def main(argv: list[str]) -> None:
-    if len(argv) < 3:
+    if len(argv) < 2:
         raise SystemExit(__doc__)
     src, out, *pairs = argv
     refs = {}
