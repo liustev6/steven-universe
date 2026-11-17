@@ -12,6 +12,12 @@ How it streams, without changing Qwen's code:
 Qwen's own `generate_custom_voice` does the same work but decodes only once the sentence is complete.
 Cancelling: the hook raises `Cancelled` at the next frame, which stops generation in its thread.
 
+Two CUDA streams (spikes/09): generation runs on its own stream, the codec's decode on another of higher
+priority, so the GPU runs them side by side and the decode goes first when both wait. Each frame crosses
+with a CUDA event, recorded on the generation stream when its codes are ready, waited on by the
+consumer's stream on the GPU: the CPU never waits for generation work queued after the frame. The end
+code is checked in the generation thread (ours knows it; Qwen's hook reads it there), not here.
+
 The code predictor (the 15 codes after each frame's first, predictor.py): `predictor` picks whose loop
 runs it. "qwen" is Hugging Face's `generate`, as Qwen ships it; "ours" is our own loop over the same
 modules (step 2); "ours-static" our own forward over the same modules, with a fixed 16-position cache
@@ -78,6 +84,8 @@ class QwenEngine:
                             "ours-fused": GraphCodePredictor(cp, fused=True)}
         self._talkers = {"ours": TalkerLoop(self._talker), "ours-fused": TalkerLoop(self._talker, fused=True),
                          "ours-graph": TalkerLoop(self._talker, fused=True, graph=True)}
+        self._generation = torch.cuda.Stream(device=self.device)
+        self._decoding = torch.cuda.Stream(device=self.device, priority=-1)   # negative: higher priority
         # sample_rate stays 24,000: the 12 Hz codec's output_sample_rate (its config); the GPU tests check
         # it against what the codec's own decode reports.
 
@@ -101,14 +109,17 @@ class QwenEngine:
         tts._validate_languages([language])
         tts._validate_speakers([voice])
 
-        def emit(codes):                                      # one frame's codes, (1, 16)
-            if cancel is not None and cancel.is_set():
+        def emit(codes):                                      # one frame's codes, (1, 16): in the
+            if cancel is not None and cancel.is_set():        # generation thread, on its stream
                 raise Cancelled("cancelled")
-            got.put(codes[0].detach().clone())
+            frame, ready = codes[0].detach().clone(), torch.cuda.Event()
+            ready.record()                                    # …marks where the frame's codes are done
+            got.put((frame, ready))
 
         def hook(module, args, out):                          # each step of Qwen's talker: one frame
-            if out.hidden_states[1] is not None:
-                emit(out.hidden_states[1])
+            codes = out.hidden_states[1]
+            if codes is not None and int(codes[0, 0]) != self._eos:   # (generate syncs each step anyway)
+                emit(codes)
             elif cancel is not None and cancel.is_set():
                 raise Cancelled("cancelled")
 
@@ -119,7 +130,7 @@ class QwenEngine:
 
         def run():
             try:
-                with torch.inference_mode():
+                with torch.inference_mode(), torch.cuda.stream(self._generation):
                     self._model.generate(input_ids=input_ids, instruct_ids=[None], languages=[language],
                                          speakers=[voice], non_streaming_mode=True, **kwargs)
             except BaseException as exc:                      # Cancelled, or a real failure
@@ -136,13 +147,16 @@ class QwenEngine:
             self._talker.generate = functools.partial(self._talkers[self.talker].generate,
                                                       predictor=cp.generate, emit=emit)
         handle = self._talker.register_forward_hook(hook)
+        self._generation.wait_stream(torch.cuda.current_stream())   # the prompt's tensors, made here
         worker = threading.Thread(target=run, name="tts-generate", daemon=True)
         worker.start()
         try:
             while (item := got.get()) is not _DONE:
-                if int(item[0]) == self._eos:                 # the end-of-speech code: not audio
-                    continue
-                yield item
+                frame, ready = item
+                here = torch.cuda.current_stream()
+                here.wait_event(ready)                        # on the GPU: no CPU wait
+                frame.record_stream(here)                     # its memory: in use on this stream too
+                yield frame
         finally:
             worker.join()
             handle.remove()
@@ -158,14 +172,15 @@ class QwenEngine:
         def decode(frames) -> np.ndarray:
             with torch.inference_mode():
                 wavs, _ = self._codec.decode([{"audio_codes": torch.stack(list(frames))}])
-            return wavs[0]
+            return wavs[0]                                    # on the CPU: waits for this stream only
 
         chunker = ChunkDecoder(decode, chunks=self.chunks, context=self.context)
-        for frame in self.frames(text, voice, language, sample=sample, cancel=cancel):
-            if (audio := chunker.add(frame)) is not None:
+        with torch.cuda.stream(self._decoding):               # frames wait for their events here
+            for frame in self.frames(text, voice, language, sample=sample, cancel=cancel):
+                if (audio := chunker.add(frame)) is not None:
+                    yield audio
+            if (audio := chunker.flush()) is not None:
                 yield audio
-        if (audio := chunker.flush()) is not None:
-            yield audio
 
     # ---- the reference, for comparisons -------------------------------------------------------------
     def official_codes(self, text: str, voice: str, language: str | None = None) -> object:
