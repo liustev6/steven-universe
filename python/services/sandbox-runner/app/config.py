@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     SANDBOX_UID: int = 10001
 
     # ---- Where the pods' proxies forward to, and how they get there (R5, R12) ----------------
-    GATEWAY_URL: str                             # agent-service's gateway (CP2: the dev gateway)
+    GATEWAY_URL: str                             # agent-service's gateway (https://agent.lan.liustev6.ca:8443)
     EGRESS_NETWORK: str = "sandbox-egress"       # an ordinary bridge: the proxies' only way out
     POD_SUBNETS: str = "172.29.0.0/16"           # split into /28s, one per pod
 

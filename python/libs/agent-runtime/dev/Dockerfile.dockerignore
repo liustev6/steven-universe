@@ -1,8 +1,0 @@
-**
-!agent-runtime/pyproject.toml
-!agent-runtime/core/**
-!agent-runtime/dev/pyproject.toml
-!agent-runtime/dev/agent_dev/**
-!service-auth/pyproject.toml
-!service-auth/service_auth/**
-**/__pycache__

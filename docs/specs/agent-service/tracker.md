@@ -98,10 +98,10 @@ sandbox ids, prompts, tokens, secrets, internal addresses, who deployed.
 | Item | Found in | Likely CP |
 |---|---|---|
 | ~5,800 tokens per call are still Codex's own tool and environment context, even with no tools: trim for cheaper voice calls | CP1 (Q3) | 4 |
-| An interrupted turn's `usage` repeats the previous call's figures | CP1 (Q4) | 3 |
+| ~~An interrupted turn's `usage` repeats the previous call's figures~~ protocol B reports it per turn, and `null` when Codex sent none (an interrupt) | CP1 (Q4) | 3 ✅ |
 | The sandbox image is 840 MB, mostly the Codex binaries; it affects the pool's pull and disk size | CP1 (Q5) | 2 |
-| A gateway holding long polls must cap its graceful shutdown (uvicorn `--timeout-graceful-shutdown`) so its shutdown work runs: releasing pods, flushing events | CP2 (2.5) | 3 |
-| Remove the temporary client `agent-dev` (policy, `disable-client`) when agent-service's own client takes over | CP2 (2.5) | 3 |
-| VM 200's internet egress (443/80) is broad: image pulls, packages, certificates, and the dev gateway's model calls. When the gateway leaves the VM (CP3), narrow it (registries and repositories, e.g. through an allowlisting proxy) | CP2 (2.7) | 3 |
+| ~~A gateway holding long polls must cap its graceful shutdown~~ agent-service: 5 s (`app/main.py`) | CP2 (2.5) | 3 ✅ |
+| ~~Remove the temporary client `agent-dev`~~ removed from the policy (3.9) | CP2 (2.5) | 3 ✅ |
+| VM 200's internet egress (443/80) is broad: image pulls, packages, certificates. The sandboxes never use it (their only way out is the gateway); narrowing the VM's own needs an allowlisting proxy | CP2 (2.7) | 5 (with the web tools' egress) |
 | The runner's container needs the Docker socket, the XFS disk and `/run/sandbox-runner` at the same paths, and `CAP_SYS_ADMIN` for `xfs_quota` (or it runs privileged: it's root on the VM anyway, R3) | CP2 (2.4) | 2 (2.6) |
-| The auth map (which hop authenticates how), the OpenBao exception for the login, and trusting the proxy's sandbox stamp: into the README | the auth review (2026-11-11) | 3 |
+| ~~The auth map, the OpenBao exception, trusting the proxy's stamp: into the README~~ done (README "Who authenticates how") | the auth review (2026-11-11) | 3 ✅ |

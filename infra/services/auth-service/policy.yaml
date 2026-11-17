@@ -54,25 +54,13 @@ clients:
       secrets-manager:
         scopes: [secrets:read]
 
-  # TEMPORARY (agent-service CP2): the dev gateway on VM 200, standing in for agent-service until
-  # it exists (CP3), then removed. Secret host-only on VM 200, in the dev stack's secrets/ (gitignored).
-  agent-dev:
-    grants:
-      sandbox-runner:
-        scopes: [sandboxes:claim, sandboxes:release, sandboxes:read]
-
-  # The control plane: claims pods, keeps its login in OpenBao, backs up its database.
-  # Secret host-only on CT 107.
+  # The control plane: claims pods, keeps its login in OpenBao. Secret host-only on CT 107.
   agent-service:
     grants:
       sandbox-runner:
         scopes: [sandboxes:claim, sandboxes:release, sandboxes:read]
       secrets-manager:                   # OpenBao role "agent-service": only its ChatGPT login (C11)
         scopes: [secrets:read]
-      file-management:                   # nightly pg_dump (C10)
-        scopes: [files:read, files:write, files:delete, files:list]
-        authorization_details:
-          - {type: file_access, actions: [read, write, delete, list], locations: ["private/${client}/backups/"]}
 
   # The `agent` CLI on CT 107, your operator tool: your sessions, and the kill switch.
   # Secret host-only on CT 107, root-only.

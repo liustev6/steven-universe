@@ -24,9 +24,9 @@ IN HTTPS(ACCEPT) -source 192.168.50.229 # agent-service (CT 107): the runner's r
 
 # ---- out --------------------------------------------------------------------------------------
 OUT DNS(ACCEPT) -dest 192.168.50.1 # the router: name lookups
-OUT HTTPS(ACCEPT) -dest 192.168.50.235 # auth-service: token keys (the runner; the dev gateway's client)
+OUT HTTPS(ACCEPT) -dest 192.168.50.235 # auth-service: token keys (the runner checks agent-service's tokens)
 OUT ACCEPT -dest 192.168.50.229 -p tcp -dport 8443 # agent-service's gateway (CT 107): the pods' proxies, and nothing else of CT 107
 OUT DROP -dest 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,169.254.0.0/16 # nothing else private: no pve01, router admin, OpenBao, file-management, RustFS, Tailscale
-OUT HTTPS(ACCEPT) # the internet: GHCR, Debian/Docker/gVisor repositories, certbot (Let's Encrypt, Cloudflare); in CP2 also the dev gateway's model calls. Tighten in CP3.
+OUT HTTPS(ACCEPT) # the internet, for the VM's own root processes: GHCR, Debian/Docker/gVisor repositories, certbot (Let's Encrypt, Cloudflare). The sandboxes never reach it (their only way out is their proxy, to the gateway). Narrowing it needs an allowlisting proxy (this firewall filters by address, not name): with CP5's egress design.
 OUT HTTP(ACCEPT) # the internet: Debian's repositories
 OUT NTP(ACCEPT) # the internet: clock sync

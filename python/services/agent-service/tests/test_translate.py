@@ -95,6 +95,20 @@ def test_after_a_restart_usage_is_unknown_until_a_turn_starts_with_a_known_total
     assert bodies(out)[-1]["usage"]["total_tokens"] == 400
 
 
+def test_an_interrupted_turn_without_figures_has_unknown_usage():
+    """Codex reports the thread's total at turn/completed even when interrupted early: the same total
+    as at the start. That's "unknown", not "zero tokens" (any model call costs tokens)."""
+    a, t = Runtime(), Translator(SESSION)
+    first, second = uuid.uuid4(), uuid.uuid4()
+    t.translate([a({"type": "turn.started"}, first),
+                 a({"type": "turn.completed", "status": "completed", "duration_ms": 1,
+                    "usage": {"total": breakdown(900)}}, first)])
+    out = t.translate([a({"type": "turn.started"}, second),
+                       a({"type": "turn.completed", "status": "interrupted", "duration_ms": 1,
+                          "usage": {"total": breakdown(900)}}, second)])
+    assert bodies(out)[-1]["usage"] is None and out.turns_done[0].usage is None
+
+
 def test_signals_are_not_caller_events():
     a, t = Runtime(), Translator(SESSION)
     out = t.translate([

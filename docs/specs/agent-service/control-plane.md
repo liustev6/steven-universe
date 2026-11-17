@@ -258,7 +258,7 @@ time): `AgentProfile.runtime()` in `app/profiles.py`.
 
 | Client | Gets | Why |
 |---|---|---|
-| `agent-service` | sandbox-runner: claim, release, read; secrets-manager: `secrets:read`; file-management: all on `private/agent-service/backups/` | pods; its login in OpenBao; backups |
+| `agent-service` | sandbox-runner: claim, release, read; secrets-manager: `secrets:read` | pods; its login in OpenBao (its file-management grant for backups removed with C10) |
 | `agent-cli` | agent-service: `chat:read`, `chat:write`, `chat:admin` | your operator tool on CT 107, kill switch included |
 | `smoke-test` | agent-service and api-service: `chat:read`, `chat:write` | deploy checks (the `smoke` profile), directly and through the relay |
 | `api-service` | agent-service: `status:read` | the status page. It relays `/v1/agent/…` with `can_relay_clients` (grant 3): the relayed token carries the **caller's own** agent-service grants, never api-service's |

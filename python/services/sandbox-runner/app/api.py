@@ -12,7 +12,7 @@ can only create and destroy.
 
 Callers authenticate with auth-service tokens (audience `sandbox-runner`), checked locally against
 auth-service's public keys (service-auth). Each route needs its scope; auth-service's policy decides
-which clients get them: agent-service only (in CP2, its stand-in `agent-dev`).
+which clients get them: agent-service only.
 """
 
 from __future__ import annotations

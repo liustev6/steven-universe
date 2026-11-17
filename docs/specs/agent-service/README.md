@@ -328,6 +328,24 @@ summaries and memory.
 - **Kill switch:** `DELETE` a session, drain the pool, or stop the runner. Nothing keeps running
   without the control plane.
 
+### Who authenticates how (the auth map, as built in CP3)
+| Hop | Credential | Checked by | Notes |
+|---|---|---|---|
+| a machine client → api-service (the public edge) | its auth-service token, `aud=api-service`, with `chat:*` | api-service (service-auth: auth-service's public keys) | mode `client`: machine clients calling as themselves |
+| api-service → agent-service (the relay) | a **relayed** token (RFC 8693, grant 3), `aud=agent-service`: the **caller's** identity and grants | agent-service | the caller's own token never leaves api-service (E4) |
+| `agent-cli`, `smoke-test` → agent-service | their own token, `aud=agent-service` | agent-service | each route needs its `chat:*` scope; sessions are their owner's (C2) |
+| api-service → agent-service, sandbox-runner `/v1/status` | api-service's own token, `status:read` | the service | for the public status page |
+| agent-service → sandbox-runner | agent-service's token, `aud=sandbox-runner` | the runner | claim, release, list |
+| a runtime → agent-service's gateway | the session's **capability** (256 bits, in the session file) **and** the pod's `X-Sandbox-Id` | the gateway: the capability's hash, then the pod | the capability is useless from another pod (C7) |
+| agent-service's gateway → OpenAI | **your ChatGPT login** (the auth broker) | OpenAI | swapped in at the gateway; no sandbox ever holds it (MA1) |
+| agent-service → OpenBao | its token, `aud=secrets-manager` → OpenBao role `agent-service` | OpenBao | **the one exception:** the only service that **writes** to OpenBao, and only one path, its login (`kv/services/agent-service/codex_auth`, C11). Every other service's secrets reach it only through the deployer |
+
+**Why the gateway trusts the proxy's `X-Sandbox-Id`:** a sandbox can't reach the gateway except
+through its own pod's proxy. Its network is internal (`inhibit_ipv4`, no route out), and VM 200's
+firewall lets only port 8443 of CT 107 out. The proxy **overwrites** the header with its own pod's
+id, whatever the sandbox sent, and the sandbox can't change the proxy's config (read-only, outside
+the sandbox). So the stamp names the pod the request really came from (sandbox-runner.md R12).
+
 ## Build order
 The build order is a sequence of checkpoints, tracked in [tracker.md](tracker.md): what each one
 proves, when it's done, and the sub-checkpoints of the one in progress.

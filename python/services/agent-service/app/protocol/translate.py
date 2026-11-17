@@ -20,7 +20,7 @@ What becomes of each protocol A event:
     turn.completed         turn.completed, with this turn's own tokens; and `turn_done`, for `turns`
 
 Codex reports a thread's *cumulative* tokens, so a turn's usage is the total at its end minus the
-total at its start. It's what the sandbox *says*: for callers to see, never for budgets. The
+total at its start; when that is zero (an interrupted turn, before Codex reported any), it's `null`. It's what the sandbox *says*: for callers to see, never for budgets. The
 gateway counts budgets from the model responses it relays itself (C13), which a sandbox can't forge. A translator made for a session that may already have used tokens (agent-service
 restarted mid-session) starts with the total unknown, and reports `usage: null` until it knows.
 """
@@ -144,6 +144,8 @@ class Translator:
             usage = None
             if self._total is not None and self._turn_start is not None:
                 usage = {k: self._total[k] - self._turn_start[k] for k in TOKEN_FIELDS}
+                if usage["total_tokens"] <= 0:       # Codex sent no figures for this turn (an interrupt
+                    usage = None                     # stops it before any): unknown, not "zero tokens"
             self._turn_start = None
             if turn_id is not None:
                 out.turns_done.append(TurnResult(
