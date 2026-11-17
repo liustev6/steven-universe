@@ -104,6 +104,10 @@ PyTorch 2.15.0 (CUDA 13.2), `qwen-tts` 0.1.1
 - **Step 3, graph-ready** ([02](../../python/services/tts-service/spikes/02-predictor-loop/)): our own fixed
   cache, read in fixed slices, no mask: Qwen's exact codes again, and 27.0 ms a frame (RTF 0.38) before
   any graph.
+- **Step 4, the CUDA graph** ([02](../../python/services/tts-service/spikes/02-predictor-loop/)): the 15
+  passes replayed as one graph: exact codes, **20.0 ms a frame** (−42% from Qwen's `generate`), RTF
+  **0.29**, already past the 4.5a spike's D (0.33). With 1, 1, 2, 4: first audio 45 ms, margin 56 ms
+  ([03](../../python/services/tts-service/spikes/03-chunk-schedule/)). Stage 1 done; next the talker.
 - **The chunk schedule** ([03](../../python/services/tts-service/spikes/03-chunk-schedule/)): decode after 1, 1, 2,
   then every 4 frames: first audio **52 ms** (from 143) at the same cost (RTF 0.41), 43 ms of margin
   before a gap. The standard from here on.

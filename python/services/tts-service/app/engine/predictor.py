@@ -24,6 +24,10 @@ Two loops, the same math (every module is Qwen's, called directly):
   as the growing cache, and the same rounding (spikes/02). Nothing to clear between frames: every
   position is written before it's read.
 
+- `GraphCodePredictor` (step 4): `StaticCodePredictor`'s 15 passes recorded once as a **CUDA graph** and
+  replayed every frame: one launch instead of ~1,500 (5 layers × ~18 kernels × 15 passes, plus the
+  sampling), with no Python in between. How, in `_capture`.
+
 The sampling is ours too: Hugging Face's order (temperature, then top-k, then top-p, then a draw), in
 float32 like `generate`.
 """
@@ -136,6 +140,63 @@ class StaticCodePredictor:
             residual, h = h, layer.post_attention_layernorm(h)
             h = residual + layer.mlp(h)
         return model.norm(h)
+
+
+class GraphCodePredictor:
+    """Step 4: the graph-ready loop, captured once per setting and replayed every frame.
+
+    A graph records the GPU work of one run: which kernels, with which arguments, reading and writing
+    which memory addresses. A replay launches all of it again at once, so:
+    - **inputs go into fixed buffers** before each replay (`entry.input.copy_(...)`): the recorded
+      kernels read those addresses, not whatever tensor the caller has;
+    - **outputs come out of fixed buffers** (`entry.output`), overwritten by the next replay;
+    - **one graph per shape and setting:** batch size, greedy or sampled (and its top-k, temperature):
+      each is different recorded work. Captured lazily, the first time each is used (the warm-up
+      captures the sampled one that requests use);
+    - **each graph owns its own `StaticCodePredictor`,** so its cache buffers live as long as it does
+      (a graph holds raw addresses; freed memory reused by something else would be read silently).
+    Random draws work inside a graph: PyTorch's generator advances its offset on every replay, so each
+    replay draws new numbers.
+    """
+
+    def __init__(self, cp):
+        self.cp = cp
+        self._graphs: dict[tuple, SimpleNamespace] = {}
+
+    def __call__(self, inputs_embeds, *, do_sample: bool = False, top_k: int | None = None,
+                 top_p: float | None = None, temperature: float | None = None, **_unused):
+        settings = (dict(do_sample=True, top_k=top_k, top_p=top_p, temperature=temperature) if do_sample
+                    else dict(do_sample=False))
+        key = (tuple(inputs_embeds.shape), inputs_embeds.dtype, *sorted(settings.items()))
+        entry = self._graphs.get(key) or self._capture(key, inputs_embeds, settings)
+        entry.input.copy_(inputs_embeds)
+        entry.graph.replay()
+        return SimpleNamespace(sequences=entry.output.clone())   # the next replay overwrites `output`
+
+    def _capture(self, key, x, settings) -> SimpleNamespace:
+        import torch
+
+        static, x_in = StaticCodePredictor(self.cp), x.clone()
+
+        def run():
+            return static(x_in, **settings).sequences
+
+        # 1. Warm up on a side stream: one-time setup (our buffers, cuBLAS's handles and workspace,
+        #    kernel selection) happens here, not inside the recording, where it would be an error or be
+        #    recorded as if it were per-frame work.
+        side = torch.cuda.Stream()
+        side.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(side):
+            for _ in range(3):
+                run()
+        torch.cuda.current_stream().wait_stream(side)
+        # 2. Record one run. Its temporaries come from the graph's own memory pool, kept for replays.
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            out = run()
+        entry = SimpleNamespace(graph=graph, input=x_in, output=out, static=static)
+        self._graphs[key] = entry
+        return entry
 
 
 def rotate_half(x):

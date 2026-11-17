@@ -15,7 +15,7 @@ Cancelling: the hook raises `Cancelled` at the next frame, which stops generatio
 The code predictor (the 15 codes after each frame's first, predictor.py): `predictor` picks whose loop
 runs it. "qwen" is Hugging Face's `generate`, as Qwen ships it; "ours" is our own loop over the same
 modules (step 2); "ours-static" our own forward over the same modules, with a fixed 16-position cache
-read in fixed slices (graph-ready, step 3).
+read in fixed slices (graph-ready, step 3); "ours-graph" that loop as a CUDA graph (step 4).
 """
 
 from __future__ import annotations
@@ -28,13 +28,13 @@ import numpy as np
 
 from app.engine.base import Cancelled, Voice
 from app.engine.chunker import ChunkDecoder
-from app.engine.predictor import CodePredictor, StaticCodePredictor
+from app.engine.predictor import CodePredictor, GraphCodePredictor, StaticCodePredictor
 
 # Each preset voice's native language (Qwen's README: speakers sound best in their own language).
 NATIVE = {"vivian": "Chinese", "serena": "Chinese", "uncle_fu": "Chinese", "dylan": "Chinese",
           "eric": "Chinese", "ryan": "English", "aiden": "English", "ono_anna": "Japanese", "sohee": "Korean"}
 _DONE = object()
-PREDICTORS = ("qwen", "ours", "ours-static")
+PREDICTORS = ("qwen", "ours", "ours-static", "ours-graph")
 
 
 def max_frames(text: str) -> int:
@@ -63,7 +63,8 @@ class QwenEngine:
         self._model, self._talker, self._codec = model, model.talker, model.speech_tokenizer
         self._eos = model.config.talker_config.codec_eos_token_id
         cp = self._talker.code_predictor
-        self._predictors = {"ours": CodePredictor(cp), "ours-static": StaticCodePredictor(cp)}
+        self._predictors = {"ours": CodePredictor(cp), "ours-static": StaticCodePredictor(cp),
+                            "ours-graph": GraphCodePredictor(cp)}
         # sample_rate stays 24,000: the 12 Hz codec's output_sample_rate (its config); the GPU tests check
         # it against what the codec's own decode reports.
 

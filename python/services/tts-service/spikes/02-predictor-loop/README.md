@@ -55,3 +55,22 @@ cache: `enable_gqa=True`, causal only for the 2-position first pass).
 - **Faster without any graph:** −3.5 ms a frame from step 2. Hugging Face's forward per pass built a
   mask, computed the rotary angles, and grew the cache with `torch.cat` (new memory, a copy of all
   earlier positions); ours does none of that: the angles are computed once, the cache written in place.
+
+## Step 4: the CUDA graph (2026-11-17)
+`GraphCodePredictor`: step 3's 15 passes captured once as a CUDA graph (per batch size and sampling
+setting, lazily; the warm-up captures the sampled one), replayed every frame: copy the talker's two
+vectors into the graph's input buffer, `graph.replay()`, read the 15 codes from its output buffer.
+
+    predictor     ms/frame  first audio    RTF
+    qwen              34.3         57 ms   0.48
+    ours              31.5         55 ms   0.44
+    ours-static       27.5         51 ms   0.39
+    ours-graph        20.0         46 ms   0.29
+
+- **Codes:** Qwen's exact codes (the 3 sentences); sampling works inside the graph (the generator's
+  offset advances on every replay).
+- **−7.5 ms a frame from step 3, −14.3 (−42%) from Qwen's `generate`.** What the graph removes is the
+  CPU's side: ~1,500 kernel launches a frame, each one Python and PyTorch's dispatcher deciding what
+  to run, now one `replay()`. The GPU's own work is unchanged.
+- **Already past the 4.5a spike's D** (`faster-qwen3-tts`, RTF 0.33), which graphs the talker too. The
+  talker (stage 2) is still plain PyTorch on Hugging Face's growing cache.

@@ -1,6 +1,7 @@
 """Spike: how small can the first chunk be? Each chunk size on the real model and GPU (CT 108):
 
     TTS_MODEL=/models/Qwen3-TTS-12Hz-0.6B-CustomVoice python scripts/chunks.py [1 2 4 1,2,4 ...] [--out DIR]
+        [--predictor ours|ours-static|ours-graph]
 
 Per chunk size (frames per decode), or schedule (1,2,4: 1, then 2, then every 4), greedy, our predictor, 3 runs of each sentence, medians:
     first audio   from the call to the first audio
@@ -60,13 +61,17 @@ def snr(engine, voice, text, streamed):
 
 
 def main(args):
-    out = None
+    out, predictor = None, "ours"
     if "--out" in args:
         i = args.index("--out")
         out, args = args[i + 1], args[:i] + args[i + 2:]
         os.makedirs(out, exist_ok=True)
+    if "--predictor" in args:
+        i = args.index("--predictor")
+        predictor, args = args[i + 1], args[:i] + args[i + 2:]
     sizes = [tuple(int(n) for n in a.split(",")) for a in args] or [(4,), (1, 2, 4), (1, 1, 2, 4), (1, 1, 2, 2, 4)]
-    engine = QwenEngine(os.environ["TTS_MODEL"], predictor="ours")
+    engine = QwenEngine(os.environ["TTS_MODEL"], predictor=predictor)
+    print(f"predictor: {predictor}")
     engine.load()
     engine.warm_up()
     sr = engine.sample_rate

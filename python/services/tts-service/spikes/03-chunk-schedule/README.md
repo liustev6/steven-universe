@@ -42,3 +42,14 @@ An earlier run of `1,2,4` stalled once, 123 ms.
 - **Open:** a rare hiccup of ~110–120 ms (twice in ~40 runs, not tied to a schedule) is more than the
   43 ms margin. Candidates: Python's garbage collector, the growing caches' allocations, a decode at a
   new length. Rerun this spike after the CUDA graphs (faster frames widen the margin).
+
+## Rerun with the CUDA-graph predictor (4.5c step 4, 2026-11-17)
+    predictor: ours-graph
+      schedule  first audio   RTF         stalls  margin (worst)      SNR
+             4       102 ms  0.27   0 ms (max   0)   239 ms ( 238)  28.5 dB
+         1,2,4        45 ms  0.27   0 ms (max   0)    38 ms (  36)  28.2 dB
+       1,1,2,4        45 ms  0.28   0 ms (max   0)    56 ms (  54)  28.5 dB
+
+Faster frames widen the margin: 1, 1, 2, 4 from 43 to 56 ms, first audio 52 → 45 ms, no stalls (no
+hiccup in this run either). The second chunk still costs ~24 ms of the first frame's 80: one frame
+(~20 ms) plus its decode. The talker's graph (stage 2) shrinks the frame further.

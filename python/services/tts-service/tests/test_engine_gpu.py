@@ -39,7 +39,7 @@ def predictor(engine, request):
     engine.predictor = "qwen"
 
 
-@pytest.mark.parametrize("predictor", ["qwen", "ours", "ours-static"], indirect=True)
+@pytest.mark.parametrize("predictor", ["qwen", "ours", "ours-static", "ours-graph"], indirect=True)
 @pytest.mark.parametrize("voice, text", SENTENCES)
 def test_streamed_codes_are_qwens_own(engine, predictor, voice, text):
     ours = torch.stack(list(engine.frames(text, voice, sample=False)))
@@ -48,7 +48,7 @@ def test_streamed_codes_are_qwens_own(engine, predictor, voice, text):
     assert torch.equal(ours.cpu(), official.cpu())
 
 
-@pytest.mark.parametrize("predictor", ["ours", "ours-static"], indirect=True)
+@pytest.mark.parametrize("predictor", ["ours", "ours-static", "ours-graph"], indirect=True)
 def test_our_predictor_samples(engine, predictor):
     """With sampling on (the default), our loop's speech still ends: about as long as Qwen's."""
     text = "Sure. Tomorrow looks cloudy in the morning."
