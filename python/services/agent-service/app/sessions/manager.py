@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -287,6 +287,22 @@ class Sessions:
             stored = await self.log.write(db, row, tr.events + extra)
         await self.log.publish(session_id, stored)
         return tr.dropped
+
+    async def conversation(self, conversation_id: uuid.UUID, owner: str | None) -> Conversation:
+        """`owner=None`: any conversation (chat:admin)."""
+        async with self.db() as db:
+            c = await db.get(Conversation, conversation_id)
+        if c is None or (owner is not None and c.owner != owner):
+            raise NotFound("no such conversation")
+        return c
+
+    async def counts(self) -> dict[str, int]:
+        """Live sessions by state, for the status page."""
+        async with self.db() as db:
+            rows = (await db.execute(select(ChatSession.state, func.count()).where(ChatSession.state.in_(LIVE))
+                                     .group_by(ChatSession.state))).all()
+        found = {state.value: n for state, n in rows}
+        return {s.value: found.get(s.value, 0) for s in LIVE}
 
     # ==== timers and lost sandboxes ===============================================================
     async def sweep(self) -> None:

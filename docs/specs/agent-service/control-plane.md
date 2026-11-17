@@ -50,19 +50,40 @@ project: the service and its own **PostgreSQL**.
 Auth: an auth-service token, `aud=agent-service`. Scopes: `chat:write` (start, talk in and end
 your own sessions), `chat:read` (read them and their history), `chat:admin` (everyone's, and the
 kill switch), `status:read` (api-service's status page). The scope each route needs is in its row.
+Code: `app/api/`.
 
 | Route | What |
 |---|---|
-| `POST /v1/sessions` `{profile, conversation_id?}` | `chat:write`: a session for a new conversation, or for one you own (C9). **`201`** a new session (a pod claimed); **`200`** the conversation's live session, already running (C6). Returns `{session_id, conversation_id, state}`. `409` if `profile` isn't the conversation's; `503` (`Retry-After`) if no sandbox. |
-| `POST /v1/sessions/{id}/turns` `{text}` | `chat:write`: one turn: streams protocol B (NDJSON) until its `turn.completed`. `409` if a turn is running. |
-| `GET /v1/sessions/{id}/events?after=<seq>` | `chat:read`: everything after `seq`, then live until the session ends (reconnect, G10) |
-| `GET /v1/sessions/{id}` | `chat:read`: its state: `starting`, `ready`, `busy`, `ended` (with the reason) |
-| `POST /v1/sessions/{id}/cancel` | `chat:write`: interrupt the running turn |
-| `DELETE /v1/sessions/{id}` | `chat:write`: end it: the pod is released |
-| `GET /v1/conversations/{id}/turns` | `chat:read`: the conversation's history (text, timings, usage); a turn's full events with `?events=true` |
+| `POST /v1/sessions` `{profile, conversation_id?}` | `chat:write`: a session for a new conversation, or for one you own (C9). **`201`** a new session (a pod claimed); **`200`** the conversation's live session, already running (C6). Returns the session (below). |
+| `POST /v1/sessions/{id}/turns` `{text}` | `chat:write`: one turn, **streamed** (below) until its `turn.completed`, or the session's end; the turn's id in `X-Turn-Id`. A turn may be sent while the session is `starting`: it waits for the runtime. |
+| `GET /v1/sessions/{id}/events?after=<seq>` | `chat:read`: everything after `seq` (or `Last-Event-ID`), then live, until the session ends (reconnect, G10) |
+| `GET /v1/sessions/{id}` | `chat:read`: `session_id`, `conversation_id`, `state` (`starting`, `ready`, `busy`, `ended`), `end_reason`, `turns_used`, `started_at`, `ready_at`, `ended_at` |
+| `POST /v1/sessions/{id}/cancel` | `chat:write`: interrupt the running turn (`{"interrupted": bool}`) |
+| `DELETE /v1/sessions/{id}` | `chat:write`: end it: the pod is released (`{"ended": bool}`) |
+| `GET /v1/conversations` | `chat:read`: yours, most recently active first, each with its live session if any (`?limit=`) |
+| `GET /v1/conversations/{id}/turns` | `chat:read`: its turns across all its sessions, oldest first (text, status, timings, usage; `?limit=`); each turn's protocol B events too with `?events=true` |
 | `POST /v1/admin/stop`, `POST /v1/admin/start` | `chat:admin`: the kill switch |
-| `GET /v1/status` | for the lab's status page (`status:read`): sessions by state, pods held, PostgreSQL, the login's age, the last backup |
-| `GET /health` | liveness only |
+| `GET /v1/status` | `status:read`, for the lab's status page: `ok`, `stopped`, `database`, live sessions by state; counts only, never ids. (The login's age comes with the broker, piece f; the last backup with 3.5.) |
+| `GET /health` | liveness only, no token |
+
+**Streams are Server-Sent Events** (`text/event-stream`, the W3C EventSource format), as OpenAI's
+and Anthropic's APIs stream: each event is `id: <seq>`, `event: <type>`, `data: <the protocol B
+event as JSON>`. A client that reconnects sends the last `id` back as `Last-Event-ID` (a browser's
+EventSource does this by itself), or uses `?after=`. A comment line (`: keep-alive`) every 15 s
+without events keeps proxies from closing the stream. (Chosen over NDJSON, the first plan: the
+reconnect and the keep-alive are part of the standard instead of ours.)
+
+**Errors are RFC 9457 problem details** (`application/problem+json`: `type`, `title`, `status`,
+`detail`) with a `code` to branch on:
+
+| Status | `code` | When |
+|---|---|---|
+| 400 | `unknown_profile` | no such profile |
+| 404 | `not_found` | no such session or conversation, **or not yours** (C2) |
+| 409 | `profile_mismatch` · `busy` · `ended` | another profile than the conversation's · a turn is running · the session is over (start a new one in the conversation) |
+| 429 | `budget` | the session has used its `max_turns` |
+| 502 | `runner` | the sandbox runner couldn't be reached |
+| 503 | `no_sandbox` (with `Retry-After`) · `stopped` | no pod free right now · the kill switch is on |
 
 **Callers in CP3:** `smoke-test` (deploy smoke tests); the `agent` CLI on CT 107 (client `agent-cli`,
 secret root-only there: `ssh agent-host agent ask "…"`); **api-service** relaying an authenticated
