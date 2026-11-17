@@ -28,7 +28,9 @@ class Limits(BaseModel):
     """Budgets (C13): the gateway refuses the model past any of them."""
 
     model_config = ConfigDict(extra="forbid")
-    wall_seconds: int = Field(3600, gt=0, le=24 * 3600)   # the whole session, then it ends
+    # The whole session, then it ends. At most the runner's own hard limit (its MAX_SESSION_SECONDS,
+    # 3600): past that the runner destroys the pod, and the session would end as sandbox_lost.
+    wall_seconds: int = Field(3600, gt=0, le=3600)
     max_turns: int = Field(100, gt=0)                      # turns per session
     max_turn_tokens: int = Field(200_000, gt=0)            # tokens in one turn, from the runtime's usage events
 

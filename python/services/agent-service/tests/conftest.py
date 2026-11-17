@@ -27,7 +27,7 @@ async def db(database_url):
     engine = make_engine(database_url)
     yield make_sessionmaker(engine)
     async with engine.begin() as conn:
-        await conn.execute(text("TRUNCATE events, turns, sessions, conversations"))
+        await conn.execute(text("TRUNCATE events, turns, sessions, conversations, flags"))
     await engine.dispose()
 
 

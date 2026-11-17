@@ -6,6 +6,7 @@
                     the protocol B counter (`next_seq`), the budgets used
     turns           one question and its answer: the record that carries into new sessions (C9)
     events          every protocol B event, written before anyone sees it (C4); kept forever
+    flags           service-wide switches that must survive a restart: the kill switch (C14)
 
 Schema changes are Alembic migrations (app/db/migrations/), reviewed in git; a test checks that
 these models and the migrations agree.
@@ -43,7 +44,8 @@ class Base(DeclarativeBase):
 
 
 class SessionState(StrEnum):
-    STARTING = "starting"      # claiming a pod; waiting for the runtime's runtime.ready
+    STARTING = "starting"      # claiming a pod; waiting for the runtime's runtime.ready (a turn may
+                               # already be queued: then it's busy, and `ready_at` tells the two apart)
     READY = "ready"            # waiting for a turn
     BUSY = "busy"              # a turn is running
     ENDED = "ended"            # for good; `end_reason` says why
@@ -103,6 +105,7 @@ class ChatSession(Base):
     next_seq: Mapped[int] = mapped_column(BigInteger, default=0)  # the next protocol B seq (one per session)
     turns_used: Mapped[int] = mapped_column(Integer, default=0)   # for max_turns (C13)
     started_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    ready_at: Mapped[datetime | None]                             # runtime.ready arrived (startup time)
     last_activity_at: Mapped[datetime] = mapped_column(server_default=func.now())  # the idle timer (C6)
     ended_at: Mapped[datetime | None]
 
@@ -122,6 +125,9 @@ class Turn(Base):
     duration_ms: Mapped[int | None]
     usage: Mapped[dict[str, Any] | None]
     started_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # When the runtime's long poll picked it up. After a restart, a running turn that was never
+    # delivered is sent again; a delivered one isn't (the runtime would refuse it as "busy").
+    delivered_at: Mapped[datetime | None]
     completed_at: Mapped[datetime | None]
 
 
@@ -143,3 +149,15 @@ class Event(Base):
     source_seq: Mapped[int | None] = mapped_column(BigInteger)
     ts: Mapped[datetime]
     payload: Mapped[dict[str, Any]]
+
+
+class Flag(Base):
+    """A service-wide switch. `stopped` is the kill switch (C14): set, no session starts, and it
+    stays set across restarts and deploys until someone resumes."""
+
+    __tablename__ = "flags"
+
+    name: Mapped[str] = mapped_column(String(32), primary_key=True)
+    value: Mapped[bool]
+    changed_by: Mapped[str] = mapped_column(String(200))
+    changed_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())

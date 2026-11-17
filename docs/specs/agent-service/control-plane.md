@@ -35,7 +35,7 @@ project: the service and its own **PostgreSQL**.
 | C2 | **A session belongs to its caller:** the token's client, or, when a trusted relay (api-service) passes a caller on, that caller (`on_behalf_of`). Only the owner (or `chat:admin`) can use, read or end it; anyone else gets 404, not 403 (no probing for ids). **Scopes are verbs, not profiles:** `chat:read`, `chat:write`, `chat:admin`; the request names the profile, and any caller with `chat:write` may start any profile. Identity is only the client id: no "acting as a person" until there's more than one. | One client can't read another's sessions (CP3's "done when"). A fixed set of scopes, not one per profile; a profile's cost is bounded by its own limits (C13). Limiting callers to some profiles, skills or tools later is an `authorization_details` type (RFC 9396, like file-management's `file_access`), not more scopes. |
 | C3 | **Callers see protocol B v0** (below): protocol A translated at full fidelity, plus agent-service's own events, one `seq` per session. **Every caller gets every event;** a client shows what it needs (a voice client reads only `message.*`). `seq` only increases and **may skip numbers**, so a server-side filter can be added later without breaking callers. | A stable, caller-shaped contract. Every caller today is trusted and holds a token; filtering on the server matters once a reader is trusted less than the data. |
 | C4 | **Every event is written to PostgreSQL before anyone sees it** (G10). Listeners get it from memory; a reconnect (`?after=`) reads the rest from the table. | Nothing lost to a dropped connection or a restart. |
-| C5 | **Sessions survive an agent-service restart.** Their state (sandbox, capability hash, owner) is in PostgreSQL; on start, agent-service reloads active sessions, and their runtimes' long polls reconnect to the new process. | Deploys of agent-service don't end conversations. |
+| C5 | **Sessions survive an agent-service restart.** Their state (sandbox, capability hash, owner, timers) is in PostgreSQL; on start, agent-service reloads live sessions, and their runtimes' long polls reconnect to the new process. Memory holds only what can be rebuilt: each session's queue to its runtime and its translator. A running turn the runtime never picked up (`turns.delivered_at` empty) is sent again; one it did pick up isn't. A session we died while claiming for (no pod recorded) ends `failed`. | Deploys of agent-service don't end conversations. |
 | C6 | **A session claims its pod at start** (the profile's template), and releases it on `DELETE`, after **5 idle minutes**, or at the profile's wall time. **A lost sandbox ends the session** (`session.status` `ended`, reason `sandbox_lost`): the caller starts a new session in the same conversation, and agent-service rebuilds its history from `turns` (C9). The CLI and api-service's relay do this by themselves. **One live session per conversation:** continuing a conversation that has a live session returns that session (no new pod); a new pod is claimed only once it has ended. **A conversation keeps its profile:** continuing it with another is `409`. | Ready by the first turn (~0.5 s); single-use pods (R6). One way to recover, the same as any new session; a runner deploy (which ends its pods) costs a reconnect, not the conversation. One live session keeps a conversation one thread: two sandboxes would each see only half of it. The database enforces it (a partial unique index), so racing starts can't both claim. |
 | C7 | **The capability** is 256 random bits, given only to the runner (the session file); agent-service stores only its SHA-256. A request needs it **and** the pod's `X-Sandbox-Id`. It dies with the session. | A stolen capability is useless from another pod (the CP2 theft test) and after the session. |
 | C8 | **History lives in PostgreSQL** (decision 2): conversations, sessions, turns, events. | Continuity, and the cost policy (C9). |
@@ -44,7 +44,7 @@ project: the service and its own **PostgreSQL**.
 | C11 | **The auth broker (model-access.md MA1–MA6) lives here:** your ChatGPT login in `/var/lib/agent-service/codex-home`, refreshed by Codex in this one process, each refreshed bundle written to OpenBao (`kv/services/agent-service/codex_auth`); restored from there if the disk is new. | One owner of the login (MA2); a rebuilt host comes back without a new login (MA3). |
 | C12 | **Profiles are a reviewed file:** `infra/services/agent-service/profiles.yaml`, installed by every deploy (the deployer's `files`). | Changing what an agent may do is a reviewed diff (G5). |
 | C13 | **Budgets are enforced at the gateway** (G14): turns per session, tokens per turn (counted from the model responses the gateway relays, never from what the sandbox reports), and the profile's wall time; past one, the model route refuses and the turn fails with a clear `error`. | The sandbox is assumed compromised; only the gateway's limits are real. |
-| C14 | **The kill switch:** `DELETE` a session; `POST /v1/admin/stop` (`chat:admin`) ends every session and refuses new ones until `…/start`; or stop the runner. | One call stops everything, without touching hosts. |
+| C14 | **The kill switch:** `DELETE` a session; `POST /v1/admin/stop` (`chat:admin`) ends every session and refuses new ones until `…/start`; or stop the runner. The switch is a row in `flags`, so it stays on across restarts and deploys. | One call stops everything, without touching hosts. |
 
 ## The sessions API (443, callers)
 Auth: an auth-service token, `aud=agent-service`. Scopes: `chat:write` (start, talk in and end
@@ -91,6 +91,28 @@ started; tool output and error messages are capped again. Code: `app/translate.p
 
 **Never sent:** the capability, sandbox ids, internal addresses, other sessions,
 your plan's account details (A's `model.usage_updated` stays internal: the gateway uses it for C13).
+
+## The sessions core (`app/sessions.py`)
+```
+starting ──runtime.ready──▶ ready ◀──turn.completed── busy
+   │  └──────────turn (queued until the runtime is ready)──▶ │
+   │                          │ ──turn──────────────▶ │
+   └──────────────┬───────────┴───────────────────────┘
+                  ▼
+                ended    deleted · idle · wall_time · sandbox_lost · stopped · failed
+```
+- **Start:** the session row is inserted (`starting`) before the pod is claimed, so the
+  one-live-session index decides a race and only the winner claims. No pod (`503`): the rows are
+  removed, nothing is left behind.
+- **A state change and the events announcing it commit together** (the event log writes inside the
+  caller's transaction): a turn's row is `completed` exactly when its `turn.completed` is stored.
+- **The sweep** (every 15 s) reads the table and ends what has to end: never ready within 60 s
+  (`failed`), the profile's wall time, 5 idle minutes (only when `ready`: a long turn is never
+  idle), or a pod the runner no longer lists as claimed (`sandbox_lost`; nothing is judged lost
+  while the runner can't be reached). It reads the sessions before the runner's list, so a pod
+  claimed in between can't look lost.
+- **A profile's wall time is at most 3600 s**, the runner's own hard limit, past which it destroys
+  the pod.
 
 ## The gateway (8443, sandboxes)
 Reached only through a pod's proxy (R12), which stamps `X-Sandbox-Id`.
@@ -141,9 +163,10 @@ time): `AgentProfile.runtime()` in `app/profiles.py`.
 | Table | Holds | Key |
 |---|---|---|
 | `conversations` | owner, profile (fixed for its life), created, last active | `id` (UUID) |
-| `sessions` | conversation, owner, sandbox id, capability hash, state, `next_seq`, turns used, started, last activity, ended, end reason | `id`; at most one not `ended` per conversation |
-| `turns` | conversation, session, user text, reply text, status, timings, usage | `id`; ordered per conversation |
-| `events` | session, `seq`, `ts`, `type`, turn, payload (the protocol B event, full fidelity) | (`session_id`, `seq`) |
+| `sessions` | conversation, owner, sandbox id, capability hash, state, `next_seq`, turns used, started, ready (runtime.ready arrived), last activity, ended, end reason | `id`; at most one not `ended` per conversation |
+| `turns` | conversation, session, user text, reply text, status, timings, usage, delivered (to the runtime) | `id`; ordered per conversation |
+| `events` | session, `seq`, `ts`, `type`, turn, protocol A's seq (a retried batch is stored once), payload (the protocol B event, full fidelity) | (`session_id`, `seq`) |
+| `flags` | name, value, changed by, changed at: the kill switch (C14) | `name` |
 
 - **Events are stored as sent:** the protocol B event, full fidelity.
 - **Retention: everything is kept,** turns and events. A few GB a year at home scale; agent-service's

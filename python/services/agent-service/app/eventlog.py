@@ -3,6 +3,7 @@ anyone sees it, then handed to listeners from memory.
 
     append(session, events)        number them (one `seq` per session) and store them, in one
                                    transaction; a runtime's retried events are stored once
+    write(db, session, events)     the same, inside a caller's transaction; then publish()
     read(session, after)           the stored events after `seq`, oldest first
     follow(session, after)         read, then wait for more: what a stream or a reconnect uses
 
@@ -25,7 +26,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import ChatSession, Event
 
@@ -61,42 +62,51 @@ class EventLog:
 
     # ---- writing ---------------------------------------------------------------------------------
     async def append(self, session_id: uuid.UUID, events: Sequence[NewEvent]) -> list[dict[str, Any]]:
-        """Store `events` in order and return them as stored (the protocol B payloads). Events whose
-        `source_seq` is already stored for this session are skipped: a retried batch."""
+        """Store `events` in their own transaction and publish them. See `write`."""
         if not events:
             return []
-        stored: list[dict[str, Any]] = []
         async with self._db.begin() as db:
             session = await db.get(ChatSession, session_id, with_for_update=True)
             if session is None:
                 raise UnknownSession(str(session_id))
-            sources = [e.source_seq for e in events if e.source_seq is not None]
-            seen: set[int] = set()
-            if sources:
-                seen = set(await db.scalars(
-                    select(Event.source_seq).where(Event.session_id == session_id, Event.source_seq.in_(sources))))
-            for e in events:
-                if e.source_seq is not None:
-                    if e.source_seq in seen:
-                        continue
-                    seen.add(e.source_seq)
-                seq = session.next_seq
-                session.next_seq += 1
-                ts = e.ts or datetime.now(UTC)
-                payload = {
-                    "v": PROTOCOL_VERSION, "session_id": str(session_id),
-                    "conversation_id": str(session.conversation_id),
-                    "turn_id": str(e.turn_id) if e.turn_id else None,
-                    "seq": seq, "ts": ts.isoformat(), "type": e.type, **e.data,
-                }
-                db.add(Event(session_id=session_id, seq=seq, type=e.type, turn_id=e.turn_id,
-                             source_seq=e.source_seq, ts=ts, payload=payload))
-                stored.append(payload)
-            last = session.next_seq - 1
-        # Committed: now listeners may see them.
-        if stored:
-            await self._signal(session_id, last)
+            stored = await self.write(db, session, events)
+        await self.publish(session_id, stored)
         return stored
+
+    async def write(self, db: AsyncSession, session: ChatSession, events: Sequence[NewEvent]) -> list[dict[str, Any]]:
+        """Number and add `events` inside the caller's transaction, so they commit together with the
+        caller's other changes (a turn's row, the session's state) or not at all. `session` must be
+        locked (SELECT … FOR UPDATE). Events whose `source_seq` is already stored for this session
+        are skipped: a retried batch. Call `publish` after the commit."""
+        stored: list[dict[str, Any]] = []
+        sources = [e.source_seq for e in events if e.source_seq is not None]
+        seen: set[int] = set()
+        if sources:
+            seen = set(await db.scalars(
+                select(Event.source_seq).where(Event.session_id == session.id, Event.source_seq.in_(sources))))
+        for e in events:
+            if e.source_seq is not None:
+                if e.source_seq in seen:
+                    continue
+                seen.add(e.source_seq)
+            seq = session.next_seq
+            session.next_seq += 1
+            ts = e.ts or datetime.now(UTC)
+            payload = {
+                "v": PROTOCOL_VERSION, "session_id": str(session.id),
+                "conversation_id": str(session.conversation_id),
+                "turn_id": str(e.turn_id) if e.turn_id else None,
+                "seq": seq, "ts": ts.isoformat(), "type": e.type, **e.data,
+            }
+            db.add(Event(session_id=session.id, seq=seq, type=e.type, turn_id=e.turn_id,
+                         source_seq=e.source_seq, ts=ts, payload=payload))
+            stored.append(payload)
+        return stored
+
+    async def publish(self, session_id: uuid.UUID, stored: list[dict[str, Any]]) -> None:
+        """After the commit: wake this session's listeners."""
+        if stored:
+            await self._signal(session_id, stored[-1]["seq"])
 
     async def _signal(self, session_id: uuid.UUID, last: int) -> None:
         self._latest[session_id] = max(last, self._latest.get(session_id, -1))

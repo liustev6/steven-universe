@@ -1,4 +1,4 @@
-"""the history: conversations, sessions, turns, events (control-plane.md "History")
+"""the history: conversations, sessions, turns, events; flags (control-plane.md "History", C14)
 
 Revision ID: 0001
 Revises: (none)
@@ -27,6 +27,13 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id', name=op.f('pk_conversations'))
     )
     op.create_index(op.f('ix_conversations_owner'), 'conversations', ['owner'], unique=False)
+    op.create_table('flags',
+    sa.Column('name', sa.String(length=32), nullable=False),
+    sa.Column('value', sa.Boolean(), nullable=False),
+    sa.Column('changed_by', sa.String(length=200), nullable=False),
+    sa.Column('changed_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.PrimaryKeyConstraint('name', name=op.f('pk_flags'))
+    )
     op.create_table('sessions',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('conversation_id', sa.Uuid(), nullable=False),
@@ -38,6 +45,7 @@ def upgrade() -> None:
     sa.Column('next_seq', sa.BigInteger(), nullable=False),
     sa.Column('turns_used', sa.Integer(), nullable=False),
     sa.Column('started_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('ready_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('last_activity_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('ended_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['conversation_id'], ['conversations.id'], name=op.f('fk_sessions_conversation_id_conversations')),
@@ -72,6 +80,7 @@ def upgrade() -> None:
     sa.Column('duration_ms', sa.Integer(), nullable=True),
     sa.Column('usage', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('started_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('delivered_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['conversation_id'], ['conversations.id'], name=op.f('fk_turns_conversation_id_conversations')),
     sa.ForeignKeyConstraint(['session_id'], ['sessions.id'], name=op.f('fk_turns_session_id_sessions')),
@@ -92,5 +101,6 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_sessions_owner'), table_name='sessions')
     op.drop_index(op.f('ix_sessions_conversation_id'), table_name='sessions')
     op.drop_table('sessions')
+    op.drop_table('flags')
     op.drop_index(op.f('ix_conversations_owner'), table_name='conversations')
     op.drop_table('conversations')
