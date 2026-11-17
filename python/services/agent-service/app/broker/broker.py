@@ -5,7 +5,8 @@
     headers()     per model request: the current access token and account id, read from auth.json
                   (a refresh may have just rewritten it)
     refresh()     Codex refreshes it; one at a time, and callers who waited behind a refresh reuse it
-    keep_fresh()  every few hours, so the refresh token stays in use and never lapses (MA4)
+    keep_fresh()  every few hours, so the refresh token stays in use and never lapses (MA4); and
+                  every 10 minutes, OpenBao caught up with the disk (a CLI login, a failed save)
     status()      for the status page: signed in, the login's age, whether OpenBao has it
 
 Every refresh that changes the login is saved to OpenBao. A failed save is logged and shown on the
@@ -84,13 +85,20 @@ class AuthBroker:
             logger.info("login refreshed (last_refresh %s -> %s)", before, self._last_refresh())
         await self.save()
 
-    async def keep_fresh(self) -> None:
+    async def keep_fresh(self, tick: float = 600) -> None:
+        """Refresh every `refresh_every`; in between, every `tick`, catch OpenBao up with the disk: a
+        login made by `python -m app.broker login` (another process), or a save that failed."""
+        next_refresh = time.monotonic() + self.refresh_every
         while True:
-            await asyncio.sleep(self.refresh_every)
+            await asyncio.sleep(max(0.0, min(tick, next_refresh - time.monotonic())))
             try:
-                await self.refresh()
+                if time.monotonic() >= next_refresh:
+                    next_refresh = time.monotonic() + self.refresh_every
+                    await self.refresh()
+                else:
+                    await self.save()
             except Exception:                        # the next request's 401 retries; status shows its age
-                logger.exception("scheduled refresh failed")
+                logger.exception("scheduled refresh or save failed")
 
     # ---- the durable copy in OpenBao (MA3) -------------------------------------------------------
     async def save(self) -> None:

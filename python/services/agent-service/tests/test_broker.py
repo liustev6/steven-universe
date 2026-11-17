@@ -101,6 +101,30 @@ async def test_a_failed_save_is_not_fatal(home):
     assert b.status()["saved_to_openbao"] is False
 
 
+async def test_a_login_made_by_another_process_is_saved_by_the_running_service(home):
+    """`python -m app.broker login` saved it itself; the running service learns of it on its next tick."""
+    store = FakeStore()
+    b = broker(home, store)
+    await b.restore()                                          # started before the login: nothing anywhere
+    write(home, bundle("from-the-cli"))                        # the CLI signs in (and saves on its own)
+    assert b.status()["saved_to_openbao"] is False
+    keeper = asyncio.create_task(b.keep_fresh(tick=0.05))
+    await asyncio.sleep(0.2)
+    keeper.cancel()
+    assert b.status()["saved_to_openbao"] is True
+    assert json.loads(store.value)["tokens"]["access_token"] == "from-the-cli"
+
+
+async def test_keep_fresh_refreshes_when_due(home):
+    write(home, bundle("old"))
+    calls = []
+    b = AuthBroker(home, FakeStore(), refresh_every=0.1, refresher=codex_refresh_to("new", calls))
+    keeper = asyncio.create_task(b.keep_fresh(tick=0.02))
+    await asyncio.sleep(0.35)
+    keeper.cancel()
+    assert calls and b.headers()["authorization"] == "Bearer new"
+
+
 # ---- restore at start (MA3) -----------------------------------------------------------------------
 async def test_a_new_disk_is_restored_from_openbao(home):
     store = FakeStore(bundle("saved"))
