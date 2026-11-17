@@ -104,7 +104,10 @@ step "3/5 Agents"
 page() { curl -s --max-time 15 "$STATUS"; }
 for i in $(seq 1 30); do page | json 'd["services"]["agent-service"]["details"]["stopped"]' >/dev/null && break; sleep 5; done
 case "$(page | json 'd["services"]["agent-service"]["details"]["stopped"]' 2>/dev/null)" in
-    True)  if pct exec "$AGENT_CT" -- /usr/local/bin/agent start >/dev/null 2>&1; then ok "resumed (the kill switch was on)"; else fail "couldn't resume: run 'agent start' on CT $AGENT_CT"; fi ;;
+    True)  if pct exec "$AGENT_CT" -- /usr/local/bin/agent start >/dev/null 2>&1; then
+               ok "resumed (the kill switch was on)"
+               sleep 6                                  # the status page caches for 5 s: let it see the change
+           else fail "couldn't resume: run 'agent start' on CT $AGENT_CT"; fi ;;
     False) ok "running (the kill switch is off)" ;;
     *)     warn "agent-service doesn't answer yet; check its line below" ;;
 esac
@@ -130,6 +133,8 @@ for name, s in sorted(p["services"].items()):
     if name == "agent-service" and d.get("login"):
         login = d["login"]
         note = f"login: signed in={login['signed_in']}, saved to OpenBao={login['saved_to_openbao']}"
+        if d.get("stopped"):
+            note = "stopped (the kill switch is on); " + note
     mark = f"{G}✓" if s["ok"] else f"{R}✗"
     print(f"  {mark}{N} {name:<16} {note}")
 print("  everything ok" if p["ok"] else "  NOT everything is ok: see above")
