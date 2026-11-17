@@ -9,7 +9,9 @@ Per chunk size (frames per decode), or schedule (1,2,4: 1, then 2, then every 4)
     stalls        a simulated player starting at the first audio: total time it waited for audio
                   (0: smooth; above 0: an audible gap)
     margin        the least audio the player still had queued when a chunk arrived (how close to a gap)
-    SNR           streamed vs the whole sentence decoded at once, in dB (above ~20: no audible difference)
+    SNR           streamed vs the same frames decoded at once, in dB (above ~20: no audible difference).
+                  The engine's own frames (greedy is deterministic), not Qwen's: a fused engine picks
+                  differently at near-ties, a different take of the sentence, not worse chunking.
 With --out, one WAV per chunk size and sentence, to listen to.
 """
 
@@ -51,7 +53,7 @@ def one(engine, voice, text, sr):
 def snr(engine, voice, text, streamed):
     import torch
 
-    codes = engine.official_codes(text, voice)
+    codes = torch.stack(list(engine.frames(text, voice, sample=False)))
     with torch.inference_mode():
         whole, _ = engine._codec.decode([{"audio_codes": codes}])
     whole = np.asarray(whole[0], dtype=np.float32)

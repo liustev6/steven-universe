@@ -115,6 +115,11 @@ PyTorch 2.15.0 (CUDA 13.2), `qwen-tts` 0.1.1
   → 1, the predictor's kernels 4,665 → ~2,460: **18.3 ms a frame**, RTF 0.27, first audio 43 ms. Not
   bit-exact (1 element in 735,000 one bfloat16 step off), so fused paths are tested by the near-tie
   standard above: 6 different picks in 2,790 steps, all near-ties.
+- **The rotary embedding and the cache write as one kernel** ([06](../../python/services/tts-service/spikes/06-fused-rope/)):
+  14 kernels → 1, **bit-exact** once the compiler's FMA contraction is off (it rounds once where PyTorch
+  rounds twice). **17.0 ms a frame**, RTF 0.25; with 1, 1, 2, 4: first audio 39 ms, margin 60 ms. The
+  predictor's GPU time 11.8 → 8.5 ms, 83% of it matrix multiplies (the weights' floor: ~5.2 ms): the
+  talker is the larger target now.
 - **The chunk schedule** ([03](../../python/services/tts-service/spikes/03-chunk-schedule/)): decode after 1, 1, 2,
   then every 4 frames: first audio **52 ms** (from 143) at the same cost (RTF 0.41), 43 ms of margin
   before a gap. The standard from here on.

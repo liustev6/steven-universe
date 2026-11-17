@@ -41,3 +41,31 @@ def test_rms_norm_matches_qwens(shape):
     print(f"{shape}: {differing} of {total} elements differ; worst {worst:.2f} bfloat16 steps")
     assert worst <= 1.01
     assert differing / total < 1e-3
+
+
+def rotate_half(x):
+    return torch.cat((-x[..., x.shape[-1] // 2:], x[..., : x.shape[-1] // 2]), dim=-1)
+
+
+@pytest.mark.parametrize("batch, n, start", [(1, 2, 0), (1, 1, 5), (1, 1, 15), (3, 2, 0), (2, 1, 9)])
+def test_rope_and_cache_is_bit_exact(batch, n, start):
+    """No sums, so nothing reordered: the same three roundings as Qwen's, so the same bits."""
+    from app.engine.kernels import rope_and_cache
+
+    torch.manual_seed(start)
+    dt, dev, d = torch.bfloat16, "cuda", 128
+    q = torch.randn(batch, n, 16, d, device=dev).to(dt)
+    k = torch.randn(batch, n, 8, d, device=dev).to(dt)
+    v = torch.randn(batch, n, 8, d, device=dev).to(dt)
+    angles = torch.arange(16, device=dev)[:, None] * (1e6 ** (-torch.arange(0, d, 2, device=dev) / d))[None]
+    cos, sin = torch.cat([angles, angles], -1).cos().to(dt), torch.cat([angles, angles], -1).sin().to(dt)
+    keys, values = torch.zeros(batch, 8, 16, d, device=dev, dtype=dt), torch.zeros(batch, 8, 16, d, device=dev, dtype=dt)
+    got_q = rope_and_cache(q, k, v, cos, sin, keys, values, start)
+    c, s = cos[start:start + n][None, None], sin[start:start + n][None, None]
+    qt, kt = q.transpose(1, 2), k.transpose(1, 2)                  # Qwen's path
+    want_q, want_k = qt * c + rotate_half(qt) * s, kt * c + rotate_half(kt) * s
+    assert torch.equal(got_q, want_q)
+    assert torch.equal(keys[:, :, start:start + n], want_k)
+    assert torch.equal(values[:, :, start:start + n], v.transpose(1, 2))
+    others = torch.ones(16, dtype=torch.bool); others[start:start + n] = False
+    assert not keys[:, :, others].any() and not values[:, :, others].any()      # nothing else written

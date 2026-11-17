@@ -28,7 +28,7 @@ Two loops, the same math (every module is Qwen's, called directly):
   replayed every frame: one launch instead of ~1,500 (5 layers × ~18 kernels × 15 passes, plus the
   sampling), with no Python in between. How, in `_capture`.
 - Fused (A, after spikes/04): the same, with our own Triton kernels (kernels.py) in place of PyTorch's
-  chains of small ones: first the RMSNorm (8 kernels → 1).
+  chains of small ones: the RMSNorm (8 kernels → 1), the rotary embedding with the cache write (14 → 1).
 
 The sampling is ours too: Hugging Face's order (temperature, then top-k, then top-p, then a draw), in
 float32 like `generate`.
@@ -73,7 +73,8 @@ class CodePredictor:
 
 class StaticCodePredictor:
     """Step 3: graph-ready. Fixed buffers, fixed shapes per pass, no CPU work that depends on values.
-    `fused`: the RMSNorms as our one-kernel Triton version (kernels.py) instead of Qwen's 8 kernels."""
+    `fused`: our Triton kernels (kernels.py) in place of PyTorch's chains of small ones: the RMSNorms
+    (8 kernels → 1), and the rotary embedding with the cache write (14 → 1)."""
 
     def __init__(self, cp, *, fused: bool = False):
         self.cp, self.fused = cp, fused
@@ -147,12 +148,17 @@ class StaticCodePredictor:
             a = layer.self_attn
             residual, h = h, norm(layer.input_layernorm, h)
             shape = (*h.shape[:-1], -1, a.head_dim)               # (batch, n, heads, head_dim)
-            q = norm(a.q_norm, a.q_proj(h).view(shape)).transpose(1, 2)
-            k = norm(a.k_norm, a.k_proj(h).view(shape)).transpose(1, 2)
-            v = a.v_proj(h).view(shape).transpose(1, 2)
-            q, k = q * cos + rotate_half(q) * sin, k * cos + rotate_half(k) * sin
-            keys[:, :, start:end].copy_(k)                        # write into the fixed cache…
-            values[:, :, start:end].copy_(v)
+            q, k = norm(a.q_norm, a.q_proj(h).view(shape)), norm(a.k_norm, a.k_proj(h).view(shape))
+            v = a.v_proj(h).view(shape)
+            if self.fused:                                        # rotate, and write k, v into the cache
+                from app.engine.kernels import rope_and_cache
+
+                q = rope_and_cache(q, k, v, b.cos[0, 0], b.sin[0, 0], keys, values, start)
+            else:
+                q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
+                q, k = q * cos + rotate_half(q) * sin, k * cos + rotate_half(k) * sin
+                keys[:, :, start:end].copy_(k)                    # write into the fixed cache…
+                values[:, :, start:end].copy_(v)
             out = F.scaled_dot_product_attention(                 # …and read the written slice only
                 q, keys[:, :, :end], values[:, :, :end], scale=a.scaling, is_causal=n > 1, enable_gqa=True)
             out = out.transpose(1, 2).contiguous().reshape(*h.shape[:-1], -1)
