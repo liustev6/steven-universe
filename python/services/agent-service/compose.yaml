@@ -1,0 +1,80 @@
+# agent-service on CT 107, with its own PostgreSQL. Spec: docs/specs/agent-service/control-plane.md.
+# Deployed by infra/deployment/deploy.sh agent-service (later the pipeline).
+#
+# Host layout:
+#   /etc/agent-service/config.env, profiles.yaml        from infra/services/agent-service/, by every deploy
+#   /etc/agent-service/credentials/client_secret         host-only (add-client.sh): its auth-service identity
+#   /etc/agent-service/credentials/postgres_password     from OpenBao, owner 10001: agent-service's copy
+#   /etc/agent-service/postgres/password                 from OpenBao, owner 70: PostgreSQL's copy
+#   /etc/agent-service/tls/cert.pem, key.pem             agent.lan.liustev6.ca (both listeners)
+#   /var/lib/agent-service/codex-home/                   your ChatGPT login (the auth broker, C11)
+#   /var/lib/agent-service/postgres/                     the history (C8), backed up nightly (C10)
+name: agent-service
+
+services:
+  agent-service:
+    image: ghcr.io/liustev6/steven-universe/agent-service:${IMAGE_TAG:-local}   # IMAGE_TAG: set by deploy-target.sh (deployer spec D1a)
+    build:
+      context: ../..                    # python/, so libs/service-auth and libs/agent-runtime are included
+      dockerfile: services/agent-service/Dockerfile
+      args:
+        REVISION: ${REVISION:-unknown}
+    restart: unless-stopped
+    # The hash of its config files (profiles.yaml), set by deploy-target.sh: a new profiles.yaml
+    # changes it, so compose recreates the service, which reads profiles at start.
+    labels:
+      dev.steven-universe.config-files: ${CONFIG_FILES_SHA:-none}
+    depends_on:
+      postgres: {condition: service_healthy}
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    # Two listeners (C1). Host 443 -> 8443: the sessions API (callers).
+    # Host 8443 -> 9443: the gateway (sandboxes only: VM 200's firewall reaches only this port).
+    ports: ["443:8443", "8443:9443"]
+    # SIGTERM: both listeners stop, open streams get 5 s; sessions survive the restart (C5).
+    stop_grace_period: 20s
+    env_file: /etc/agent-service/config.env
+    volumes:
+      - /etc/agent-service/profiles.yaml:/etc/agent-service/profiles.yaml:ro
+      - /etc/agent-service/tls:/etc/agent-service/tls:ro
+      - /etc/agent-service/credentials:/run/secrets:ro     # client_secret, postgres_password
+      - /var/lib/agent-service/codex-home:/var/lib/agent-service/codex-home
+    networks: [default, db]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}
+
+  postgres:
+    # Pinned (tag and digest); upgrade deliberately: a new major version needs pg_upgrade or a
+    # dump and restore (the nightly backup, C10).
+    image: postgres:17.12-alpine@sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7
+    restart: unless-stopped
+    read_only: true
+    user: "70:70"                       # the image's postgres user; owns the data directory (pre-start hook)
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp", "/var/run/postgresql"]
+    environment:
+      POSTGRES_USER: agent
+      POSTGRES_DB: agent
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password      # read on the first start only
+    volumes:
+      - /var/lib/agent-service/postgres:/var/lib/postgresql/data
+      - /etc/agent-service/postgres/password:/run/secrets/postgres_password:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "agent", "-d", "agent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [db]                      # no ports: only agent-service reaches it
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}
+
+networks:
+  db:
+    internal: true                      # no route out: PostgreSQL can't reach anything, nor be reached

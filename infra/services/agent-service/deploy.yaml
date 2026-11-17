@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=../deploy.schema.json
+# agent-service: the agents' control plane on CT 107, with its own PostgreSQL.
+# Read by OpenTofu (infra/secrets-manager/tofu/services.tf) and by the deploy (infra/deployment/).
+# Spec: docs/specs/agent-service/control-plane.md.
+service: agent-service
+host: agent-host
+pipeline: false                        # by hand until its first deploy is checked (lxc-setup.md, part 2; CP3 3.7)
+wave: 1
+code: python/services/agent-service
+libs: [service-auth, agent-runtime]    # in the image (its Dockerfile copies both; CI checks)
+compose: python/services/agent-service/compose.yaml
+config: infra/services/agent-service/config.env       # -> /etc/agent-service/config.env
+files:                                                # -> /etc/agent-service/<name>
+  - infra/services/agent-service/profiles.yaml
+url: https://agent.lan.liustev6.ca
+health: https://agent.lan.liustev6.ca/health
+smoke_test:
+  script: python/services/agent-service/scripts/smoke_test.py
+  secret: /root/.secrets/smoke-test-client   # delivered from kv/shared/smoke_test_client_secret
+hooks:
+  pre_start: infra/services/agent-service/hooks/pre-start.sh   # data folders, PostgreSQL's image
+certificate:
+  name: agent.lan.liustev6.ca
+  hook: python/services/agent-service/scripts/cert-hook.sh   # -> /usr/local/sbin/agent-service-cert-hook
+
+# Managed secrets: values in OpenBao at kv/<from>, written to <to> (mode 600) on every deploy.
+# The PostgreSQL password goes to two files: one each for agent-service (uid 10001) and PostgreSQL
+# (uid 70), since each reads it as its own user.
+secrets:
+  - from: services/agent-service/postgres_password
+    to: /etc/agent-service/credentials/postgres_password
+    owner: "10001:10001"
+  - from: services/agent-service/postgres_password
+    to: /etc/agent-service/postgres/password
+    owner: "70:70"
+  - from: shared/smoke_test_client_secret
+    to: /root/.secrets/smoke-test-client
+    owner: "0:0"
+  - from: shared/cloudflare_dns_token
+    to: /root/.secrets/cloudflare.ini
+    owner: "0:0"
+    format: "dns_cloudflare_api_token = {value}\n"   # certbot's credentials file
+
+# Host-only: created on CT 107 and never copied anywhere (add-client.sh, CP3 3.3). Your ChatGPT
+# login (/var/lib/agent-service/codex-home) isn't listed: the service restores it from OpenBao itself.
+host_only:
+  - /etc/agent-service/credentials/client_secret

@@ -14,6 +14,11 @@ from sqlalchemy.engine import URL
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="AGENT_", extra="ignore")
 
+    # ---- The two listeners (C1): host 443 -> API_PORT, host 8443 -> GATEWAY_PORT ----------------
+    API_PORT: int = 8443                         # the sessions API, for callers
+    GATEWAY_PORT: int = 9443                     # the gateway, for sandboxes only (VM 200's firewall)
+    TLS_DIR: Path = Path("/etc/agent-service/tls")   # cert.pem, key.pem for agent.lan.liustev6.ca (both ports)
+
     # ---- What agents can be (C12) --------------------------------------------------------------
     PROFILES_FILE: Path = Path("/etc/agent-service/profiles.yaml")
 

@@ -43,10 +43,8 @@ class HttpRunner:
         self._http = http
 
     @classmethod
-    def from_env(cls, base_url: str) -> "HttpRunner":
-        from service_auth import TokenClient
-
-        tokens = TokenClient.from_env()
+    def connect(cls, base_url: str, tokens) -> "HttpRunner":
+        """With agent-service's own tokens (service-auth's TokenClient), audience sandbox-runner."""
         # The runner waits up to its CLAIM_WAIT_SECONDS (10) for a pod still warming up.
         return cls(httpx.AsyncClient(base_url=base_url, timeout=httpx.Timeout(10.0, read=30.0),
                                      auth=tokens.auth("sandbox-runner", scopes=SCOPES)))

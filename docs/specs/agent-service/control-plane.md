@@ -26,7 +26,17 @@ agent-service ──(token, aud=file-management)──▶ file-management (night
 ```
 
 **It runs on CT 107** (`agent.lan.liustev6.ca`), deployed by the pipeline (wave 1), as one compose
-project: the service and its own **PostgreSQL**.
+project: the service and its own **PostgreSQL** (`python/services/agent-service/compose.yaml`).
+
+| | |
+|---|---|
+| **one process, two listeners** | `app/main.py`: uvicorn twice in one event loop, so both share the sessions core's memory. Container 8443 (host **443**) the sessions API; container 9443 (host **8443**) the gateway. Each serves only its own routes. One certificate (`agent.lan.liustev6.ca`) for both. |
+| **start-up** | profiles (a bad file: no start), migrations to the newest, the login restored (the broker), live sessions reloaded (C5), then both listeners, the sweeper and the login's refresh loop |
+| **shutdown** | SIGTERM stops both listeners together; open streams get 5 s. Sessions are **not** ended: they survive (C5) |
+| **PostgreSQL** | `postgres:17.12-alpine`, pinned by digest; uid 70; data in `/var/lib/agent-service/postgres`; on an `internal` network with agent-service only (no ports, no route out). The password is one OpenBao secret delivered twice, to each user's own file |
+| **hardening** | both containers read-only, all capabilities dropped, `no-new-privileges`; agent-service as uid 10001 |
+| **image** | `python:3.11-slim` with the Codex SDK and its binary (the broker): about 1 GB |
+| **the deploy** | `infra/services/agent-service/deploy.yaml`: its pre-start hook makes the data folders and pulls PostgreSQL's image (the deploy starts containers with `--pull never`); the smoke test, as `smoke-test`, checks TLS, tokens, problem details, ownership and scopes without starting a session |
 
 ## Decisions
 | ID | Decision | Why |

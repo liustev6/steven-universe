@@ -1,0 +1,10 @@
+# Build context is python/; send only what the image needs.
+**
+!services/agent-service/requirements.txt
+!services/agent-service/app/**
+!libs/service-auth/pyproject.toml
+!libs/service-auth/service_auth/**
+!libs/agent-runtime/pyproject.toml
+!libs/agent-runtime/core/**
+**/__pycache__
+**/*.pyc
