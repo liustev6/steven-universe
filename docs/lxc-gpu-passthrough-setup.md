@@ -151,7 +151,7 @@ lsmod | grep -E "^(nvidia|nouveau|nova)"
 ls -la /dev/nvidia*
 ```
 **Result (2026-11-17, 22:39):** booted **7.0.14-29-pve**. `nvidia-smi`: NVIDIA GeForce RTX 5060, driver
-620.70.06, 8151 MiB, persistence mode on. Loaded: `nvidia`, `nvidia_uvm`, `nvidia_modeset`, `nvidia_drm`;
+620.70.06, CUDA 13.5 (the newest CUDA this driver runs: an image built for CUDA 12.8 or newer works), 8151 MiB, persistence mode on. Loaded: `nvidia`, `nvidia_uvm`, `nvidia_modeset`, `nvidia_drm`;
 no `nouveau`, no `nova_core`. `nvidia-persistenced` active, `nvidia-powerd` off.
 
 **The device files** (what a container is given, Part 2), all created at boot by NVIDIA's udev rule:
