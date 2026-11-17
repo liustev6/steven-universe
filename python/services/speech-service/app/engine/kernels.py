@@ -1,4 +1,4 @@
-"""Our own GPU kernels, in Triton (tts-service.md T11, 4.5c, fusion). Triton is Python-like GPU code:
+"""Our own GPU kernels, in Triton (speech-service.md T11, 4.5c, fusion). Triton is Python-like GPU code:
 you write what one *program* does with a block of data; the GPU runs many programs at once, and Triton
 turns each into the warps, loads and registers CUDA would make you write by hand.
 

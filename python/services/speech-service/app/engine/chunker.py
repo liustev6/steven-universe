@@ -1,4 +1,4 @@
-"""Streaming decode: codec frames in, new audio out (tts-service.md T11).
+"""Streaming decode: codec frames in, new audio out (speech-service.md T11).
 
 The model makes one codec frame at a time (12.5 a second; each frame = 1,920 samples at 24 kHz). The
 codec's decoder turns frames into audio, but a frame's sound depends on the frames before it. So each
@@ -10,7 +10,7 @@ frames**, and only the audio of the new frames is kept:
 
 **Chunk sizes follow a schedule**, the last size repeating: the default (1, 1, 2, 4) decodes after frame
 1, then 1 and 2 more, then every 4. The first audio waits for one frame only (~30 ms a frame saved; the
-chunk spike in tts-service.md). The second chunk is the tightest moment: the player has only frame 1's
+chunk spike in speech-service.md). The second chunk is the tightest moment: the player has only frame 1's
 80 ms queued, so it must be small (1, 2, 4 left 12 ms of margin; 1, 1, … leaves 43). Then the sizes grow
 as the queue does, and the larger chunks keep the decode work low (each decode re-reads up to `context`
 frames). The sound is the same either way: the codec is

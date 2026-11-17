@@ -9,7 +9,7 @@ does skipping `generate` save? And can it use a fixed 16-slot cache (what a CUDA
 - Speed: `scripts/bench.py`, sampled, three sentences × 3 runs, medians.
 - The drift: `static_drift.py` (here). It records the predictor's inputs for every frame of one
   sentence (88 frames), then runs both caches on the same inputs, teacher-forced (the fixed cache is
-  fed the growing cache's codes), comparing each step's scores. Run it with `/opt/tts-dev` mounted at `/src`.
+  fed the growing cache's codes), comparing each step's scores. Run it with `/opt/speech-dev` mounted at `/src`.
 
 ## Results
 | Predictor | Codes vs Qwen's | ms/frame | First audio | RTF |

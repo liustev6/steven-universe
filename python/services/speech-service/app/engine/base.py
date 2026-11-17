@@ -1,4 +1,4 @@
-"""The engine: what the service asks of a text-to-speech model (tts-service.md T3, T11).
+"""The engine: what the service asks of a text-to-speech model (speech-service.md T3, T11).
 
     load()        the weights onto the GPU (once, at start)
     warm_up()     one throwaway generation: CUDA starts up, graphs are captured; only then is the

@@ -1,4 +1,4 @@
-"""The code predictor's loop, our own (tts-service.md T11, 4.5c stage 1): what Hugging Face's `generate`
+"""The code predictor's loop, our own (speech-service.md T11, 4.5c stage 1): what Hugging Face's `generate`
 did for it, as a loop over Qwen's own modules.
 
 Each frame, the talker hands over two vectors: its last hidden state and the embedding of the frame's

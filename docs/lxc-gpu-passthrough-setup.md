@@ -2,8 +2,8 @@
 
 How pve01's NVIDIA card (an RTX 5060, 8 GB) is made usable by unprivileged LXC containers, and how a
 container gets it. Done by hand, one step at a time, each step's result recorded here.
-Why an LXC and not a VM: [tts-service.md](specs/tts-service.md) T1. The first container to use it:
-CT 108, tts-service (CP4, [tracker.md](specs/agent-service/tracker.md)).
+Why an LXC and not a VM: [speech-service.md](specs/speech-service.md) T1. The first container to use it:
+CT 108, speech-service (CP4, [tracker.md](specs/agent-service/tracker.md)).
 
 **The shape:** the **kernel module** (the driver's part inside pve01's kernel) runs on pve01 only;
 containers share pve01's kernel, so they get the card's **device files** (`/dev/nvidia*`) and the
@@ -164,22 +164,26 @@ no `nouveau`, no `nova_core`. `nvidia-persistenced` active, `nvidia-powerd` off.
 | `/dev/nvidia-uvm`, `/dev/nvidia-uvm-tools` | 507, 0 and 1 (the major is assigned at boot: don't hard-code it) |
 | `/dev/nvidia-caps/nvidia-cap1`, `nvidia-cap2` | 510, 1 and 2 |
 
-## Part 2: a container (CT 108, tts-service)
+## Part 2: a container (CT 108, speech-service)
+Created as `tts-service` (`tts.lan.liustev6.ca`, alias `tts-host`); renamed `speech-service` on 2026-11-17
+when speech-to-text joined ([speech-service.md](specs/speech-service.md) T12): the hostname
+(`pct set 108 --hostname speech-service`), the DNS name `speech.lan.liustev6.ca`, the SSH alias
+`speech-host`, the deploy wrapper's list. The IP and host key are unchanged.
 Run in pve01's shell. The container is an ordinary one from [lxc-setup.md](lxc-setup.md); the GPU is
 added with Proxmox's `devN` entries.
 
 ### 1. The container
 ```sh
 pct create 108 local:vztmpl/debian-13-standard_13.6-1_amd64.tar.zst \
-  --hostname tts-service --arch amd64 --ostype debian --unprivileged 1 \
+  --hostname speech-service --arch amd64 --ostype debian --unprivileged 1 \
   --features nesting=1,keyctl=1 --cores 4 --memory 8192 --swap 1024 \
   --rootfs local-lvm:64 --net0 name=eth0,bridge=vmbr0,ip=dhcp,type=veth \
   --onboot 1 --startup order=2,up=10 --timezone host \
   --ssh-public-keys /root/.ssh/authorized_keys
 pct start 108
 ```
-**Result (2026-11-17):** CT 108 `tts-service`, MAC `BC:24:11:DD:1C:95`, `192.168.50.34`; unprivileged,
-4 cores, 8 GB, 64 GB, boot order 2. DNS: `tts.lan.liustev6.ca` (DNS only), a DHCP reservation.
+**Result (2026-11-17):** CT 108 `speech-service`, MAC `BC:24:11:DD:1C:95`, `192.168.50.34`; unprivileged,
+4 cores, 8 GB, 64 GB, boot order 2. DNS: `speech.lan.liustev6.ca` (DNS only), a DHCP reservation.
 
 ### 2. The GPU's device files
 Proxmox's `devN` entries pass a host device into the container, by path (so `nvidia-uvm`'s number,
@@ -200,10 +204,10 @@ pct exec 108 -- ls -la /dev/nvidia0 /dev/nvidiactl /dev/nvidia-uvm /dev/nvidia-u
 ### 3. The usual container setup
 [lxc-setup.md](lxc-setup.md) steps 2–7, unchanged: nothing about the GPU differs.
 
-**Result (2026-11-17):** DHCP reservation and `tts.lan.liustev6.ca` (DNS only) → `192.168.50.34`; console
+**Result (2026-11-17):** DHCP reservation and `speech.lan.liustev6.ca` (DNS only) → `192.168.50.34`; console
 autologin and a root password; packages and Docker (Compose v5.7.1; `hello-world` runs inside the
-unprivileged container); SSH alias `tts-host` (host key `SHA256:QoMm0yhs…`, checked through pve01);
-the deploy wrapper (`/etc/deploy-target/services`: `tts-service`); CT 108 in [boot.md](specs/boot.md).
+unprivileged container); SSH alias `speech-host` (host key `SHA256:QoMm0yhs…`, checked through pve01);
+the deploy wrapper (`/etc/deploy-target/services`: `speech-service`); CT 108 in [boot.md](specs/boot.md).
 
 ### 4. NVIDIA's user-space libraries, at the host's exact version
 The container shares pve01's kernel: no kernel module here, only the driver's user-space half
@@ -223,7 +227,7 @@ nvidia-smi
 held (no kernel-module packages; a few small X libraries as dependencies); `nvidia-persistenced` and
 `nvidia-powerd` masked. **`nvidia-smi` inside CT 108: NVIDIA GeForce RTX 5060, 620.70.06, 8151 MiB.**
 (Pasting a long block into the Proxmox console can garble it: paste one line at a time, or use
-`ssh tts-host`.)
+`ssh speech-host`.)
 
 ### 5. The NVIDIA Container Toolkit, and a CUDA container
 The toolkit lets `docker run --gpus all` (and compose's `gpus:`) hand a container the device files and

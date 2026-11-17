@@ -1,4 +1,4 @@
-"""The plain engine: Qwen's own model code, streamed (tts-service.md T11). The reference every faster
+"""The plain engine: Qwen's own model code, streamed (speech-service.md T11). The reference every faster
 engine (CUDA graphs, 4.5c) is checked against, code for code.
 
 How it streams, without changing Qwen's code:
@@ -148,7 +148,7 @@ class QwenEngine:
                                                       predictor=cp.generate, emit=emit)
         handle = self._talker.register_forward_hook(hook)
         self._generation.wait_stream(torch.cuda.current_stream())   # the prompt's tensors, made here
-        worker = threading.Thread(target=run, name="tts-generate", daemon=True)
+        worker = threading.Thread(target=run, name="speech-generate", daemon=True)
         worker.start()
         try:
             while (item := got.get()) is not _DONE:

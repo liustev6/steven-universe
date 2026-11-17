@@ -131,7 +131,7 @@ curl -X POST http://localhost:8002/chat/stream \
 ### GPU Service (archived)
 
 > **Archived (2026-11-17).** Not deployed and not maintained. pve01's one GPU (an RTX 5060) now serves
-> only the voice services, starting with [tts-service](docs/specs/tts-service.md). A general GPU service
+> only the voice services, starting with [speech-service](docs/specs/speech-service.md). A general GPU service
 > will be redesigned from scratch when the lab has several GPUs; the text below describes the old design.
 
 Session-based GPU task execution service with real-time event streaming and automatic resource management.

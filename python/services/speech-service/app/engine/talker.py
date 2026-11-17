@@ -1,4 +1,4 @@
-"""The talker's loop, our own (tts-service.md T11, 4.5c stage 2): what Hugging Face's `generate` did for
+"""The talker's loop, our own (speech-service.md T11, 4.5c stage 2): what Hugging Face's `generate` did for
 the talker, over Qwen's own modules, with our fixed cache (layers.py).
 
 Qwen's `Qwen3TTSForConditionalGeneration.generate` builds the prompt (the text, the speaker, the control

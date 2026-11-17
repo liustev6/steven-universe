@@ -1,5 +1,5 @@
 """Qwen3-TTS's decoder layers, written out over Qwen's own modules, with our own fixed KV cache
-(tts-service.md T11, 4.5c). The code predictor (5 layers) and the talker (28) use the same layer type
+(speech-service.md T11, 4.5c). The code predictor (5 layers) and the talker (28) use the same layer type
 (`Qwen3TTSDecoderLayer` / `Qwen3TTSTalkerDecoderLayer`: the same forward, op for op), so both run here.
 
     for each layer:

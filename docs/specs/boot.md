@@ -25,7 +25,7 @@ power on ─▶ pve01 (Proxmox VE 9, 192.168.50.101)
            ... wait 10 s
  order 2   CT 103 file-management   Docker → file-management container       ready
  order 2   CT 105 deployer          Docker → deployer container              ready
- order 2   CT 108 tts-service       Docker → tts-service (the GPU)           ready
+ order 2   CT 108 speech-service       Docker → speech-service (the GPU)           ready
            ... wait 10 s
  order 3   CT 106 api-service       Docker → api-service container           ready
  order 3   CT 107 agent-service     Docker → agent-service, PostgreSQL       ready
@@ -47,7 +47,7 @@ containers from 100, VMs from 200.
 | 105 | deployer | `onboot=1` | 2, `up=10` | Docker enabled; container `restart: unless-stopped` | yes |
 | 106 | api-service | `onboot=1` | 3, `up=10` | Docker enabled; container `restart: unless-stopped` | yes |
 | 107 | agent-service | `onboot=1` | 3, `up=10` | Docker enabled; agent-service and its PostgreSQL, both `restart: unless-stopped` ([control-plane.md](agent-service/control-plane.md)) | yes |
-| 108 | tts-service | `onboot=1` | 2, `up=10` | Docker enabled; the GPU through `dev0`–`dev3` ([lxc-gpu-passthrough-setup.md](../lxc-gpu-passthrough-setup.md)); tts-service arrives in CP4 ([tts-service.md](tts-service.md)) | yes |
+| 108 | speech-service | `onboot=1` | 2, `up=10` | Docker enabled; the GPU through `dev0`–`dev3` ([lxc-gpu-passthrough-setup.md](../lxc-gpu-passthrough-setup.md)); speech-service arrives in CP4 ([speech-service.md](speech-service.md)) | yes |
 | **VM 200** | sandbox-worker | `onboot=1` | 4, `up=30` | Docker enabled, gVisor (`runsc`) registered; sandbox-runner, container `restart: unless-stopped` ([sandbox-worker-setup.md](../sandbox-worker-setup.md)) | yes |
 
 **pve01's firewall** (`pve-firewall`, enabled since 2026-11-13) starts with the host; its policies are
@@ -65,7 +65,7 @@ Also enabled on CT 102–108: `certbot.timer` (certificate renewal) and `unatten
 | secrets-manager (1) | auth-service (only to verify service logins) | nothing reads it at runtime, so it doesn't block anyone |
 | file-management (2) | auth-service (JWKS on first request), rustfs (health check) | after both |
 | deployer (2) | auth-service and OpenBao (only when a deploy runs: token, then secrets) | after both; deploys wait for the unseal |
-| tts-service (2) | auth-service (token keys); the GPU's driver on pve01 (loaded with the host's kernel, before any guest) | after auth-service; nothing depends on it at boot |
+| speech-service (2) | auth-service (token keys); the GPU's driver on pve01 (loaded with the host's kernel, before any guest) | after auth-service; nothing depends on it at boot |
 | api-service (3) | the deployer (for `/deploy/*`) | after it; before cloudflared, which publishes it |
 | agent-service (3) | auth-service, OpenBao (its login, restored on a new disk), file-management (nightly backups); the runner only when a session starts (it retries) | after its dependencies, before the worker whose sandboxes reach only its gateway |
 | sandbox-worker (4) | agent-service's gateway (its sandboxes reach only that), when it exists | after the control plane; nothing depends on it at boot |
@@ -111,7 +111,7 @@ Loss" / "After Power Failure" = Power On**. Not checkable from software; check o
 | **A certificate expired while powered off** | HTTPS fails for that service | `certbot renew` on that container (the hook installs it) |
 | **agent-service starts before its PostgreSQL is ready** (Docker doesn't wait for `depends_on` at boot) | agent-service exits and Docker restarts it until PostgreSQL answers | nothing: checked 2026-11-17, healthy within ~12 s of PostgreSQL |
 | **Agent sessions that were live at shutdown** | their pods are gone (VM 200 restarted); agent-service ends them as `sandbox_lost` within ~15 s of the runner being back | nothing: callers start a new session; the conversation carries over |
-| **The GPU's driver isn't built for the kernel pve01 booted** (a kernel update whose DKMS build failed) | CT 108 still starts, but its `/dev/nvidia*` entries point at nothing: tts-service can't start | `dkms status`; [lxc-gpu-passthrough-setup.md](../lxc-gpu-passthrough-setup.md) "Updating later". `./setup.sh reboot` refuses a kernel the module isn't built for |
+| **The GPU's driver isn't built for the kernel pve01 booted** (a kernel update whose DKMS build failed) | CT 108 still starts, but its `/dev/nvidia*` entries point at nothing: speech-service can't start | `dkms status`; [lxc-gpu-passthrough-setup.md](../lxc-gpu-passthrough-setup.md) "Updating later". `./setup.sh reboot` refuses a kernel the module isn't built for |
 | **New PCIe hardware (a GPU)** | could renumber PCI devices, which renames network interfaces on many hosts and leaves `vmbr0` without its port | nothing on pve01: its NICs are pinned by MAC (`/usr/local/lib/systemd/network/50-pmx-nic0.link`, Proxmox 9's `pve-network-interface-pinning`), so `nic0` stays `nic0`. If the network doesn't come up anyway: the console, `ip -br link`, compare with `/etc/network/interfaces` |
 
 ## Checking that everything is back
