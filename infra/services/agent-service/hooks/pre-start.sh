@@ -7,8 +7,9 @@
 #     PostgreSQL's data (uid 70, the image's postgres user)
 #   - PostgreSQL's pinned image: the deploy starts containers with `--pull never`, and PostgreSQL
 #     isn't built by CI, so it's pulled here (once; a no-op afterwards)
+#   - the `agent` command (the CLI, as agent-cli), in /usr/local/bin
 
-step "agent-service: data folders, PostgreSQL's image"
+step "agent-service: data folders, PostgreSQL's image, the agent command"
 
 install -d -m 755 -o 0 -g 0 /var/lib/agent-service
 install -d -m 700 -o 10001 -g 10001 /var/lib/agent-service/codex-home
@@ -22,3 +23,6 @@ else
     quiet docker pull "$PG_IMAGE" || die "Cannot pull $PG_IMAGE"
     ok "PostgreSQL image pulled: ${PG_IMAGE##*/}"
 fi
+
+install -m 755 "$SVC_DIR/bin/agent" /usr/local/bin/agent
+ok "agent -> /usr/local/bin (the CLI, as agent-cli)"

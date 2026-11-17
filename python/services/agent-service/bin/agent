@@ -1,0 +1,20 @@
+#!/bin/sh
+# agent: agent-service's command line on CT 107, as the agent-cli client (app/cli.py; `agent --help`).
+# Installed as /usr/local/bin/agent by every deploy (infra/services/agent-service/hooks/pre-start.sh).
+#
+# Runs the CLI in the image agent-service is running now, so the two always match. The agent-cli
+# secret (/etc/agent-cli/client_secret, root-only) is mounted read-only; it never leaves this host.
+set -eu
+
+COMPOSE=/opt/steven-universe/python/services/agent-service/compose.yaml
+SECRET=/etc/agent-cli/client_secret
+[ -r "$SECRET" ] || { echo "agent: can't read $SECRET (run as root on CT 107)" >&2; exit 2; }
+CID="$(docker compose -f "$COMPOSE" ps -q agent-service 2>/dev/null || true)"
+[ -n "$CID" ] || { echo "agent: agent-service isn't running" >&2; exit 2; }
+IMAGE="$(docker inspect -f '{{.Config.Image}}' "$CID")"
+
+TTY=""
+[ -t 0 ] && [ -t 1 ] && TTY="-it"            # a terminal: interactive (chat), colours, Ctrl-C to interrupt
+# shellcheck disable=SC2086
+exec docker run --rm $TTY --network host --read-only --cap-drop ALL --security-opt no-new-privileges:true \
+    -v "$SECRET:/t/secret:ro" --entrypoint python "$IMAGE" -m app.cli "$@"
