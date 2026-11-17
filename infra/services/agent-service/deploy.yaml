@@ -4,7 +4,7 @@
 # Spec: docs/specs/agent-service/control-plane.md.
 service: agent-service
 host: agent-host
-pipeline: false                        # by hand until its first deploy is checked (lxc-setup.md, part 2; CP3 3.7)
+pipeline: true                         # since 2026-11-17, after its first hand deploy (lxc-setup.md, part 2; CP3 3.7)
 wave: 1
 code: python/services/agent-service
 libs: [service-auth, agent-runtime]    # in the image (its Dockerfile copies both; CI checks)
