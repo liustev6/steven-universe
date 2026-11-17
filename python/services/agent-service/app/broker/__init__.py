@@ -1,24 +1,15 @@
-"""The auth broker (model-access.md MA1–MA6, control-plane.md C11): your ChatGPT login, held here
-and nowhere else. The gateway's model route asks it for the real credential.
+"""The auth broker (model-access.md, control-plane.md C11): your ChatGPT login, held here and
+nowhere else.
 
-This file has the interface the gateway uses; the broker itself (login, refresh, OpenBao) is
-piece f.
+    base.py      the interface the gateway's model route uses (ModelLogin, NotSignedIn)
+    broker.py    AuthBroker: credentials per request, refresh, restore and save, status
+    codex.py     the Codex SDK calls: device-code sign-in, refresh
+    store.py     the durable copy in OpenBao (role agent-service)
+    __main__.py  `python -m app.broker login | status`, on CT 107
 """
 
-from __future__ import annotations
+from app.broker.base import ModelLogin, NotSignedIn
+from app.broker.broker import AuthBroker
+from app.broker.store import LoginStore, OpenBaoStore, StoreError
 
-from typing import Protocol
-
-
-class NotSignedIn(RuntimeError):
-    """No usable login: run the login once (device code), or restore it from OpenBao."""
-
-
-class ModelLogin(Protocol):
-    def headers(self) -> dict[str, str]:
-        """The headers that carry the real credential upstream. Raises NotSignedIn."""
-        ...
-
-    async def refresh(self) -> None:
-        """Refresh the login now (after an upstream 401). One at a time."""
-        ...
+__all__ = ["AuthBroker", "LoginStore", "ModelLogin", "NotSignedIn", "OpenBaoStore", "StoreError"]

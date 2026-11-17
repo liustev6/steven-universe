@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     # ---- History carried into a new session (C9) ----------------------------------------------
     CARRY_CHARS: int = 4000                      # each carried message, at most
 
+    # ---- The model, and your login (the auth broker, C11) -------------------------------------
+    MODEL_UPSTREAM: str = "https://chatgpt.com/backend-api/codex"   # your plan's endpoint
+    CODEX_HOME: Path = Path("/var/lib/agent-service/codex-home")   # auth.json, refreshed by Codex
+    LOGIN_REFRESH_HOURS: float = 6                                 # keeps the refresh token in use
+    BAO_ADDR: str = "https://bao.lan.liustev6.ca:8200"             # the login's durable copy (MA3)
+
     # Callers and the runner: auth-service tokens (SERVICE_AUTH_ISSUER, SERVICE_AUTH_CLIENT_ID,
     # SERVICE_AUTH_CLIENT_SECRET_FILE; service-auth reads them).
 

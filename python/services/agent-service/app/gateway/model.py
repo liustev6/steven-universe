@@ -29,7 +29,6 @@ from app.sessions import Live, Sessions
 
 logger = logging.getLogger(__name__)
 
-UPSTREAM = "https://chatgpt.com/backend-api/codex"     # your plan's endpoint (model-access.md)
 MODEL_MAX_BYTES = 16 << 20                              # one model request (the whole context)
 # Never forwarded upstream: the sandbox's credential, the proxy's stamp, and hop-by-hop headers.
 DROP_HEADERS = {"host", "authorization", "x-api-key", "chatgpt-account-id", "content-length", "connection",

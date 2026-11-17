@@ -63,7 +63,7 @@ Code: `app/api/`.
 | `GET /v1/conversations` | `chat:read`: yours, most recently active first, each with its live session if any (`?limit=`) |
 | `GET /v1/conversations/{id}/turns` | `chat:read`: its turns across all its sessions, oldest first (text, status, timings, usage; `?limit=`); each turn's protocol B events too with `?events=true` |
 | `POST /v1/admin/stop`, `POST /v1/admin/start` | `chat:admin`: the kill switch |
-| `GET /v1/status` | `status:read`, for the lab's status page: `ok`, `stopped`, `database`, live sessions by state; counts only, never ids. (The login's age comes with the broker, piece f; the last backup with 3.5.) |
+| `GET /v1/status` | `status:read`, for the lab's status page: `ok`, `stopped`, `database`, live sessions by state, `login` (signed in, its age, saved to OpenBao); counts only, never ids or secrets. (The last backup comes with 3.5.) |
 | `GET /health` | liveness only, no token |
 
 **Streams are Server-Sent Events** (`text/event-stream`, the W3C EventSource format), as OpenAI's
@@ -162,6 +162,24 @@ Reached only through a pod's proxy (R12), which stamps `X-Sandbox-Id`. Code: `ap
   sandbox's;
 - **refusals in OpenAI's error shape**, so Codex shows the message, and `403`, not `429`: Codex
   retries a `429`.
+
+## The auth broker (`app/broker/`)
+Your ChatGPT login, in `/var/lib/agent-service/codex-home/auth.json` on CT 107, and nowhere else
+the sandboxes can reach (MA1).
+- **Sign in once,** on CT 107: `docker compose exec agent-service python -m app.broker login` prints
+  a URL and a one-time code to approve on your phone; the login is saved to OpenBao at once.
+  `… python -m app.broker status` shows it (never a token).
+- **Codex refreshes it** (MA2), in this process only: every 6 hours (so the refresh token stays in
+  use, MA4), and on an upstream `401`. Several sessions hitting an expired token together cause one
+  refresh: the others reuse it (refresh tokens rotate; two refreshes would race).
+- **Every refresh that changes the login is saved to OpenBao** (`kv/services/agent-service/codex_auth`,
+  role `agent-service`, one revoked OpenBao token per operation). A failed save is logged and shown
+  on the status page, never fatal: the model keeps working from the disk's copy.
+- **At start, the newer copy wins** (by Codex's `last_refresh`; the disk's on a tie): a new disk is
+  restored from OpenBao (MA3), and a stale OpenBao copy never replaces a newer disk one; OpenBao is
+  then brought up to date.
+- **The status page** shows `login`: `signed_in`, `refreshed_hours_ago`, `saved_to_openbao`; not
+  signed in makes agent-service's `ok` false.
 
 ## Profiles (`profiles.yaml`)
 ```yaml

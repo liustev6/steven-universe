@@ -242,7 +242,7 @@ async def test_status_page(api):
     assert (await api.client.get("/v1/status", headers=caller())).status_code == 403
     r = await api.client.get("/v1/status", headers=caller("service:api-service", "status:read"))
     assert r.json() == {"ok": True, "stopped": False, "database": "ok",
-                        "sessions": {"starting": 1, "ready": 1, "busy": 0}}
+                        "sessions": {"starting": 1, "ready": 1, "busy": 0}, "login": None}
     assert "session_id" not in r.text                                  # counts only, never ids
 
 

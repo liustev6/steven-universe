@@ -20,12 +20,12 @@ from app.sessions import Sessions
 AUDIENCE = "agent-service"
 
 
-def create_api(sessions: Sessions, auth) -> FastAPI:
+def create_api(sessions: Sessions, auth, login=None) -> FastAPI:
     app = FastAPI(title="agent-service", docs_url=None, redoc_url=None, openapi_url=None)
     errors.install(app)
     app.include_router(sessions_routes.build_router(sessions, auth))
     app.include_router(conversations.build_router(sessions, auth))
-    app.include_router(admin.build_router(sessions, auth))
+    app.include_router(admin.build_router(sessions, auth, login))
 
     @app.get("/health")
     async def health() -> dict:
