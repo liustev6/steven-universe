@@ -164,9 +164,52 @@ no `nouveau`, no `nova_core`. `nvidia-persistenced` active, `nvidia-powerd` off.
 | `/dev/nvidia-uvm`, `/dev/nvidia-uvm-tools` | 507, 0 and 1 (the major is assigned at boot: don't hard-code it) |
 | `/dev/nvidia-caps/nvidia-cap1`, `nvidia-cap2` | 510, 1 and 2 |
 
-## Part 2: a container (CT 108)
-_(planned, CP4 4.3)_ the `devN` entries, the matching user-space libraries, Docker and the NVIDIA
-Container Toolkit (`no-cgroups = true`), `nvidia-smi` inside a CUDA container.
+## Part 2: a container (CT 108, tts-service)
+Run in pve01's shell. The container is an ordinary one from [lxc-setup.md](lxc-setup.md); the GPU is
+added with Proxmox's `devN` entries.
+
+### 1. The container
+```sh
+pct create 108 local:vztmpl/debian-13-standard_13.6-1_amd64.tar.zst \
+  --hostname tts-service --arch amd64 --ostype debian --unprivileged 1 \
+  --features nesting=1,keyctl=1 --cores 4 --memory 8192 --swap 1024 \
+  --rootfs local-lvm:64 --net0 name=eth0,bridge=vmbr0,ip=dhcp,type=veth \
+  --onboot 1 --startup order=2,up=10 --timezone host \
+  --ssh-public-keys /root/.ssh/authorized_keys
+pct start 108
+```
+**Result (2026-11-17):** CT 108 `tts-service`, MAC `BC:24:11:DD:1C:95`, `192.168.50.34`; unprivileged,
+4 cores, 8 GB, 64 GB, boot order 2. DNS: `tts.lan.liustev6.ca` (DNS only), a DHCP reservation.
+
+### 2. The GPU's device files
+Proxmox's `devN` entries pass a host device into the container, by path (so `nvidia-uvm`'s number,
+assigned at boot, is looked up at each start), with no raw `lxc.*` lines: the container stays
+unprivileged. The four CUDA needs: the card (`nvidia0`), the driver's control channel (`nvidiactl`),
+CUDA's unified memory (`nvidia-uvm`, `nvidia-uvm-tools`). Not given: `nvidia-modeset` (displays) and
+`nvidia-caps/*` (splitting data-center cards, MIG). **`mode=0666`**, as on pve01 itself: Proxmox's
+default (`0660`, root only) would stop a service running as uid 10001 from opening the GPU.
+```sh
+pct stop 108
+pct set 108 --dev0 /dev/nvidia0,mode=0666 --dev1 /dev/nvidiactl,mode=0666 \
+            --dev2 /dev/nvidia-uvm,mode=0666 --dev3 /dev/nvidia-uvm-tools,mode=0666
+pct start 108
+pct exec 108 -- ls -la /dev/nvidia0 /dev/nvidiactl /dev/nvidia-uvm /dev/nvidia-uvm-tools
+```
+**Result (2026-11-17):** the four device files inside CT 108, `crw-rw-rw-`, numbers 195 and 507.
+
+### 3. The usual container setup
+[lxc-setup.md](lxc-setup.md) steps 2–7, unchanged: nothing about the GPU differs.
+
+**Result (2026-11-17):** DHCP reservation and `tts.lan.liustev6.ca` (DNS only) → `192.168.50.34`; console
+autologin and a root password; packages and Docker (Compose v5.7.1; `hello-world` runs inside the
+unprivileged container); SSH alias `tts-host` (host key `SHA256:QoMm0yhs…`, checked through pve01);
+the deploy wrapper (`/etc/deploy-target/services`: `tts-service`); CT 108 in [boot.md](specs/boot.md).
+
+### 4. NVIDIA's user-space libraries, at the host's exact version
+_(planned)_
+
+### 5. The NVIDIA Container Toolkit, and a CUDA container
+_(planned)_
 
 ## Updating later
 _(to write once done)_ the driver and the kernel together: unpin, update both, check, pin again.
