@@ -22,3 +22,7 @@ hosts:
     address: 192.168.50.95
     user: root
     host_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHa5J52kJ2dAui4xl8BkUGCxNWgkvAjkPafUkIkSm/um"
+  agent-host:                          # CT 107: runs agent-service (CP3)
+    address: 192.168.50.229
+    user: root
+    host_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIOgwjMrkWIgTfhyhmE6wNnoegI6p11VFGIycfpbTwEI"
