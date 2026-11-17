@@ -64,7 +64,7 @@ tts-service up, streaming audio packets from one long-running process that keeps
 no cold load per request.
 
 **Sub-checkpoints:** tts-service's build plan, [tts-service.md](../tts-service.md) "Build plan" (4.1–4.7),
-tracked there. 4.1 ✅ (2026-11-17): agreed; pi-server orchestrates the voice pipeline, tts-service is an engine (T10). 4.2 ✅ the driver on pve01; 4.3 ✅ CT 108 with the GPU, CUDA working in a container ([lxc-gpu-passthrough-setup.md](../../lxc-gpu-passthrough-setup.md)). The rest of CP4 (speech-to-text, the voice path,
+tracked there. 4.1 ✅ (2026-11-17): agreed; pi-server orchestrates the voice pipeline, tts-service is an engine (T10). 4.2 ✅ the driver on pve01; 4.3 ✅ CT 108 with the GPU, CUDA working in a container ([lxc-gpu-passthrough-setup.md](../../lxc-gpu-passthrough-setup.md)). 4.4 ✅ identity. 4.5a ✅ the spike: our own streaming engine 169 ms first audio, CUDA graphs 112 ms; decided: our own engine on Qwen's official code, with our own CUDA graphs (T11). The rest of CP4 (speech-to-text, the voice path,
 protocol B in shared-schemas, the agent's latency levers, barge-in) is defined when 4.7 is done.
 
 ## Found along the way (not yet scheduled)
