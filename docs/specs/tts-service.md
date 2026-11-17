@@ -125,6 +125,13 @@ PyTorch 2.15.0 (CUDA 13.2), `qwen-tts` 0.1.1
   (repetition penalty, suppressed control codes, minimum length) as GPU operations: Qwen's exact codes,
   **12.9 ms a frame** (from 17.0), RTF 0.21. Next: a decode-attention kernel reading the length from GPU
   memory (option c, agreed), then the talker's graph.
+- **Steps 3-4: decode attention and the talker's graph** ([08](../../python/services/tts-service/spikes/08-talker-graph/)):
+  our online-softmax kernel reads the length from GPU memory, so one graph serves every frame. Fused
+  talker **11.4 ms a frame**, RTF **0.18** (Qwen's code: 34.8). The graph itself bought ~nothing: the frame
+  is GPU-bound now (busy 90%).
+- **The next lever is streams** ([09](../../python/services/tts-service/spikes/09-streams/)): decode and
+  generation share one CUDA stream, and the stream thread's end check waits for all of it: first audio 42
+  ms where ~28 is possible, ~14-20 ms lost a chunk.
 - **The chunk schedule** ([03](../../python/services/tts-service/spikes/03-chunk-schedule/)): decode after 1, 1, 2,
   then every 4 frames: first audio **52 ms** (from 143) at the same cost (RTF 0.41), 43 ms of margin
   before a gap. The standard from here on.

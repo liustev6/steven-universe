@@ -19,9 +19,13 @@ once by the model's own rotary module.
 from __future__ import annotations
 
 
-def decoder_layers(layers, final_norm, h, start: int, n: int, keys, values, cos, sin, *, fused: bool = False):
+def decoder_layers(layers, final_norm, h, start: int, n: int, keys, values, cos, sin, *, fused: bool = False,
+                   position=None):
     """`h` (batch, n, hidden) at positions start…start+n-1 → the final norm's output, same shape.
-    `keys`/`values`: one cache tensor per layer. `start`, `n`: Python ints (fixed per graph)."""
+    `keys`/`values`: one cache tensor per layer. `start`, `n`: Python ints (fixed per graph).
+    `position` (fused, one position): a GPU int32 tensor holding the position instead of `start`, read
+    by the kernels: the rotary/cache write and our decode attention (kernels.py), so one graph serves
+    every position (the talker's cache grows every frame)."""
     import torch.nn.functional as F
 
     end = start + n
@@ -35,17 +39,20 @@ def decoder_layers(layers, final_norm, h, start: int, n: int, keys, values, cos,
         q, k = norm(a.q_norm, a.q_proj(h).view(shape)), norm(a.k_norm, a.k_proj(h).view(shape))
         v = a.v_proj(h).view(shape)
         if fused:                                                 # rotate, and write k, v into the cache
-            from app.engine.kernels import rope_and_cache
+            from app.engine.kernels import decode_attention, rope_and_cache
 
-            q = rope_and_cache(q, k, v, cos, sin, k_cache, v_cache, start)
+            q = rope_and_cache(q, k, v, cos, sin, k_cache, v_cache, start, position=position)
         else:
             q, k, v = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)
             q, k = q * c + rotate_half(q) * s, k * c + rotate_half(k) * s
             k_cache[:, :, start:end].copy_(k)                     # write into the fixed cache…
             v_cache[:, :, start:end].copy_(v)
-        out = F.scaled_dot_product_attention(                     # …and read the written slice only
-            q, k_cache[:, :, :end], v_cache[:, :, :end], scale=a.scaling, is_causal=n > 1, enable_gqa=True)
-        out = out.transpose(1, 2).contiguous().reshape(*h.shape[:-1], -1)
+        if fused and position is not None:                        # the length from GPU memory
+            out = decode_attention(q, k_cache, v_cache, position, a.scaling)
+        else:                                                     # …and read the written slice only
+            out = F.scaled_dot_product_attention(
+                q, k_cache[:, :, :end], v_cache[:, :, :end], scale=a.scaling, is_causal=n > 1, enable_gqa=True)
+            out = out.transpose(1, 2).contiguous().reshape(*h.shape[:-1], -1)
         h = residual + a.o_proj(out)
         residual, h = h, norm(layer.post_attention_layernorm, h)
         h = residual + layer.mlp(h)

@@ -20,7 +20,9 @@ read in fixed slices (graph-ready, step 3); "ours-graph" that loop as a CUDA gra
 
 The talker (each frame's first code, talker.py): `talker` picks whose loop runs it. "qwen" is Hugging
 Face's `generate`; "ours" our own loop over Qwen's modules with our fixed cache (stage 2), which hands
-each frame to the stream itself (the forward hook then has nothing to catch).
+each frame to the stream itself (the forward hook then has nothing to catch); "ours-fused" with our
+kernels (fused norms, rotary/cache write, decode attention reading the position from GPU memory);
+"ours-graph" that, each frame's step replayed as one CUDA graph.
 """
 
 from __future__ import annotations
@@ -42,7 +44,7 @@ NATIVE = {"vivian": "Chinese", "serena": "Chinese", "uncle_fu": "Chinese", "dyla
           "eric": "Chinese", "ryan": "English", "aiden": "English", "ono_anna": "Japanese", "sohee": "Korean"}
 _DONE = object()
 PREDICTORS = ("qwen", "ours", "ours-static", "ours-graph", "ours-fused")
-TALKERS = ("qwen", "ours")
+TALKERS = ("qwen", "ours", "ours-fused", "ours-graph")
 
 
 def max_frames(text: str) -> int:
@@ -74,7 +76,8 @@ class QwenEngine:
         self._predictors = {"ours": CodePredictor(cp), "ours-static": StaticCodePredictor(cp),
                             "ours-graph": GraphCodePredictor(cp),
                             "ours-fused": GraphCodePredictor(cp, fused=True)}
-        self._talkers = {"ours": TalkerLoop(self._talker)}
+        self._talkers = {"ours": TalkerLoop(self._talker), "ours-fused": TalkerLoop(self._talker, fused=True),
+                         "ours-graph": TalkerLoop(self._talker, fused=True, graph=True)}
         # sample_rate stays 24,000: the 12 Hz codec's output_sample_rate (its config); the GPU tests check
         # it against what the codec's own decode reports.
 

@@ -12,8 +12,9 @@ from app.engine.qwen import QwenEngine
 
 text, voice = "Sure. Tomorrow looks cloudy in the morning, with a little rain in the afternoon.", "aiden"
 e = QwenEngine(os.environ["TTS_MODEL"]); e.load(); e.warm_up()
-for name in ("ours-static", "ours-graph"):
-    e.predictor = name
+for name in sys.argv[1:] or ("ours-static", "ours-graph"):        # predictor[:talker]
+    e.predictor, _, talker = name.partition(":")
+    e.talker = talker or "qwen"
     for _ in e.frames(text, voice):                       # warm (and capture) first
         pass
     with profile(activities=[ProfilerActivity.CUDA]) as prof:

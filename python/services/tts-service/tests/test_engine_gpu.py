@@ -72,7 +72,55 @@ def test_our_talker_gives_qwens_codes(engine, talker, predictor, voice, text):
     assert torch.equal(ours.cpu(), official.cpu())
 
 
-@pytest.mark.parametrize("talker", ["ours"], indirect=True)
+def test_fused_talker_is_close_to_the_exact_one(engine):
+    """Qwen's prompts for the test sentences; the exact talker's frames (greedy); the fused talker fed
+    the same frames: code 1's scores, step by step, by the near-tie standard."""
+    from app.engine.talker import TalkerLoop
+
+    calls, real = [], engine._talkers["ours"]
+
+    class Spy:                                                        # records what Qwen's code passes
+        def generate(self, **kwargs):
+            calls.append({k: v for k, v in kwargs.items() if k not in ("predictor", "emit")})
+            return real.generate(**kwargs)
+
+    engine._talkers["ours"], engine.talker, engine.predictor = Spy(), "ours", "ours-graph"
+    try:
+        with torch.inference_mode():
+            for voice, text in SENTENCES:
+                for _ in engine.frames(text, voice, sample=False):
+                    pass
+    finally:
+        engine._talkers["ours"], engine.talker, engine.predictor = real, "qwen", "qwen"
+    exact = TalkerLoop(engine._talker)
+    for fused in (TalkerLoop(engine._talker, fused=True), TalkerLoop(engine._talker, fused=True, graph=True)):
+        check_close(exact, fused, calls, engine)
+
+
+def check_close(exact, fused, calls, engine):
+    steps, flips, worst = 0, 0, 0.0
+    with torch.inference_mode():
+        for kwargs in calls:
+            frames, want, got = [], [], []
+            exact.generate(**kwargs, predictor=engine._predictors["ours-graph"], emit=frames.append, trace=want)
+            fused.generate(**kwargs, predictor=None, emit=lambda codes: None, forced=frames, trace=got)
+            want, got = torch.cat(want), torch.cat(got)                # (steps, vocab)
+            finite = torch.isfinite(want)                              # suppressed codes: -inf in both
+            assert torch.equal(finite, torch.isfinite(got))
+            top2 = want.topk(2, dim=-1).values
+            differs = want.argmax(-1) != got.argmax(-1)
+            near_tie = (top2[:, 0] - top2[:, 1]) <= 2 * bf16_steps(top2[:, 0])
+            assert not (differs & ~near_tie).any(), "a different code 1 where the exact one wasn't nearly tied"
+            steps, flips = steps + differs.numel(), flips + int(differs.sum())
+            diff = torch.where(finite, (want - got).abs(), torch.zeros_like(want))
+            worst = max(worst, (diff / bf16_steps(top2[:, :1])).max().item())
+    print(f"talker (graph: {fused.graph}): {steps} steps, {flips} different code 1s, worst score difference "
+          f"{worst:.1f} bfloat16 steps")
+    assert flips / steps < 0.01
+    assert worst <= 8
+
+
+@pytest.mark.parametrize("talker", ["ours", "ours-fused", "ours-graph"], indirect=True)
 @pytest.mark.parametrize("predictor", ["ours-fused"], indirect=True)
 def test_our_talker_samples_and_stops(engine, talker, predictor):
     """Sampled, our talker's speech ends by itself (the end code), about as long as Qwen's."""

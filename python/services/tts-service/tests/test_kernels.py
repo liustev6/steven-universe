@@ -69,3 +69,28 @@ def test_rope_and_cache_is_bit_exact(batch, n, start):
     assert torch.equal(values[:, :, start:start + n], v.transpose(1, 2))
     others = torch.ones(16, dtype=torch.bool); others[start:start + n] = False
     assert not keys[:, :, others].any() and not values[:, :, others].any()      # nothing else written
+
+
+@pytest.mark.parametrize("length", [1, 2, 31, 64, 65, 200, 700, 2048])
+def test_decode_attention_matches_pytorch(length):
+    """Our one-pass attention vs PyTorch's, at lengths around and across its 64-position blocks: the
+    same up to rounding (its own summation order, and float32 throughout where PyTorch's kernel rounds
+    the softmax weights to bfloat16)."""
+    import torch.nn.functional as F
+    from app.engine.kernels import decode_attention
+
+    torch.manual_seed(length)
+    dt, dev, d = torch.bfloat16, "cuda", 128
+    q = torch.randn(1, 16, 1, d, device=dev).to(dt)
+    keys = torch.randn(1, 8, 2048, d, device=dev).to(dt)
+    values = torch.randn(1, 8, 2048, d, device=dev).to(dt)
+    keys[:, :, length:] = float("nan")                              # past the length: must never be read
+    values[:, :, length:] = float("nan")
+    position = torch.tensor([length - 1], dtype=torch.int32, device=dev)
+    got = decode_attention(q, keys, values, position, d ** -0.5)
+    want = F.scaled_dot_product_attention(q, keys[:, :, :length], values[:, :, :length], scale=d ** -0.5,
+                                          enable_gqa=True).transpose(1, 2).reshape(1, 1, -1)
+    assert not got.isnan().any()
+    err = (got.float() - want.float()).abs().max().item()
+    print(f"length {length}: max |difference| {err:.2e}")
+    assert err < 2e-2

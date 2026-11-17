@@ -191,7 +191,8 @@ class GraphCodePredictor:
         torch.cuda.current_stream().wait_stream(side)
         # 2. Record one run. Its temporaries come from the graph's own memory pool, kept for replays.
         graph = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(graph):
+        # thread_local: only this thread is checked while recording (another may be using the GPU).
+        with torch.cuda.graph(graph, capture_error_mode="thread_local"):
             out = run()
         entry = SimpleNamespace(graph=graph, input=x_in, output=out, static=static)
         self._graphs[key] = entry
