@@ -1,6 +1,6 @@
 # Spec: tts-service (speech, streamed, from a model that stays loaded)
 
-**Status: proposed, for review** (2026-11-17). The first service on pve01's GPU, and the start of
+**Status: agreed** (2026-11-17). The first service on pve01's GPU, and the start of
 [agent-service](agent-service/README.md)'s CP4 (voice): its build plan below **is** CP4's first
 sub-checkpoints ([tracker.md](agent-service/tracker.md)). Related: [lxc-setup.md](../lxc-setup.md),
 [boot.md](boot.md), [auth-service.md](auth-service.md), [deployer.md](deployer.md).
@@ -34,6 +34,7 @@ before it's healthy.
 | T6 | **One GPU worker, one queue.** Requests are generated one at a time, in order; a short queue (4) beyond that is refused with `503` and `Retry-After`. **A caller that disconnects cancels its generation** (that's how the voice path stops speech when you interrupt). | One model on one GPU: parallel generation would only slow each other's first packet. Cancelling on disconnect frees the GPU at once (barge-in). |
 | T7 | **Auth like the other services:** auth-service tokens, audience `tts-service`, scope `speech:create`; `status:read` for api-service's status page. Callers in CP4: `smoke-test` (deploy checks, which synthesize for real: it costs nothing but GPU time), then pi-server. | The same identity model as everything else (auth-service.md); no shared keys. |
 | T8 | **Limits:** `input` at most 4,096 characters (OpenAI's); callers send **a sentence at a time**, so speech starts while the rest is still being written. | Short inputs keep the first packet early and the queue short. |
+| T10 | **tts-service is an engine; pi-server orchestrates the voice pipeline; agent-service stays text-only.** pi-server (Hey Pi's backend) turns speech into text, sends the turn to agent-service, collects its streamed reply into sentences, and sends each sentence to tts-service as soon as it's complete, playing the audio in order while the agent is still writing (a chained, overlapping pipeline, the cascaded voice-agent design of Pipecat or LiveKit Agents). On barge-in it cancels the agent's turn and closes the audio stream. pi-server calls both directly on the LAN, with its own grants (`chat:*` at agent-service, `speech:create` here). | Each piece does one job: tts-service knows nothing of chat (any client can use it: the phone, a notification); agent-service carries no audio its text clients don't need; the conversation's timing (sentences, playback, barge-in) lives in one place. You hear the first word after the first sentence and its first audio packet, not after the whole reply. |
 | T9 | **Deployed like every service:** its manifest, by hand first, then the pipeline; on the lab's status page (S rule): model and revision, warm or loading, VRAM used, queue length, recent first-packet times. | Nothing new to learn or operate. |
 
 ## API (443)
@@ -62,13 +63,13 @@ deliberate step (update, check `nvidia-smi`, then unpin), never a surprise after
 ## Build plan (CP4's first sub-checkpoints)
 | Sub-CP | What | Done when |
 |---|---|---|
-| 4.1 | **the design:** this document | reviewed and agreed |
+| 4.1 ✅ | **the design:** this document | reviewed and agreed (2026-11-17) |
 | 4.2 | **the GPU on pve01:** check (read-only) that NVIDIA's open driver supports the RTX 5060 on kernel 7.0.2; install it with DKMS; pin the kernel | `nvidia-smi` on pve01 shows the card; the module rebuilds on a reboot |
 | 4.3 | **CT 108:** the container (lxc-setup part 1), the `devN` entries, the user-space libraries, Docker and the toolkit | `nvidia-smi` inside the container, and inside a CUDA container on its Docker |
 | 4.4 | **identity:** auth-service's policy (audience `tts-service`; `smoke-test` and api-service's grants); its client secret | `explain` shows the grants; deployed |
 | 4.5 | **the service:** the model holder (load, warm-up, one GPU worker, the queue, cancel on disconnect), the streaming endpoint, voices, status; tests against a fake model | tests: streaming order, the queue limit, cancel frees the worker, not healthy until warm |
 | 4.6 | **deploy:** the manifest, the hook (weights fetched and checked), by hand, then the pipeline; the status page; a smoke test that synthesizes a sentence | deployed by the pipeline; the smoke test hears audio (non-empty, the right rate) |
-| 4.7 | **measured:** first packet (median of 20 short sentences), the real-time factor, VRAM, the time from start to warm; voices for Chinese and English chosen; recorded here | **the goal:** packets stream; the first in well under a second; no load time between requests; a restart warm before healthy |
+| 4.7 | **measured:** first packet (median of 20 short sentences), the real-time factor, VRAM, the time from start to warm; voices for Chinese and English chosen; recorded here | **the goal:** packets stream; the first within the 300 ms target (or a revised one, with the reason); no load time between requests; a restart warm before healthy |
 
 **Then, later in CP4** (sub-checkpoints defined when reached): speech-to-text on the same GPU; the
 voice path (Hey Pi → pi-server → agent-service, its reply's sentences → tts-service → the speaker);
@@ -84,10 +85,8 @@ started as you begin talking); barge-in end to end.
 | A cloud TTS (OpenAI, others) | the GPU is here, local speech costs nothing per use, and audio stays home |
 | Encoding to Opus or MP3 on the server | an encoder adds latency to the first packet; PCM over the LAN is cheap. A compressed format can come with the phone (over the internet) |
 
-## Open, for review
-1. **The name:** `tts-service` for this one service. When speech-to-text comes, its own container (the
-   lab's one-service-per-container rule; both share the GPU) or the same one?
-2. **Voices:** preset voices (`CustomVoice`) to start; voice cloning (`Base`, from a reference clip)
-   later?
-3. **The first-packet budget for 4.7's "done when":** "well under a second" is the floor; the model's
-   own figure is ~97 ms on an A100. Should we set a number now (say 300 ms), or after measuring?
+## Resolved in review (2026-11-17)
+1. **Speech-to-text:** its own container, sharing the GPU (one service per container).
+2. **Voices:** the preset voices (`CustomVoice`) first; cloning from a reference clip (`Base`) later.
+3. **The first-packet budget:** 300 ms (median, short sentences) as the target; confirmed or changed
+   by 4.7's measurement.

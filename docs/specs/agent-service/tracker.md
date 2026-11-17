@@ -64,7 +64,7 @@ tts-service up, streaming audio packets from one long-running process that keeps
 no cold load per request.
 
 **Sub-checkpoints:** tts-service's build plan, [tts-service.md](../tts-service.md) "Build plan" (4.1–4.7),
-tracked there. 4.1 🟡: the design written, for review. The rest of CP4 (speech-to-text, the voice path,
+tracked there. 4.1 ✅ (2026-11-17): agreed; pi-server orchestrates the voice pipeline, tts-service is an engine (T10). The rest of CP4 (speech-to-text, the voice path,
 protocol B in shared-schemas, the agent's latency levers, barge-in) is defined when 4.7 is done.
 
 ## Found along the way (not yet scheduled)
