@@ -3,7 +3,13 @@
     TTS_MODEL=/models/Qwen3-TTS-12Hz-0.6B-CustomVoice python -m pytest -m gpu
 
 The key test: without sampling, our streaming engine produces exactly Qwen's own codes, frame for
-frame. Every faster engine (4.5c) must pass the same test."""
+frame. Every bit-exact engine (4.5c: our loop, our fixed cache, the CUDA graph) must pass it.
+
+Our fused kernels (kernels.py) can't be bit-exact: they add numbers in another order than PyTorch, so,
+rarely, a result differs by one bfloat16 step, and greedy decoding diverges after the first near-tie
+it flips. They pass the serving engines' standard instead (vLLM's `check_logprobs_close`): the same
+inputs, pass by pass, against the exact predictor; a different pick only where the exact one's top two
+scores were nearly tied, and rarely (spikes/05)."""
 
 import os
 import threading
@@ -48,12 +54,51 @@ def test_streamed_codes_are_qwens_own(engine, predictor, voice, text):
     assert torch.equal(ours.cpu(), official.cpu())
 
 
-@pytest.mark.parametrize("predictor", ["ours", "ours-static", "ours-graph"], indirect=True)
+@pytest.mark.parametrize("predictor", ["ours", "ours-static", "ours-graph", "ours-fused"], indirect=True)
 def test_our_predictor_samples(engine, predictor):
     """With sampling on (the default), our loop's speech still ends: about as long as Qwen's."""
     text = "Sure. Tomorrow looks cloudy in the morning."
     seconds = len(np.concatenate(list(engine.stream(text, "ryan")))) / 24000
     assert 1.5 < seconds < 6, seconds
+
+
+def bf16_steps(x):
+    """The size of one bfloat16 step at each value's magnitude (7 bits after the leading one)."""
+    return torch.exp2(torch.floor(torch.log2(x.abs().clamp(min=2.0 ** -126))) - 7)
+
+
+def test_fused_predictor_is_close_to_the_exact_one(engine):
+    """Every frame's predictor inputs from real sentences; the fused predictor fed the exact one's codes."""
+    from app.engine.predictor import StaticCodePredictor
+
+    cp = engine._talker.code_predictor
+    exact, fused, inputs = StaticCodePredictor(cp), StaticCodePredictor(cp, fused=True), []
+    saved = engine._predictors["ours-static"]                        # a spy in its place: records inputs
+    engine._predictors["ours-static"] = lambda inputs_embeds, **kw: (inputs.append(inputs_embeds.clone()),
+                                                                     exact(inputs_embeds, **kw))[1]
+    engine.predictor = "ours-static"
+    try:
+        with torch.inference_mode():
+            for voice, text in SENTENCES:
+                for _ in engine.frames(text, voice, sample=False):
+                    pass
+    finally:
+        engine.predictor, engine._predictors["ours-static"] = "qwen", saved
+    steps, flips, worst = 0, 0, 0.0
+    with torch.inference_mode():
+        for x in inputs:
+            codes, want = exact.teacher_forced(x)
+            _, got = fused.teacher_forced(x, codes)
+            top2 = want.topk(2, dim=-1).values                       # (15, batch, 2)
+            differs = want.argmax(-1) != got.argmax(-1)
+            near_tie = (top2[..., 0] - top2[..., 1]) <= 2 * bf16_steps(top2[..., 0])
+            assert not (differs & ~near_tie).any(), "a different pick where the exact one wasn't nearly tied"
+            steps, flips = steps + differs.numel(), flips + int(differs.sum())
+            # in steps of the best score's size: a score near 0 has a tiny step, which says nothing
+            worst = max(worst, ((want - got).abs() / bf16_steps(top2[..., :1])).max().item())
+    print(f"{steps} steps, {flips} different picks, worst score difference {worst:.1f} bfloat16 steps")
+    assert flips / steps < 0.01
+    assert worst <= 8                                                # a bug moves scores by far more
 
 
 @pytest.mark.parametrize("voice, text", SENTENCES)

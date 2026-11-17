@@ -92,7 +92,7 @@ PyTorch 2.15.0 (CUDA 13.2), `qwen-tts` 0.1.1
 | 4.4 ✅ | **identity:** auth-service's policy: audience `tts-service` (`speech:create`, `status:read`); `smoke-test` gets `speech:create`, api-service `status:read`. **No client of its own** (it only receives tokens, checked against auth-service's public keys, and calls no service), so no secret | `explain` shows the grants; deployed. **Done 2026-11-17:** live (auth-service's installed policy) |
 | 4.5a ✅ | **the spike:** measure the model on the RTX 5060 (above) | done 2026-11-17: our streaming 169 ms, graphs 112 ms |
 | 4.5b ✅ | **the engine, plain:** our streaming loop as the `Engine` (load, warm-up, `stream(text, voice, language)` → 24 kHz chunks, voices); the reference for everything after | on CT 108: same audio as the spike's B; a deterministic mode (no sampling) for comparisons. **Done 2026-11-17:** `app/engine/` (`base.py` the interface, `chunker.py` the chunked decode, `qwen.py` the engine); 12 CPU tests (the chunker; they found a clipped-tail bug at exact multiples of the chunk) and 9 GPU tests on CT 108: **our codes equal Qwen's own, frame for frame**; streamed audio = the whole decode (>20 dB); cancel within 0.5 s; first audio <300 ms |
-| 4.5c | **CUDA graphs, step by step** (learning; each stage explained, then measured): 1. the code predictor's 15 steps as one graph; 2. the talker's step with a static KV cache; 3. the repetition penalty on the GPU, one end check per frame; 4. the same with `torch.compile` for contrast | each stage: the same codes as the plain engine with sampling off; measured; at the end ≈ the spike's D (real-time factor ~0.33, first audio ~110 ms) |
+| 4.5c | **CUDA graphs, step by step** (learning; each stage explained, then measured): 1. the code predictor's 15 steps as one graph; 2. the talker's step with a static KV cache; 3. the repetition penalty on the GPU, one end check per frame; 4. the same with `torch.compile` for contrast | each stage measured. **Bit-exact paths** (our loop, our fixed cache, the graph): Qwen's own codes with sampling off. **Fused kernels** (not bit-exact: they add in another order): vLLM's standard, against the exact path on the same inputs, pass by pass: a different pick only at near-ties (top two within 2 bfloat16 steps), under 1% of steps. At the end ≈ the spike's D (real-time factor ~0.33, first audio ~110 ms) or better |
 | 4.5d | **the service:** the HTTP API around the engine (one GPU worker, the queue, cancel on disconnect, streaming responses, voices, status, health only once warm); tests against a fake engine | tests: streaming order, the queue limit, cancel frees the worker, not healthy until warm |
 | 4.6 | **deploy:** the manifest, the hook (weights fetched and checked), by hand, then the pipeline; the status page; a smoke test that synthesizes a sentence | deployed by the pipeline; the smoke test hears audio (non-empty, the right rate) |
 | 4.7 | **measured:** first packet (median of 20 short sentences), the real-time factor, VRAM, the time from start to warm; voices for Chinese and English chosen; recorded here | **the goal:** packets stream; the first within the 300 ms target (or a revised one, with the reason); no load time between requests; a restart warm before healthy |
@@ -107,7 +107,14 @@ PyTorch 2.15.0 (CUDA 13.2), `qwen-tts` 0.1.1
 - **Step 4, the CUDA graph** ([02](../../python/services/tts-service/spikes/02-predictor-loop/)): the 15
   passes replayed as one graph: exact codes, **20.0 ms a frame** (−42% from Qwen's `generate`), RTF
   **0.29**, already past the 4.5a spike's D (0.33). With 1, 1, 2, 4: first audio 45 ms, margin 56 ms
-  ([03](../../python/services/tts-service/spikes/03-chunk-schedule/)). Stage 1 done; next the talker.
+  ([03](../../python/services/tts-service/spikes/03-chunk-schedule/)). Stage 1 done.
+- **Where a frame goes** ([04](../../python/services/tts-service/spikes/04-frame-split/)): predictor 11.5 ms,
+  talker 7.7, loop 0.7; the GPU busy ~16 of 20 ms, with 6,658 tiny kernels a frame. Graphing the talker
+  would win ~3 ms; fusing kernels more, so fusion first.
+- **A fused RMSNorm in Triton** ([05](../../python/services/tts-service/spikes/05-fused-rmsnorm/)): 8 kernels
+  → 1, the predictor's kernels 4,665 → ~2,460: **18.3 ms a frame**, RTF 0.27, first audio 43 ms. Not
+  bit-exact (1 element in 735,000 one bfloat16 step off), so fused paths are tested by the near-tie
+  standard above: 6 different picks in 2,790 steps, all near-ties.
 - **The chunk schedule** ([03](../../python/services/tts-service/spikes/03-chunk-schedule/)): decode after 1, 1, 2,
   then every 4 frames: first audio **52 ms** (from 143) at the same cost (RTF 0.41), 43 ms of margin
   before a gap. The standard from here on.

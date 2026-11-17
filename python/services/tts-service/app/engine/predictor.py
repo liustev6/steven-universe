@@ -27,6 +27,8 @@ Two loops, the same math (every module is Qwen's, called directly):
 - `GraphCodePredictor` (step 4): `StaticCodePredictor`'s 15 passes recorded once as a **CUDA graph** and
   replayed every frame: one launch instead of ~1,500 (5 layers × ~18 kernels × 15 passes, plus the
   sampling), with no Python in between. How, in `_capture`.
+- Fused (A, after spikes/04): the same, with our own Triton kernels (kernels.py) in place of PyTorch's
+  chains of small ones: first the RMSNorm (8 kernels → 1).
 
 The sampling is ours too: Hugging Face's order (temperature, then top-k, then top-p, then a draw), in
 float32 like `generate`.
@@ -70,32 +72,50 @@ class CodePredictor:
 
 
 class StaticCodePredictor:
-    """Step 3: graph-ready. Fixed buffers, fixed shapes per pass, no CPU work that depends on values."""
+    """Step 3: graph-ready. Fixed buffers, fixed shapes per pass, no CPU work that depends on values.
+    `fused`: the RMSNorms as our one-kernel Triton version (kernels.py) instead of Qwen's 8 kernels."""
 
-    def __init__(self, cp):
-        self.cp = cp
+    def __init__(self, cp, *, fused: bool = False):
+        self.cp, self.fused = cp, fused
         self.steps = cp.config.num_code_groups - 1                # 15
         self.length = self.steps + 1                              # 16 cache positions
         self._buffers: SimpleNamespace | None = None
 
     def __call__(self, inputs_embeds, *, do_sample: bool = False, top_k: int | None = None,
                  top_p: float | None = None, temperature: float | None = None, **_unused):
+        codes, _ = self._run(inputs_embeds, lambda k, logits: pick(
+            logits, do_sample=do_sample, top_k=top_k, top_p=top_p, temperature=temperature))
+        return SimpleNamespace(sequences=codes)
+
+    def teacher_forced(self, inputs_embeds, codes=None):
+        """For comparing two predictors step by step (tests, spikes): every pass's scores, (15, batch,
+        vocab), and the codes, (batch, 15): greedy, or the given `codes` fed back in place of its own
+        picks, so both predictors see identical inputs at every pass."""
+        import torch
+
+        choose = ((lambda k, logits: codes[:, k:k + 1]) if codes is not None
+                  else (lambda k, logits: logits.argmax(dim=-1, keepdim=True)))
+        picked, scores = self._run(inputs_embeds, choose)
+        return picked, torch.stack(scores)
+
+    def _run(self, inputs_embeds, choose):
+        """The 15 passes; `choose(k, logits)` picks pass k's code. Returns the codes and the scores."""
         import torch
 
         if inputs_embeds.shape[1] != 2:
             raise ValueError("the code predictor starts from 2 positions: the talker's hidden state and code 1")
         b = self._setup(inputs_embeds)
         cp, model = self.cp, self.cp.model
-        x, codes = inputs_embeds, []
+        x, codes, scores = inputs_embeds, [], []
         for k in range(self.steps):
             if k:
                 x = model.codec_embedding[k - 1](codes[-1])
             x = cp.small_to_mtp_projection(x)
             start, n = (0, 2) if k == 0 else (k + 1, 1)           # Python constants: fixed per pass
             hidden = self._layers(x, start, n, b)
-            logits = cp.lm_head[k](hidden)[:, -1].float()
-            codes.append(pick(logits, do_sample=do_sample, top_k=top_k, top_p=top_p, temperature=temperature))
-        return SimpleNamespace(sequences=torch.cat(codes, dim=1))
+            scores.append(cp.lm_head[k](hidden)[:, -1].float())
+            codes.append(choose(k, scores[-1]))
+        return torch.cat(codes, dim=1), scores
 
     def _setup(self, x) -> SimpleNamespace:
         """The fixed buffers, once per batch size: each layer's keys and values for 16 positions, and
@@ -121,14 +141,14 @@ class StaticCodePredictor:
         forward, op for op, with our cache in place of Hugging Face's."""
         import torch.nn.functional as F
 
-        model, end = self.cp.model, start + n
+        model, end, norm = self.cp.model, start + n, self._norm
         cos, sin = b.cos[:, :, start:end], b.sin[:, :, start:end]
         for layer, keys, values in zip(model.layers, b.keys, b.values):
             a = layer.self_attn
-            residual, h = h, layer.input_layernorm(h)
+            residual, h = h, norm(layer.input_layernorm, h)
             shape = (*h.shape[:-1], -1, a.head_dim)               # (batch, n, heads, head_dim)
-            q = a.q_norm(a.q_proj(h).view(shape)).transpose(1, 2)
-            k = a.k_norm(a.k_proj(h).view(shape)).transpose(1, 2)
+            q = norm(a.q_norm, a.q_proj(h).view(shape)).transpose(1, 2)
+            k = norm(a.k_norm, a.k_proj(h).view(shape)).transpose(1, 2)
             v = a.v_proj(h).view(shape).transpose(1, 2)
             q, k = q * cos + rotate_half(q) * sin, k * cos + rotate_half(k) * sin
             keys[:, :, start:end].copy_(k)                        # write into the fixed cache…
@@ -137,9 +157,17 @@ class StaticCodePredictor:
                 q, keys[:, :, :end], values[:, :, :end], scale=a.scaling, is_causal=n > 1, enable_gqa=True)
             out = out.transpose(1, 2).contiguous().reshape(*h.shape[:-1], -1)
             h = residual + a.o_proj(out)
-            residual, h = h, layer.post_attention_layernorm(h)
+            residual, h = h, norm(layer.post_attention_layernorm, h)
             h = residual + layer.mlp(h)
-        return model.norm(h)
+        return norm(model.norm, h)
+
+    def _norm(self, module, x):
+        """One of Qwen's RMSNorms: its own forward, or the same math as our fused kernel."""
+        if not self.fused:
+            return module(x)
+        from app.engine.kernels import rms_norm
+
+        return rms_norm(x, module.weight, module.variance_epsilon)
 
 
 class GraphCodePredictor:
@@ -159,8 +187,8 @@ class GraphCodePredictor:
     replay draws new numbers.
     """
 
-    def __init__(self, cp):
-        self.cp = cp
+    def __init__(self, cp, *, fused: bool = False):
+        self.cp, self.fused = cp, fused
         self._graphs: dict[tuple, SimpleNamespace] = {}
 
     def __call__(self, inputs_embeds, *, do_sample: bool = False, top_k: int | None = None,
@@ -176,7 +204,7 @@ class GraphCodePredictor:
     def _capture(self, key, x, settings) -> SimpleNamespace:
         import torch
 
-        static, x_in = StaticCodePredictor(self.cp), x.clone()
+        static, x_in = StaticCodePredictor(self.cp, fused=self.fused), x.clone()
 
         def run():
             return static(x_in, **settings).sequences
