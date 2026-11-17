@@ -10,8 +10,8 @@ containers share pve01's kernel, so they get the card's **device files** (`/dev/
 driver's **user-space libraries**, which must be the very same version as the module. Agent sandboxes
 never get the GPU.
 
-**Versions (2026-11-17):** Proxmox VE 9.2.2, kernel `7.0.2-6-pve` (pinned in step 5); NVIDIA open
-kernel modules **620.70.06** (held); NVIDIA Container Toolkit 1.20.x. Secure Boot is off on pve01
+**Versions (2026-11-17):** Proxmox VE 9.2.2, kernel `7.0.14-29-pve` (following Proxmox's updates,
+step 5); NVIDIA open kernel modules **620.70.06** (held); NVIDIA Container Toolkit 1.20.x. Secure Boot is off on pve01
 (no module signing needed). pve01's console uses the AMD integrated graphics (`79:00.0`), not this card.
 
 ## Part 1: pve01 (the host)
@@ -142,7 +142,27 @@ systemctl mask nvidia-powerd
 runs before the reboot (the module isn't loaded yet).
 
 ### 7. Reboot and check
-_(planned)_ `./setup.sh` after it (the OpenBao unseal); then `nvidia-smi`, `dkms status`, `lsmod`.
+```sh
+./setup.sh reboot        # checks the driver is built for the next kernel, pauses agents, reboots
+# … about 3 minutes …
+./setup.sh               # a GPU line first, then the usual (OpenBao's unseal, agents, every service)
+nvidia-smi
+lsmod | grep -E "^(nvidia|nouveau|nova)"
+ls -la /dev/nvidia*
+```
+**Result (2026-11-17, 22:39):** booted **7.0.14-29-pve**. `nvidia-smi`: NVIDIA GeForce RTX 5060, driver
+620.70.06, 8151 MiB, persistence mode on. Loaded: `nvidia`, `nvidia_uvm`, `nvidia_modeset`, `nvidia_drm`;
+no `nouveau`, no `nova_core`. `nvidia-persistenced` active, `nvidia-powerd` off.
+
+**The device files** (what a container is given, Part 2), all created at boot by NVIDIA's udev rule:
+
+| File | Major, minor |
+|---|---|
+| `/dev/nvidia0` | 195, 0 |
+| `/dev/nvidiactl` | 195, 255 |
+| `/dev/nvidia-modeset` | 195, 254 |
+| `/dev/nvidia-uvm`, `/dev/nvidia-uvm-tools` | 507, 0 and 1 (the major is assigned at boot: don't hard-code it) |
+| `/dev/nvidia-caps/nvidia-cap1`, `nvidia-cap2` | 510, 1 and 2 |
 
 ## Part 2: a container (CT 108)
 _(planned, CP4 4.3)_ the `devN` entries, the matching user-space libraries, Docker and the NVIDIA

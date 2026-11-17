@@ -55,16 +55,15 @@ before it's healthy.
 | inside | Debian 13, the NVIDIA user-space libraries (the host driver's exact version), Docker, the NVIDIA Container Toolkit; the service's image has PyTorch built for CUDA 12.8 or newer (the RTX 50 series needs it) |
 
 **pve01's kernel and the driver:** the driver is a kernel module, built for each Proxmox kernel by
-DKMS. pve01 runs kernel 7.0.2; reports exist of NVIDIA's DKMS build failing on Proxmox 9's 7.0.x
-kernels (for an older card's legacy driver). So 4.2 first checks that NVIDIA's current open driver
-builds on it, and then **pins the kernel** (`proxmox-boot-tool kernel pin`): a kernel update becomes a
-deliberate step (update, check `nvidia-smi`, then unpin), never a surprise after a reboot.
+DKMS. pve01 **follows Proxmox's kernel updates** (decided in 4.2, not pinned): `proxmox-default-headers`
+brings each new kernel's headers, DKMS builds the module for it at install, and `./setup.sh reboot`
+refuses to reboot into a kernel the module isn't built for. The steps: [lxc-gpu-passthrough-setup.md](../lxc-gpu-passthrough-setup.md).
 
 ## Build plan (CP4's first sub-checkpoints)
 | Sub-CP | What | Done when |
 |---|---|---|
 | 4.1 ✅ | **the design:** this document | reviewed and agreed (2026-11-17) |
-| 4.2 | **the GPU on pve01:** check (read-only) that NVIDIA's open driver supports the RTX 5060 on kernel 7.0.2; install it with DKMS; pin the kernel | `nvidia-smi` on pve01 shows the card; the module rebuilds on a reboot |
+| 4.2 ✅ | **the GPU on pve01:** NVIDIA's open driver 620.70.06 with DKMS, following Proxmox's kernel updates (not pinned) | `nvidia-smi` on pve01 shows the card; the module rebuilds for a new kernel. **Done 2026-11-17:** built for 7.0.2 and 7.0.14, booted 7.0.14 with the RTX 5060 working ([lxc-gpu-passthrough-setup.md](../lxc-gpu-passthrough-setup.md) Part 1) |
 | 4.3 | **CT 108:** the container (lxc-setup part 1), the `devN` entries, the user-space libraries, Docker and the toolkit | `nvidia-smi` inside the container, and inside a CUDA container on its Docker |
 | 4.4 | **identity:** auth-service's policy (audience `tts-service`; `smoke-test` and api-service's grants); its client secret | `explain` shows the grants; deployed |
 | 4.5 | **the service:** the model holder (load, warm-up, one GPU worker, the queue, cancel on disconnect), the streaming endpoint, voices, status; tests against a fake model | tests: streaming order, the queue limit, cancel frees the worker, not healthy until warm |
