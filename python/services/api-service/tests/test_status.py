@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from tests.conftest import FakeAuth, FakeTokens
 
 TARGETS = [
     {"name": "auth-service", "url": "https://auth.lan/health", "kind": "health"},
@@ -60,7 +61,8 @@ class StatusToken(httpx.Auth):
 
 def client(lab, **settings):
     s = Settings(STATUS_TARGETS=TARGETS, STATUS_CACHE_SECONDS=settings.pop("cache", 0), REVISION="f1ea2f1abc", **settings)
-    return TestClient(create_app(s, http=httpx.AsyncClient(transport=lab.transport()), status_auth=StatusToken))
+    return TestClient(create_app(s, http=httpx.AsyncClient(transport=lab.transport()), status_auth=StatusToken,
+                                 agent_auth=FakeAuth(), agent_tokens=FakeTokens()))
 
 
 def test_everything_up():

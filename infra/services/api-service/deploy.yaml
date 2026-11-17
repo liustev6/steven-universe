@@ -15,13 +15,17 @@ config: infra/services/api-service/config.env         # -> /etc/api-service/conf
 url: https://api.liustev6.ca                          # public, through the Cloudflare tunnel
 health: https://api.lan.liustev6.ca/health            # checked on the LAN, the way cloudflared reaches it
 smoke_test:
-  script: python/services/api-service/scripts/smoke_test.py   # no secret; proves the path to the deployer
+  script: python/services/api-service/scripts/smoke_test.py   # the paths to the deployer and to agent-service
+  secret: /root/.secrets/smoke-test-client   # delivered from kv/shared/smoke_test_client_secret (the relay checks)
 certificate:
   name: api.lan.liustev6.ca
   hook: python/services/api-service/scripts/cert-hook.sh      # -> /usr/local/sbin/api-service-cert-hook
 
 # Managed secrets: values in OpenBao at kv/<from>, written to <to> (mode 600) on every deploy.
 secrets:
+  - from: shared/smoke_test_client_secret
+    to: /root/.secrets/smoke-test-client
+    owner: "0:0"
   - from: shared/cloudflare_dns_token
     to: /root/.secrets/cloudflare.ini
     owner: "0:0"

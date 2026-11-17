@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     # The deployer streams progress (with heartbeats every 15 s); a deploy may take minutes.
     DEPLOY_READ_TIMEOUT_SECONDS: float = 120
 
+    # ---- /v1/agent/…: agent-service for outside machine clients (spec "Agents") ---------------
+    AGENT_URL: str = "https://agent.lan.liustev6.ca"
+    AGENT_MAX_BODY_BYTES: int = 262_144          # a turn's text is at most 32,000 characters
+    # Per client (the token's subject): a burst of AGENT_RATE_BURST, refilled at AGENT_RATE_PER_MINUTE.
+    AGENT_RATE_BURST: int = 30
+    AGENT_RATE_PER_MINUTE: float = 60
+
     # ---- /v1/status: the lab's public status page (spec "Status") ---------------------------------
     # [{"name", "url", "kind": health|openbao|status, "audience"}]: kind status uses api-service's own
     # token (scope status:read; SERVICE_AUTH_ISSUER, _CLIENT_ID, _CLIENT_SECRET_FILE).

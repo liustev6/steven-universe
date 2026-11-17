@@ -1,7 +1,7 @@
 """api-service: the only service reachable from the internet. Spec: docs/specs/api-service.md.
 
-Minimal for now: `GET /health`, the lab's status page (`GET /v1/status`) and the deploy routes
-(deployer.md D3, D15). The other routes
+Minimal for now: `GET /health`, the lab's status page (`GET /v1/status`), the deploy routes
+(deployer.md D3, D15) and agent-service for machine clients (`/v1/agent/…`). The other routes
 (files, chat, user login) arrive one at a time, ported from web-gateway and fixed on the way
 (spec Migration).
 
@@ -21,7 +21,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app import deploy, status
+from app import agent, deploy, status
 from app.config import Settings
 from app.edge import Mode, access, client_ip
 
@@ -35,7 +35,7 @@ SECURITY_HEADERS = {
 
 
 def create_app(settings: Settings | None = None, *, http: httpx.AsyncClient | None = None,
-               status_auth=None) -> FastAPI:
+               status_auth=None, agent_auth=None, agent_tokens=None) -> FastAPI:
     settings = settings or Settings()
     logging.basicConfig(level=settings.LOG_LEVEL, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     owns_http = http is None
@@ -80,6 +80,7 @@ def create_app(settings: Settings | None = None, *, http: httpx.AsyncClient | No
     # Route groups, one package each (app/<group>/).
     app.include_router(deploy.build_router(settings, http))
     app.include_router(status.build_router(settings, http, status_auth))
+    app.include_router(agent.build_router(settings, http, agent_auth, agent_tokens))
     return app
 
 

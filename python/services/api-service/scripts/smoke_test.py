@@ -6,9 +6,12 @@ image with host networking, through DNS, port 443 and TLS (the way cloudflared r
     docker run --rm --network host --read-only -v <this file>:/t/smoke.py:ro --entrypoint python <image> /t/smoke.py
 
 Checks: health; the lab's status page (answers, lists every service, api-service's own token works);
-nothing but the reviewed routes; junk is stopped at the edge; and the deploy proxy
+nothing but the reviewed routes; junk is stopped at the edge; the deploy proxy
 really reaches the deployer (a GitHub-shaped token with a fake signature gets past the edge's
-pre-checks and is refused by the deployer itself, which proves the whole path without deploying).
+pre-checks and is refused by the deployer itself, which proves the whole path without deploying);
+and the agent relay (/v1/agent/…): refused without a token, and, as the smoke-test client (its
+secret at /t/secret), relayed to agent-service through the token exchange: its conversations
+listed, no model call.
 """
 
 import base64
@@ -19,6 +22,7 @@ import time
 import httpx
 
 URL = "https://api.lan.liustev6.ca"
+ISSUER = "https://auth.lan.liustev6.ca"
 failures = 0
 
 
@@ -26,6 +30,15 @@ def check(name: str, ok: bool, detail: str = "") -> None:
     global failures
     failures += not ok
     print(f"{'PASS' if ok else 'FAIL'}  {name}" + (f"  ({detail})" if detail else ""))
+
+
+def smoke_test_token(audience: str, scope: str) -> str:
+    """The smoke-test client's own token (client credentials), for the relay checks."""
+    secret = open("/t/secret").read().strip()
+    r = httpx.post(f"{ISSUER}/oauth2/token", auth=("smoke-test", secret), timeout=15,
+                   data={"grant_type": "client_credentials", "resource": audience, "scope": scope})
+    r.raise_for_status()
+    return r.json()["access_token"]
 
 
 def github_shaped_token() -> str:
@@ -76,6 +89,17 @@ def main() -> int:
         reached = r.status_code == 401 and "message" not in r.json()
         check("forged GitHub token: forwarded, refused by the deployer (401)", reached,
               f"{r.status_code} {r.text[:100]}")
+
+        # The agent relay: mode `client`, then the exchange (grant 3) to agent-service.
+        r = http.get("/v1/agent/conversations")
+        check("agent relay without a token: 401", r.status_code == 401, str(r.status_code))
+        token = smoke_test_token("api-service", "chat:read")
+        r = http.get("/v1/agent/conversations", headers={"Authorization": f"Bearer {token}"})
+        check("agent relay as smoke-test: exchanged and answered by agent-service",
+              r.status_code == 200 and isinstance(r.json().get("conversations"), list), f"{r.status_code} {r.text[:100]}")
+        r = http.post("/v1/agent/sessions", json={"profile": "voice"}, headers={"Authorization": f"Bearer {token}"})
+        check("agent relay: a scope the token lacks (chat:write) is refused (403)", r.status_code == 403,
+              str(r.status_code))
 
     print("ALL PASSED" if not failures else f"{failures} FAILED")
     return 1 if failures else 0

@@ -95,9 +95,15 @@ reconnect and the keep-alive are part of the standard instead of ours.)
 | 502 | `runner` | the sandbox runner couldn't be reached |
 | 503 | `no_sandbox` (with `Retry-After`) · `stopped` | no pod free right now · the kill switch is on |
 
-**Callers in CP3:** `smoke-test` (deploy smoke tests); the `agent` CLI on CT 107 (client `agent-cli`,
-secret root-only there: `ssh agent-host agent ask "…"`); **api-service** relaying an authenticated
-caller at `/v1/agent/…` (it's the public edge: a token is required; grant 3, `can_relay_clients`).
+**Callers in CP3:**
+- `smoke-test`: deploy smoke tests, directly (agent-service's) and through the relay (api-service's);
+  no model call (a turn would spend your plan on every deploy).
+- **the `agent` CLI** on CT 107 (client `agent-cli`, secret root-only there): `ssh -t agent-host agent
+  chat`, `agent ask [--last] …`, `agent conversations`, `agent history <id>`, `agent stop|start`. It
+  runs in agent-service's running image (`bin/agent`, installed by the deploy hook), so it always
+  matches the service. `app/cli.py`.
+- **api-service, relaying** an authenticated machine client at `/v1/agent/…` (the public edge; mode
+  `client`, grant 3: the caller's own grants and identity reach agent-service; api-service.md "Agents").
 
 ## Protocol B v0 (to callers)
 **Envelope:** `v` (1), `session_id`, `conversation_id`, `turn_id` (none for session-level events),

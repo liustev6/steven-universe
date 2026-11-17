@@ -67,7 +67,7 @@ async def my_file(path: str, caller: Caller = Depends(edge_auth(mode="user", sco
 | `optional` | Everyone; does more if logged in | Own token if anonymous, delegated if logged in |
 | `user` (default) | Logged-in users only; 401 otherwise | Delegated token for the user (auth-service grant 2) |
 | `user` + `scopes` | Users or machine clients whose credential carries the scopes | Delegated (user) or relayed (client) token (grant 2 / grant 3) |
-| `client` | Machine clients only | Relayed token (grant 3) |
+| `client` | Machine clients only, calling as themselves | Relayed token (grant 3): the client's own grants at the downstream service. **Built** (CP3: `/v1/agent/…`) |
 | `proxy` | Whoever the downstream service accepts; api-service only pre-checks and rate-limits | The caller's own credential, forwarded unchanged (allowlisted paths only; today just `/deploy/*`) |
 
 Tests: one walks `app.routes` and fails if a route has no mode, or if the set of `public` routes
@@ -114,6 +114,28 @@ Middleware runs in this order:
 
 api-service builds the object key from the **verified** identity (`users/{user}/…`). A request
 can't name another user's prefix; file-management also enforces this through the token's grants.
+
+### Agents (new; see [control-plane.md](agent-service/control-plane.md))
+agent-service's sessions API for outside machine clients (e.g. pi-server, a phone app's backend).
+Each route: mode `client` with its scope (the caller's token for audience `api-service`), a rate limit
+per client (30, then 60 a minute), a body limit (256 KB); then the caller's token is exchanged
+(grant 3) for one at agent-service carrying **the caller's own** grants and identity, so
+agent-service owns the sessions by the caller and applies its scopes; the answer is streamed back
+unchanged (status, problem details, Server-Sent Events, `X-Turn-Id`, `Retry-After`). A client with no
+grant at agent-service is refused at the exchange (403). Code: `app/agent/`.
+
+| Route | Scope | Downstream (agent-service) |
+|---|---|---|
+| `POST /v1/agent/sessions` | `chat:write` | `POST /v1/sessions` |
+| `POST /v1/agent/sessions/{id}/turns` | `chat:write` | `POST /v1/sessions/{id}/turns` (SSE) |
+| `GET /v1/agent/sessions/{id}/events?after=` | `chat:read` | `GET /v1/sessions/{id}/events` (SSE; `Last-Event-ID` passed on) |
+| `GET /v1/agent/sessions/{id}` | `chat:read` | `GET /v1/sessions/{id}` |
+| `POST /v1/agent/sessions/{id}/cancel` | `chat:write` | `POST /v1/sessions/{id}/cancel` |
+| `DELETE /v1/agent/sessions/{id}` | `chat:write` | `DELETE /v1/sessions/{id}` |
+| `GET /v1/agent/conversations` | `chat:read` | `GET /v1/conversations` |
+| `GET /v1/agent/conversations/{id}/turns` | `chat:read` | `GET /v1/conversations/{id}/turns` |
+
+Not relayed: agent-service's kill switch and status page.
 
 ### Deploys (new; see [deployer.md](deployer.md))
 | Route | Mode | Downstream | Notes |

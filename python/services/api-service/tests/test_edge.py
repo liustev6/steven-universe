@@ -13,6 +13,15 @@ EXPECTED = {
     ("GET", "/v1/status"): Mode.PUBLIC,          # the lab's status page: public-safe by design
     ("POST", "/deploy/v1/deployments"): Mode.PROXY,
     ("GET", "/deploy/v1/deployments/{deployment_id}/events"): Mode.PROXY,
+    # agent-service, for machine clients (grant 3)
+    ("POST", "/v1/agent/sessions"): Mode.CLIENT,
+    ("POST", "/v1/agent/sessions/{session_id}/turns"): Mode.CLIENT,
+    ("GET", "/v1/agent/sessions/{session_id}/events"): Mode.CLIENT,
+    ("GET", "/v1/agent/sessions/{session_id}"): Mode.CLIENT,
+    ("POST", "/v1/agent/sessions/{session_id}/cancel"): Mode.CLIENT,
+    ("DELETE", "/v1/agent/sessions/{session_id}"): Mode.CLIENT,
+    ("GET", "/v1/agent/conversations"): Mode.CLIENT,
+    ("GET", "/v1/agent/conversations/{conversation_id}/turns"): Mode.CLIENT,
 }
 
 

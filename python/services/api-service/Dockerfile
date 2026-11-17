@@ -9,7 +9,7 @@ RUN python -m venv /venv
 COPY services/api-service/requirements.txt /tmp/requirements.txt
 RUN /venv/bin/pip install -r /tmp/requirements.txt
 COPY libs/service-auth /tmp/service-auth
-RUN /venv/bin/pip install /tmp/service-auth          # its own token, for the status page (TokenClient)
+RUN /venv/bin/pip install /tmp/service-auth          # its own token (TokenClient), callers' tokens (ServiceAuth), the relay (grant 3)
 
 FROM python:3.11-slim
 ARG REVISION=unknown

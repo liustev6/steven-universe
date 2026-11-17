@@ -1,12 +1,13 @@
 """Edge rules every route goes through (api-service spec E2, "Route access modes", "Request pipeline").
 
 Deny by default: a route without an access mode is a bug, and a test walks app.routes to catch
-it. Only two modes exist so far; `user`, `optional` and `client` arrive with user login and the
-file routes (spec Migration).
+it. Three modes exist so far; `user` and `optional` arrive with user login (spec Migration).
 
     public   everyone; nothing downstream needs a credential
     proxy    forwarded unchanged to one allowlisted internal service, after pre-checks (today only
              /deploy/v1/deployments -> the deployer)
+    client   machine clients with an auth-service token for api-service and the route's scope;
+             downstream gets a relayed token carrying the client's own grants (grant 3, E4)
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from app.config import Settings
 class Mode(str, Enum):
     PUBLIC = "public"
     PROXY = "proxy"
+    CLIENT = "client"
 
 
 def access(mode: Mode) -> Callable[[], Mode]:
