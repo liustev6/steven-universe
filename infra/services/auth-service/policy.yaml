@@ -41,6 +41,11 @@ audiences:
   agent-service:
     scopes: [chat:read, chat:write, chat:admin, status:read]
 
+  # Speech, streamed from a model kept loaded on pve01's GPU (CT 108; docs/specs/tts-service.md).
+  # speech:create = synthesize; status:read = the lab's status page.
+  tts-service:
+    scopes: [speech:create, status:read]
+
   # OpenBao: services log in with a token for this audience. What a login may read is OpenBao's
   # policy (generated from the manifests, infra/secrets-manager/tofu/), not a scope here.
   secrets-manager:
@@ -78,6 +83,8 @@ clients:
         scopes: [status:read]
       agent-service:                     # the status page reads agent-service too (S rule)
         scopes: [status:read]
+      tts-service:                       # ... and tts-service (S rule)
+        scopes: [status:read]
       file-management:
         scopes: [files:read, files:list]
         authorization_details:
@@ -96,9 +103,11 @@ clients:
           - {type: file_access, actions: [read, write, delete, list], locations: ["private/${client}/"]}
 
   # Synthetic client for deploy checks (scripts/smoke_test.py); secret only on the auth host,
-  # root-only. Its own folder, and its own chats (directly, and through api-service's relay).
+  # root-only. Its own folder, its own chats (directly, and through api-service's relay), and speech.
   smoke-test:
     grants:
+      tts-service:                       # its deploy's smoke test synthesizes a sentence
+        scopes: [speech:create]
       api-service:
         scopes: [chat:read, chat:write]
       agent-service:

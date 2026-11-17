@@ -141,9 +141,9 @@ which the tests use. Tokens live 10 minutes (`token_ttl_seconds: 600`), downscop
 | Client | Audience: what it gets | Notes |
 |---|---|---|
 | `deployer` | secrets-manager: `secrets:read` | OpenBao login as role `deployer` (`sub=service:deployer`); secret host-only on CT 105 |
-| `api-service` | file-management: `read`, `list` on `public/`; sandbox-runner and agent-service: `status:read` | its own token = what anonymous visitors may do; `can_relay_clients` |
+| `api-service` | file-management: `read`, `list` on `public/`; sandbox-runner, agent-service and tts-service: `status:read` | its own token = what anonymous visitors may do; `can_relay_clients` |
 | `pi-server` | api-service: all `files:*`; file-management: all on `private/${client}/` | Hey Pi's backend |
-| `smoke-test` | file-management: all on `private/${client}/`; agent-service and api-service: `chat:read`, `chat:write` | deploy checks only (A15) |
+| `smoke-test` | file-management: all on `private/${client}/`; agent-service and api-service: `chat:read`, `chat:write`; tts-service: `speech:create` | deploy checks only (A15) |
 | `agent-service` | sandbox-runner: claim, release, read; secrets-manager: `secrets:read` | the agents' control plane on CT 107 ([control-plane.md](agent-service/control-plane.md)) |
 | `agent-cli` | agent-service: `chat:read`, `chat:write`, `chat:admin` | the `agent` CLI on CT 107 |
 
