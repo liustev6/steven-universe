@@ -69,6 +69,18 @@ SHORT="${SHA:0:7}"; SUBJECT="$(git -C "$SRC" log -1 --format=%s)"
 SVC_DIR="$SRC/$(dirname "$M_COMPOSE")"
 cd "$SVC_DIR"
 
+# The service's own image. `docker compose config --images <service>` also lists the images of the
+# services it depends_on (agent-service's PostgreSQL), so pick the one named after the service: CI
+# requires it to be <registry>/<service>:${IMAGE_TAG} (.github/scripts/plan.sh). Exactly one, or stop.
+service_image() {
+    local all mine
+    all="$(docker compose config --images "$SERVICE")"
+    mine="$(printf '%s\n' "$all" | grep -E "/${SERVICE}:[^/]+$" || true)"
+    [ -n "$mine" ] && [ "$(printf '%s\n' "$mine" | wc -l)" -eq 1 ] \
+        || die "Can't tell $SERVICE's own image among: $(printf '%s ' $all)"
+    printf '%s' "$mine"
+}
+
 # The image to run (D1a). Exported: every `docker compose` below, and the service hook, use it.
 # shellcheck disable=SC2086  # $M_LIBS: repository paths, no spaces
 IMAGE_SHA="$(git -C "$SRC" log -1 --format=%H "$SHA" -- "$M_CODE" $M_LIBS)"
@@ -112,7 +124,7 @@ fi
 # that image (manifest `images`, infra/images/<name>.yaml) pinned by digest. Each image is named like
 # a service's (the last commit touching its code and libs) and pulled here, before anything restarts.
 if [ -n "$M_FILES" ]; then
-    REGISTRY="$(dirname "$(docker compose config --images "$SERVICE")")"     # ghcr.io/<owner>/<repo>
+    REGISTRY="$(dirname "$(service_image)")"     # ghcr.io/<owner>/<repo>
     FILL_ARGS=()
     declare -A PINNED_REF=()                  # image name -> the tag just pinned (kept by the prune below)
     for img in $M_IMAGES; do
@@ -200,7 +212,7 @@ fi
 # Step 4: pull the image from GHCR (the running container is untouched)
 ##############################################################################
 step "Pulling image"
-IMAGE="$(docker compose config --images "$SERVICE")"     # ghcr.io/.../<service>:<image sha>
+IMAGE="$(service_image)"     # ghcr.io/.../<service>:<image sha>
 if docker image inspect "$IMAGE" >/dev/null 2>&1; then
     info "already on this host"
 else
