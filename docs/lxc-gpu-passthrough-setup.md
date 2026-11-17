@@ -206,10 +206,64 @@ unprivileged container); SSH alias `tts-host` (host key `SHA256:QoMm0yhs…`, ch
 the deploy wrapper (`/etc/deploy-target/services`: `tts-service`); CT 108 in [boot.md](specs/boot.md).
 
 ### 4. NVIDIA's user-space libraries, at the host's exact version
-_(planned)_
+The container shares pve01's kernel: no kernel module here, only the driver's user-space half
+(`libcuda1`, `libnvidia-ml1`, `nvidia-smi`, …), at **exactly** the module's version. Same repository
+and key as pve01; a dry run first (no `dkms`, no compiler, no kernel module). In CT 108's shell:
+```sh
+cd /tmp && curl -fsSLO https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/cuda-keyring_1.1-1_all.deb
+dpkg -i cuda-keyring_1.1-1_all.deb && rm cuda-keyring_1.1-1_all.deb && apt-get update -qq
+sha256sum /usr/share/keyrings/cuda-archive-keyring.gpg      # the same as pve01's (no gpg in the minimal image)
+apt-get -s install --no-install-recommends nvidia-driver-cuda=620.70.06-1 | grep -E "^Inst"
+apt-get install -y --no-install-recommends nvidia-driver-cuda=620.70.06-1
+apt-mark hold $(dpkg-query -W -f='${binary:Package} ${Version}\n' | awk '$2 ~ /^620\.70\.06/ {print $1}')
+systemctl mask nvidia-persistenced nvidia-powerd               # pve01's daemon serves the card
+nvidia-smi
+```
+**Result (2026-11-17):** keyring `77f0992e…34bbe`, the same as pve01's; 25 packages at 620.70.06,
+held (no kernel-module packages; a few small X libraries as dependencies); `nvidia-persistenced` and
+`nvidia-powerd` masked. **`nvidia-smi` inside CT 108: NVIDIA GeForce RTX 5060, 620.70.06, 8151 MiB.**
+(Pasting a long block into the Proxmox console can garble it: paste one line at a time, or use
+`ssh tts-host`.)
 
 ### 5. The NVIDIA Container Toolkit, and a CUDA container
-_(planned)_
+The toolkit lets `docker run --gpus all` (and compose's `gpus:`) hand a container the device files and
+the libraries of step 4. In an unprivileged LXC the container can't manage device cgroups, so the
+toolkit must not try: **`no-cgroups = true`** (the known fix for Proxmox containers; the device files
+are already open, step 2). In CT 108's shell:
+```sh
+apt-get install -y nvidia-container-toolkit
+nvidia-ctk config --set nvidia-container-cli.no-cgroups --in-place
+nvidia-ctk runtime configure --runtime=docker && systemctl restart docker
+docker run --rm --gpus all nvidia/cuda:12.8.2-base-ubuntu24.04 nvidia-smi
+docker run --rm --gpus all --user 10001:10001 nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda12.5.0
+```
+**Result (2026-11-17):** toolkit 1.20.2 (`libnvidia-container1`, tools, base); `no-cgroups = true`;
+Docker's `nvidia` runtime registered. In a CUDA 12.8 container: `NVIDIA GeForce RTX 5060, 620.70.06,
+8151 MiB`, as root and as uid 10001. **NVIDIA's vector-add sample, as uid 10001: Test PASSED** (data to
+the card, a kernel, the result back: CUDA's unified memory end to end; built for CUDA 12.5, the driver
+compiled it for this card on the fly). The test images removed. The toolkit isn't held: it doesn't
+have to match the driver.
+
+## The chain, end to end
+```
+pve01: kernel 7.0.14 + NVIDIA's module 620.70.06 (DKMS) ── /dev/nvidia0, nvidiactl, nvidia-uvm(-tools)
+  └─ CT 108 (unprivileged): dev0–dev3 (mode 0666) + NVIDIA's libraries 620.70.06 (held)
+       └─ Docker + NVIDIA Container Toolkit (no-cgroups) ── `gpus: all` ──▶ a container, as uid 10001
+```
 
 ## Updating later
-_(to write once done)_ the driver and the kernel together: unpin, update both, check, pin again.
+**A Proxmox (kernel) update:** nothing special. `apt full-upgrade` on pve01 installs the new kernel and
+its headers; DKMS builds the module for it (`dkms status` lists it: `installed`). Then
+`./setup.sh reboot`: it refuses if the module isn't built for the kernel it would boot. After the boot,
+`./setup.sh` shows the GPU line. If DKMS failed for the new kernel, keep running the current one (don't
+reboot) and update the driver (below); NVIDIA usually supports a new kernel within weeks.
+
+**A driver update** (a fix, or support for a new kernel): the host's module and every GPU container's
+libraries must move **together**, to the same version.
+1. pve01: `apt-mark unhold` the NVIDIA packages; `apt install nvidia-kernel-open-dkms=<v> nvidia-driver-cuda=<v>`;
+   `dkms status` (built for every installed kernel); hold again (step 3c).
+2. Each GPU container (CT 108): the same `<v>` of `nvidia-driver-cuda` (step 4), held again.
+3. `./setup.sh reboot` (the new module loads at boot); `nvidia-smi` on pve01, in CT 108, and in a CUDA
+   container (step 5).
+Until the reboot, the old module keeps running and the containers' new libraries don't match it: do
+both sides and the reboot in one sitting.
