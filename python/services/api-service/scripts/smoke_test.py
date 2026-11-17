@@ -54,11 +54,12 @@ def main() -> int:
         services = page.get("services", {})
         check("status page answers (200)", r.status_code == 200, f"{r.status_code} {r.text[:80]}")
         check("status page lists every service", {"api-service", "auth-service", "file-management", "deployer",
-              "openbao", "sandbox-runner"} <= set(services), ", ".join(sorted(services)))
+              "openbao", "sandbox-runner", "agent-service"} <= set(services), ", ".join(sorted(services)))
         check("api-service itself ok", services.get("api-service", {}).get("ok") is True)
-        runner_error = services.get("sandbox-runner", {}).get("error", "")
-        check("api-service's own token works (the runner doesn't refuse it)", runner_error not in ("HTTP 401", "HTTP 403"),
-              runner_error)
+        for audience in ("sandbox-runner", "agent-service"):
+            error = services.get(audience, {}).get("error", "")
+            check(f"api-service's own token works ({audience} doesn't refuse it)", error not in ("HTTP 401", "HTTP 403"),
+                  error)
         for name, svc in sorted(services.items()):
             print(f"      {name}: {'ok' if svc.get('ok') else 'NOT ok ' + str(svc.get('error', ''))}")
 

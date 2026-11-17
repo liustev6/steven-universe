@@ -20,11 +20,12 @@ IN SSH(ACCEPT) -source 192.168.50.50 # the deployer (CT 105): pipeline deploys
 IN HTTPS(ACCEPT) -source 192.168.50.101 # the runner's API, checked from the Mac through pve01
 IN HTTPS(ACCEPT) -source 192.168.50.192 # api-service (CT 106): the lab's status page reads the runner's /v1/status
 IN Ping(ACCEPT) -source 192.168.50.101 # diagnosis
-# CP3: IN HTTPS(ACCEPT) -source <agent-service, CT 107> # the runner's real caller
+IN HTTPS(ACCEPT) -source 192.168.50.229 # agent-service (CT 107): the runner's real caller (claim, release, list pods)
 
 # ---- out --------------------------------------------------------------------------------------
 OUT DNS(ACCEPT) -dest 192.168.50.1 # the router: name lookups
 OUT HTTPS(ACCEPT) -dest 192.168.50.235 # auth-service: token keys (the runner; the dev gateway's client)
+OUT ACCEPT -dest 192.168.50.229 -p tcp -dport 8443 # agent-service's gateway (CT 107): the pods' proxies, and nothing else of CT 107
 OUT DROP -dest 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,169.254.0.0/16 # nothing else private: no pve01, router admin, OpenBao, file-management, RustFS, Tailscale
 OUT HTTPS(ACCEPT) # the internet: GHCR, Debian/Docker/gVisor repositories, certbot (Let's Encrypt, Cloudflare); in CP2 also the dev gateway's model calls. Tighten in CP3.
 OUT HTTP(ACCEPT) # the internet: Debian's repositories
