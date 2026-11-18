@@ -228,8 +228,8 @@ async def transcription_session(ws: WebSocket, service: Service, auth) -> None:
     (no audio at all) | queue_timeout | bad_message | failed}.
 
     `?context=` (at most STT_MAX_CONTEXT_CHARS): what the speech is likely about (recent turns, names,
-    places), after the service's own (STT_CONTEXT): Qwen3-ASR's system message, which biases the words
-    and the language toward it (T18).
+    places, the speakers' languages), after the service's own (STT_CONTEXT, empty unless set): Qwen3-ASR's
+    system message, which biases the words and the language toward it (T18).
 
     `?turn_detection=server` (default: none, the client commits): the server ends the turn itself
     after `silence_ms` (300-3000, default 700) of quiet following speech (turns.py)."""

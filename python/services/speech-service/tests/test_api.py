@@ -269,17 +269,21 @@ def test_server_side_turn_detection_commits_by_itself():
 
 
 def test_a_transcription_carries_its_context_after_the_services_own():
-    """T18: the service's context, then the session's (recent turns, names), in every pass's prompt."""
-    client, service = make()
-    url = "/v1/realtime/transcription?context=" + "Steven lives in Seattle. Last turn: what's the weather downtown?".replace(" ", "%20")
-    with client.websocket_connect(url, headers=ALL) as ws:
-        ws.receive_json()
-        ws.send_bytes(np.zeros(16000, dtype="<i2").tobytes())
-        ws.send_json({"type": "commit"})
-        msgs, _ = drain(ws)
-    assert msgs[-1]["type"] == "final"
-    prompts = [p for run in service.stt.batch.engine.passes for _, p, _ in run]
-    assert prompts and all("English, Chinese, or both mixed" in p and "Steven lives in Seattle." in p for p in prompts)
-    assert prompts[0].index("English, Chinese") < prompts[0].index("Steven lives")
+    """T18: the service's context (none by default), then the session's, in every pass's prompt."""
+    def prompts_for(client, service, context):
+        with client.websocket_connect("/v1/realtime/transcription?context=" + context.replace(" ", "%20"), headers=ALL) as ws:
+            ws.receive_json()
+            ws.send_bytes(np.zeros(16000, dtype="<i2").tobytes())
+            ws.send_json({"type": "commit"})
+            msgs, _ = drain(ws)
+        assert msgs[-1]["type"] == "final"
+        return [p for run in service.stt.batch.engine.passes for _, p, _ in run]
+
+    client, service = make()                                          # no service context: the session's only
+    prompts = prompts_for(client, service, "Steven lives in Seattle.")
+    assert prompts and all(p.endswith("[Steven lives in Seattle.]") for p in prompts)
+    client, service = make(STT_CONTEXT="A lab hint.")                 # set: it comes first
+    prompts = prompts_for(client, service, "Steven lives in Seattle.")
+    assert all("[A lab hint.\nSteven lives in Seattle.]" in p for p in prompts)
     too_long = "/v1/realtime/transcription?context=" + "x" * 1001
     assert denied(client, too_long, ALL).status_code == 400

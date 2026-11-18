@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     TTS_INSTRUCT: str | None = None            # a style instruction for every sentence (1.7B models only)
 
     STT_TICK_SECONDS: float = 0.1              # the STT's batch ticks this often (and at once on an end)
-    # Context for speech-to-text (T18): this, then the session's own `?context=`, as Qwen3-ASR's system message
-    STT_CONTEXT: str = "The speaker may speak English, Chinese, or both mixed in one sentence."
+    # Context for speech-to-text (T18): this, then the session's own `?context=`, as Qwen3-ASR's system message.
+    # Empty: who speaks and how is each caller's to say (pi-server sends its own); set only a hint that's
+    # true of every caller.
+    STT_CONTEXT: str = ""
     STT_MAX_CONTEXT_CHARS: int = 1000          # a session's own context, at most
