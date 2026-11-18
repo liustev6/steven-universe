@@ -384,14 +384,22 @@ def test_the_reply_speaks_in_the_turns_main_language():
     assert (o.voice_for("关灯"), o.voice_for("Turn off the lights")) == ("dylan", "ryan")
 
 
-def test_spoken_and_typed_turns_pick_the_voice():
+def test_the_sessions_first_turn_picks_its_voice_for_the_whole_session():
     async def go():
-        r = Rig(speech=Speech(heard=["今天星期几？"]))
-        await r.frames(WAKE, QUIET, QUIET, QUIET, SPEECH, QUIET)
+        r = Rig(speech=Speech(heard=["今天星期几？", "What time is it?"]))
+        turn = (QUIET, QUIET, QUIET, SPEECH, QUIET)
+        await r.frames(WAKE, *turn)
         await r.settle()
-        await r.va.say("What time is it?")
+        await r.frames(*turn)                                        # English now: still dylan
         await r.settle()
-        assert r.speech.voices == ["dylan", "ryan"]
+        await r.va.say("And tomorrow?")
+        await r.settle()
+        assert r.speech.voices == ["dylan", "dylan", "dylan"]
+        await r.frames(*[QUIET] * 51)                                # the session ends
+        await r.settle()
+        await r.va.say("Hello")                                      # a new session, started in English
+        await r.settle()
+        assert r.speech.voices[-1] == "ryan"
     run(go())
 
 

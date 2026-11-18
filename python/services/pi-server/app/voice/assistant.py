@@ -78,9 +78,8 @@ class VoiceOptions:
     window: float = 5.0                # the session waits this long for someone to speak
 
     def voice_for(self, text: str, heard: str = "") -> str:
-        """A reply's voice: its turn's main language's (mixed Chinese and English: whichever most of it
-        is). From what was said, since the agent answers in that language: chosen before the reply
-        arrives, so no delay."""
+        """The voice for a turn's main language (mixed Chinese and English: whichever most of it is).
+        The session's first turn decides it for the whole session (VoiceAssistant._voice)."""
         return self.voice_zh if main_language(text, heard) == "Chinese" else self.voice_en
 
 
@@ -108,6 +107,7 @@ class VoiceAssistant:
         self._turn: Optional[asyncio.Task] = None
         self._ending: Optional[asyncio.Task] = None
         self._recent: collections.deque[tuple[str, str]] = collections.deque(maxlen=CONTEXT_TURNS)
+        self._session_voice: Optional[str] = None
 
     # ---- the mic loop ------------------------------------------------------------------------------
     async def run(self) -> None:
@@ -166,6 +166,7 @@ class VoiceAssistant:
         self._turn = self._claim = None
         self.wake.reset()
         self._recent.clear()                         # a new session is a new conversation (V4)
+        self._session_voice = None                   # ... and picks its voice again
 
         async def release() -> None:
             if turn is not None and not turn.done():
@@ -212,7 +213,7 @@ class VoiceAssistant:
         if not heard.text.strip():
             await self._wait(holdoff=0)
             return
-        await self._replying(turn_id, heard.text, heard_at, self.options.voice_for(heard.text, heard.language))
+        await self._replying(turn_id, heard.text, heard_at, self._voice(heard.text, heard.language))
 
     async def _replying(self, turn_id: str, text: str, heard_at: float, voice: str) -> None:
         self.state = State.REPLYING
@@ -228,6 +229,14 @@ class VoiceAssistant:
         except Exception as e:                           # V8: this turn ends, the session goes on
             logger.error("turn %s failed: %s: %s", turn_id, type(e).__name__, e)
         await self._wait(holdoff=HOLDOFF_SECONDS)
+
+    def _voice(self, text: str, heard: str = "") -> str:
+        """The session's voice: decided by its first turn's main language (Chinese: dylan, English:
+        ryan), then kept for every turn of the session, whatever language a later turn is in."""
+        if self._session_voice is None:
+            self._session_voice = self.options.voice_for(text, heard)
+            logger.info("voice session speaks with %s", self._session_voice)
+        return self._session_voice
 
     def context(self) -> str:
         """For speech-to-text: this session's last turns, so a name or a place said again is heard as
@@ -260,7 +269,7 @@ class VoiceAssistant:
         else:
             await self._stop_turn()
         self.state = State.REPLYING                      # now, so no voice starts a turn meanwhile
-        self._turn = asyncio.create_task(self._replying(self.turn_id, text, self.clock(), self.options.voice_for(text)))
+        self._turn = asyncio.create_task(self._replying(self.turn_id, text, self.clock(), self._voice(text)))
 
     async def cancel(self) -> None:
         await self.close("cancelled")

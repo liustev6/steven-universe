@@ -48,8 +48,8 @@ class Settings(BaseSettings):
     AGENT_PROFILE: str = "pi"                    # its own profile (infra/services/agent-service/profiles.yaml)
     WAKE_WORD: str = "hey_jarvis"                # a built-in microWakeWord model, or a trained one's .json
     LISTEN_WINDOW_SECONDS: float = 5.0           # a session waits this long for someone to speak (V9)
-    VOICE_EN: str = "ryan"                       # the reply's voice in English
-    VOICE_ZH: str = "dylan"                      # ... in Chinese; mixed: the main language's (speech-service spikes/14-15)
+    VOICE_EN: str = "ryan"                       # a voice session that starts in English speaks with this
+    VOICE_ZH: str = "dylan"                      # ... in Chinese (mixed: its main language); kept all session
     TTS_LANGUAGE: Optional[str] = None           # None: Auto (the model reads it from the text)
     STT_LANGUAGE: Optional[str] = None           # None: detected
     # Speech-to-text's context (speech-service T18): who speaks to Hey Pi, then the session's last turns
