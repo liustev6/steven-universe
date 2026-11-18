@@ -45,6 +45,10 @@ def codex_overrides(session: SessionFile) -> dict[str, Any]:
         "model_providers.gateway.env_key": CAPABILITY_ENV,
         "model_providers.gateway.wire_api": "responses",
         "model_providers.gateway.requires_openai_auth": False,
+        # Codex offers web search through a custom provider only when the provider says it can serve it:
+        # the search is its own request, `POST {base_url}/alpha/search`, which the gateway relays as any
+        # other model request (pinned model, your login). Without this, the model finds no search tool.
+        "model_providers.gateway.supports_standalone_web_search": "web_search" in tools,
         "features.shell_tool": "shell" in tools,
         "features.view_image": "view_image" in tools,
         "web_search": "live" if "web_search" in tools else "disabled",

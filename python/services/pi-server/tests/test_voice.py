@@ -12,6 +12,7 @@ import httpx
 from app.voice.agent import AgentClient, client_info
 from app.voice.assistant import State, VoiceAssistant, VoiceOptions, main_language
 from app.voice.speech import Heard, SpeechError
+from app.voice.spoken import SpokenText
 
 WAKE, SPEECH, QUIET = b"W" * 3200, b"S" * 3200, b"\0" * 3200
 
@@ -97,8 +98,8 @@ class Speech:
 
 
 class Agent:
-    def __init__(self, hang=False):
-        self.hang = hang
+    def __init__(self, hang=False, deltas=("Sunny, ", "and warm.")):
+        self.hang, self.deltas = hang, deltas
         self.started = self.ended = self.cancelled = 0
         self.asked = []
 
@@ -108,8 +109,8 @@ class Agent:
 
     async def turn(self, text):
         self.asked.append(text)
-        for d in ("Sunny, ", "and warm."):
-            yield {"type": "message.delta", "text": d}
+        for d in self.deltas:
+            yield {"type": "message.completed"} if d is None else {"type": "message.delta", "text": d}
         if self.hang:
             await asyncio.sleep(3600)
         yield {"type": "turn.completed", "status": "completed"}
@@ -443,4 +444,26 @@ def test_the_client_info_goes_with_every_start():
         starts = [b for _, p, b in log if p == "/v1/sessions"]
         assert starts == [{"profile": "pi", "instructions": "info 1"},
                           {"profile": "pi", "conversation_id": "c1", "instructions": "info 2"}]
+    run(go())
+
+
+def test_spoken_text_drops_citations_and_markdown_even_split():
+    t = SpokenText()
+    pieces = ["Mostly **cloudy**, high near 50. \ue200ci", "te\ue202turn0fore", "cast0\ue201 Bring `an` umbrella."]
+    assert "".join(t.feed(p) for p in pieces) == "Mostly cloudy, high near 50.  Bring an umbrella."
+    assert t.feed("明天多云，最高约十度。") == "明天多云，最高约十度。"                  # Chinese untouched
+    t.feed("half a marker \ue200cite\ue202tur")
+    t.end()                                                           # the message ended: dropped, not carried
+    assert t.feed("Next message.") == "Next message."
+
+
+def test_a_search_answer_is_spoken_without_its_citation():
+    async def go():
+        r = Rig(agent=Agent(deltas=("Let me check.", None, "Cloudy, about 10 degrees. \ue200cite\ue202turn0",
+                                    "forecast0\ue201")))
+        await r.frames(WAKE, QUIET, SPEECH, SPEECH, QUIET)
+        await r.settle()
+        said = "".join(r.speech.spoken)
+        assert said.split() == ["Let", "me", "check.", "Cloudy,", "about", "10", "degrees."]
+        assert "turn0" not in "".join(r.ui.deltas) and "\ue200" not in said
     run(go())

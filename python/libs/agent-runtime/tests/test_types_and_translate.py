@@ -77,6 +77,8 @@ def test_codex_points_at_the_gateway_with_only_the_capability(tmp_path):
     assert "model_providers.gateway.requires_openai_auth=false" in cfg.config_overrides
     tools = codex_overrides(SessionFile.model_validate({**SESSION, "profile": {"name": "x", "tools": ["shell", "web_search"]}}))
     assert tools["features.shell_tool"] is True and tools["web_search"] == "live"
+    assert tools["model_providers.gateway.supports_standalone_web_search"] is True     # else no search tool
+    assert o["model_providers.gateway.supports_standalone_web_search"] is False
 
 
 # ---- the Translator ------------------------------------------------------------------------------

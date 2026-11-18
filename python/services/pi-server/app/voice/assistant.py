@@ -34,6 +34,7 @@ from typing import AsyncIterator, Callable, Optional, Protocol
 
 from app.voice.agent import AgentClient
 from app.voice.audio import AudioError, Mic, Speaker
+from app.voice.spoken import SpokenText
 from app.voice.speech import SpeechClient
 
 logger = logging.getLogger(__name__)
@@ -317,6 +318,8 @@ class VoiceAssistant:
         player = asyncio.create_task(play())
         agent_done = False
 
+        spoken = SpokenText()
+
         async def write() -> None:
             """The agent's turn, its text into the speech as it comes."""
             nonlocal agent_done
@@ -325,10 +328,13 @@ class VoiceAssistant:
                     kind = event.get("type")
                     if kind == "message.delta" and event.get("text"):
                         mark("first_text")
-                        reply.append(event["text"])
-                        texts.put_nowait(event["text"])
-                        await self.ui.reply_delta(turn_id, event["text"])
+                        said = spoken.feed(event["text"])             # no citation markers, no markdown
+                        if said:
+                            reply.append(said)
+                            texts.put_nowait(said)
+                            await self.ui.reply_delta(turn_id, said)
                     elif kind == "message.completed":
+                        spoken.end()
                         texts.put_nowait(" ")                          # a gap between text blocks
                     elif kind == "turn.completed":
                         agent_done = True
