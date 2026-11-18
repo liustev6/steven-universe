@@ -1,176 +1,345 @@
 # Spec: speech-service (speech out and in, streamed, from models that stay loaded on the GPU)
 
-**Renamed from tts-service (2026-11-17):** speech-to-text joins text-to-speech in the same process on
-the same GPU (T12), so the service is named for both. Text-to-speech is built (4.5); speech-to-text is
-next, its model chosen after pi-server's speech-to-text spike.
-
-**Status: agreed** (2026-11-17). The first service on pve01's GPU, and the start of
-[agent-service](agent-service/README.md)'s CP4 (voice): its build plan below **is** CP4's first
-sub-checkpoints ([tracker.md](agent-service/tracker.md)). Related: [lxc-setup.md](../lxc-setup.md),
-[boot.md](boot.md), [auth-service.md](auth-service.md), [deployer.md](deployer.md).
+**Status: live** since 2026-11-18, at `https://speech.lan.liustev6.ca` on CT 108, deployed by the
+pipeline. Built in [agent-service](agent-service/README.md)'s CP4 (voice), sub-checkpoints 4.1–4.6
+([tracker.md](agent-service/tracker.md)); its first caller beyond tests is Hey Pi
+([voice-path.md](voice-path.md)). Related: [lxc-gpu-passthrough-setup.md](../lxc-gpu-passthrough-setup.md),
+[boot.md](boot.md), [auth-service.md](auth-service.md), [deployer.md](deployer.md). Code:
+[python/services/speech-service](../../python/services/speech-service/). Every measurement behind a
+decision is a spike: summarized in the appendix, its write-up and raw results (the metrics) in
+[speech-service-spikes/](speech-service-spikes/).
 
 ## What it is
-A small service that turns text into speech and **streams the audio as it's made**, from **one
-long-running process that keeps the model loaded** on the GPU. There's no cold load per request: the
-model is loaded and warmed once at start, before the service reports healthy, and stays in VRAM until
-the process stops (a deploy, a reboot).
+One long-running process on the GPU that turns **text into speech** and **speech into text**, both
+**streamed**: audio leaves as it's generated, partial text arrives while someone is still speaking.
+Both models are loaded and warmed once at start, before the service reports healthy, and stay in VRAM;
+no request ever waits for a model to load.
 
 ```
-caller (pi-server, a smoke test, later the voice path)
-  └─(token, aud=speech-service)─▶ CT 108 :443  POST /v1/audio/speech {input, voice}
-                                  │  one queue ─▶ one GPU worker ─▶ Qwen3-TTS 0.6B (held in VRAM)
-                                  ◀═ audio chunks, streamed as each one is generated (PCM, 24 kHz)
-pve01: NVIDIA driver (open kernel modules) ── /dev/nvidia* ──▶ CT 108 (unprivileged LXC) ──▶ Docker
+callers (pi-server, Steven AI, smoke tests, the test client)
+  └─(token, aud=speech-service)─▶ CT 108 :443
+       WS /v1/realtime/speech         a reply's text in ──▶ its audio out (24 kHz PCM, as it's made)
+       WS /v1/realtime/transcription  an utterance's audio in ──▶ partial text, then the final
+       POST /v1/audio/speech          one-shot speech (OpenAI's shape)
+          │ sessions (asyncio) ─queues─▶ one work thread per model ─▶ the GPU (two CUDA streams)
+          │   TTS: Qwen3-TTS-12Hz-1.7B-CustomVoice, a batch of 2 replies   STT: Qwen3-ASR-0.6B, a batch of 2
+pve01: NVIDIA driver ── /dev/nvidia* ──▶ CT 108 (unprivileged LXC) ──▶ Docker (NVIDIA Container Toolkit)
 ```
 
-**Goal (the first checkpoint's "done when"):** the service is up; a request's audio streams back in
-packets, the first one quickly; consecutive requests never pay a model load; a restart is warm again
-before it's healthy.
+**As deployed** (RTX 5060, 8 GB): a reply spoken as one continuous generation, fed its text as it's
+written (T19); first audio ~30 ms after its first piece; generation 4× faster than real time per stream; speech-to-text's final ~60–110 ms after the speaker stops; 2 TTS + 2 STT
+streams at once in real time; 6.96 of 8.15 GB VRAM under that load; warm ~20 s after a start.
 
 ## Decisions
 | ID | Decision | Why |
 |---|---|---|
-| T1 | **The GPU goes to an LXC container, CT 108**, not a VM: the NVIDIA driver on pve01, the device nodes given to the container with Proxmox's own `devN` entries (no raw `lxc.*` lines), the same driver's user-space libraries inside, Docker with the NVIDIA Container Toolkit (`no-cgroups = true`, as unprivileged containers need). | Lighter (no second kernel, no reserved VM memory), and the card can serve more than one container (speech-to-text next). The cost is weaker isolation than a VM: acceptable for our own trusted code, which is why **agent sandboxes never get the GPU**. |
-| T2 | **The GPU serves only voice for now.** The old gpu-server is archived; a general GPU service is redesigned when there are several GPUs. | One GPU, one purpose: no scheduling between unrelated workloads. |
-| T3 | **One process holds the model, loaded and warmed at start.** It loads the weights, runs a short warm-up synthesis (and captures CUDA graphs if the runtime uses them), and only then answers `/health`. Docker's health check gives it a long start period. It never unloads. | No cold load on any request: the goal. A restart costs one load, at deploy or boot time, not at a caller's. |
-| T4 | **The model:** `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` (preset voices; Chinese and English), **pinned to revision `85e237c12c027371202489a0ec509ded67b5e4b5`**. Its weights live on CT 108's disk (`/var/lib/speech-service/models`), fetched once by the deploy (the pre-start hook, running the new image), checked against their hashes; at run time the service is offline (`HF_HUB_OFFLINE=1`). | About 2 GB of VRAM at FP16, of the card's 8 GB: room for speech-to-text later. Pinned weights are a reviewed input like any image; not baking them into the image keeps CI's images small. |
-| T11 | **Our own engine, on Qwen's official code (`qwen-tts`, Apache-2.0), with our own CUDA graphs.** The official package doesn't stream (it returns whole sentences; its docs say streaming is only simulated). Ours: the talker generates in a background thread; each frame's 16 codes are collected as they're made; the codec decodes them in chunks of 1, 1, 2, then every 4 frames (a frame: 80 ms of audio), each with up to 25 frames of earlier context, and only the new audio is sent. Then our own **CUDA graphs**: the code predictor's 15 steps per frame, then the talker's step on a static KV cache, captured at warm-up and replayed per frame. The plain-PyTorch path stays as the reference the tests compare against. | Streaming is the goal; no third-party wrapper (the one that exists, `faster-qwen3-tts`, broke on a current `transformers` in the spike). Graphs: ~1.5× faster generation and ~55 ms earlier first audio, measured; and building them is the CP's learning goal. |
-| T5 | **The API is OpenAI's speech API shape:** `POST /v1/audio/speech` `{input, voice, response_format, …}`, the audio streamed back in chunks (`Transfer-Encoding: chunked`). Default format **`pcm`**: raw 16-bit little-endian mono at **24 kHz** (the codec's rate), the lowest-latency format; also `wav` (a streaming header, length unknown). | A known contract: clients and tools that speak OpenAI's TTS API work as they are. Raw PCM needs no encoder in the loop, so the first packet leaves as soon as it's generated. |
-| T6 | ~~**One GPU worker, one queue.** Requests are generated one at a time, in order; a short queue (4) beyond that is refused with `503` and `Retry-After`.~~ Revised by T13 (one thread still owns the GPU; it runs batches of 2). **A caller that disconnects cancels its generation** (that's how the voice path stops speech when you interrupt). | One model on one GPU: parallel generation would only slow each other's first packet. Cancelling on disconnect frees the GPU at once (barge-in). |
-| T7 | **Auth like the other services:** auth-service tokens, audience `speech-service`, scope `speech:create`; `status:read` for api-service's status page. Callers in CP4: `smoke-test` (deploy checks, which synthesize for real: it costs nothing but GPU time), then pi-server. | The same identity model as everything else (auth-service.md); no shared keys. |
-| T8 | **Limits:** a reply's text at most 4,096 characters (OpenAI's). ~~Callers send **a sentence at a time**, as separate requests~~; revised by T13: **a reply's text streams into one session** as the caller writes it (a sentence or a few words at a time), so speech starts while the rest is still being written and no other caller can take the slot between sentences | Short inputs keep the first packet early; one session per reply keeps it whole: separate requests per sentence could lose the slot mid-reply, and each would pay a new prefill |
-| T10 | **speech-service is an engine; pi-server orchestrates the voice pipeline; agent-service stays text-only.** pi-server (Hey Pi's backend) turns speech into text, sends the turn to agent-service, collects its streamed reply into sentences, and sends each sentence to speech-service as soon as it's complete, playing the audio in order while the agent is still writing (a chained, overlapping pipeline, the cascaded voice-agent design of Pipecat or LiveKit Agents). On barge-in it cancels the agent's turn and closes the audio stream. pi-server calls both directly on the LAN, with its own grants (`chat:*` at agent-service, `speech:create` here). | Each piece does one job: speech-service knows nothing of chat (any client can use it: the phone, a notification); agent-service carries no audio its text clients don't need; the conversation's timing (sentences, playback, barge-in) lives in one place. You hear the first word after the first sentence and its first audio packet, not after the whole reply. |
-| T9 | **Deployed like every service:** its manifest, by hand first, then the pipeline; on the lab's status page (S rule): model and revision, warm or loading, VRAM used, queue length, recent first-packet times. | Nothing new to learn or operate. |
-| T12 | **Speech-to-text runs in this service, in the same process as text-to-speech** (decided 2026-11-17, revising the first review's "its own container"); the Pi keeps the wake word and voice-activity detection, and streams audio here only while someone speaks. The model: chosen after pi-server's speech-to-text spike, and it must load in the same Python environment (PyTorch 2.15 with CUDA 13.2; transformers 4.57.3, which `qwen-tts` pins) | **One CUDA context** instead of two (a few hundred MB of VRAM each). **Real sharing of the GPU:** two processes on one GPU take turns in time slices and their kernels never overlap; in one process, CUDA streams with priorities let speech-to-text listen while text-to-speech speaks (barge-in) without stalling it (4.5c's streams). One warm-up, deploy, health check, one place that schedules the GPU: how NVIDIA Riva and Triton Inference Server host several models on a shared GPU. Off the Pi: it has no fan and throttled at 83 °C in the spike's first test, and a GPU runs far larger models (the Pi's made ~20% errors in English). The cost: a restart restarts both (~10 s warm-up) |
-| T13 | **Concurrency: batches of 2 per model, sessions apart from work** (2026-11-17). Up to **2 TTS + 2 speech-to-text streams at once**, each model running its streams as **one batch** (continuous batching: streams join between steps and leave when they end). **A session is one WebSocket connection, for both kinds**: TTS (a reply's text streamed in, its audio streamed out) and speech-to-text (an utterance's audio in, partial and final text out). Per kind, **2 running + 1 waiting = 3 sessions accepted**; the waiting one is told `queued`, then `started`; a 4th is refused at the handshake (`503`, `Retry-After`). **A session releases its slot by itself:** when its stream ends (TTS: the client's `end`, then the last audio, `done`; speech-to-text: the client's `commit`, then the `final` text), on `cancel` or disconnect (at once: barge-in), when idle (TTS: nothing left to speak and no new text for 15 s; speech-to-text: no audio for 10 s), when too long (a reply 10 min, an utterance 60 s), or after 10 s waiting; one reply or one utterance per session, then it closes (the limits: config). Sessions never touch the GPU; **one work thread per model** owns that model's batch and exchanges queues with them; the two share the GPU through CUDA streams (the TTS's audio decode highest; spike 12: one thread for both would let an STT pass, ~60 ms, hold up the TTS's steps for its whole margin). The STT's work thread ticks its batch often and at once when an utterance ends. **No database:** a session lives seconds to a minute, its state is in memory and in `/v1/status`; the history (what was said) belongs to the caller (agent-service's PostgreSQL). Order: speech-to-text (4.5d), then batching (4.5e), then the service (4.5f) | Steven AI and pi-server may both use it at once. Batching (not taking turns): the step's cost is reading the weights (spike 06: 83% matrix multiplies), read once for both streams, so 2 streams cost ~1.3× one, not 2×; a joiner pays one prefill (~8 ms), absorbed by the running stream's 66 ms margin (vLLM's and Orca's continuous batching). Refusing fast beats a long queue: a voice reply that starts seconds late is worse than a retry. A session per reply (not a request per sentence): the slot can't be lost mid-reply (ElevenLabs' and Cartesia's input streaming, OpenAI Realtime); a session waiting for text costs no GPU (it sits out of the batch), the idle timeout stops it holding a slot forever. Serving engines (vLLM, Triton, Riva) keep no history; their callers do |
-| T14 | **Text normalization before the TTS** (2026-11-17, spikes/13): each sentence's numbers, units, dates and symbols rewritten as words before its prompt is made: "2026年" → 二零二六年, "5,959 metres" → five thousand nine hundred and fifty nine metres, "138-0013-8000" → digit by digit. wetext (WeTextProcessing's grammars as FSTs, Apache-2.0), the grammar picked per sentence by its script (Chinese, English, Japanese, Korean kept in the image; other languages, and any failure, pass through as written). In the TTS's work thread (~1-2 ms a sentence), the grammars loaded at start-up; clients still see the text they sent in `sentence` events. On by default (`SPEECH_TTS_NORMALIZE`) | The 0.6B model guesses at symbols: the same sentence read 4 ways ("fifty desimples"), a digit dropped, a phone number's end changed; a Chinese voice read an English sentence's numbers in Chinese, then babbled. Heard right 56% → 90% (spikes/13). Mixing languages was never the problem ("London" inside Chinese: right every time). The front end of production TTS (Riva's text normalization); rules, not the model, so the same text is always read the same way. Known misses: a bare "m" read as minutes; "$12.50" as "twelve point five dollars" |
-| T15 | **The TTS model is Qwen3-TTS-12Hz-1.7B-CustomVoice, with a steady-pace instruction** (2026-11-18, spikes/14-15; replaces the 0.6B, kept pinned for rollback). Qwen's sampling; the language `Auto` unless a client names one; every sentence's prompt carries the instruction (`SPEECH_TTS_INSTRUCT`: "Speak at a steady, natural pace, without long pauses. 用平稳自然的语速说话，不要拖长或停顿。"). The talker's sampling is configurable (`SPEECH_TTS_TEMPERATURE`, `_TOP_K`, `_TOP_P`, `_REPETITION_PENALTY`; unset: Qwen's) | The 0.6B stretched short sentences, paused up to 2.6 s and babbled ("哈哈哈哈", "嗯嗯嗯"), worst with ryan; Qwen's own path does the same (the model, not our engine), and lower temperature didn't fix it. The 1.7B with the instruction: short sentences at their natural length ("好的。" 0.64 s against 2.76), no runaways, no babble in 88 runs. It fits beside speech-to-text with 2 + 2 (6.96 of 8.15 GB), first audio 33 ms (+5), 4x real time. The cost: 1.2 GB of VRAM left |
+| T1 | **The GPU belongs to an LXC container, CT 108**, not a VM: the driver on pve01, the device nodes given with Proxmox's `devN` entries, the driver's user-space libraries inside, Docker with the NVIDIA Container Toolkit (`no-cgroups = true`). | Lighter than a VM (no second kernel, no reserved memory), and the card can serve more than one container. The isolation is weaker, which is fine for our own code; **agent sandboxes never get the GPU**. |
+| T2 | **The GPU serves only voice.** A general GPU service waits for more GPUs. | One GPU, one purpose: no scheduling between unrelated workloads. |
+| T3 | **One process holds the models, loaded and warmed at start**, and never unloads them. Warm-up runs a sentence and an utterance through the work threads (capturing the CUDA graphs) before `/health` turns 200. | No request pays a model load; a restart pays it once, at deploy or boot. |
+| T4 | **Models are pinned like code:** each repository at one revision, each file's SHA-256 in [models.yaml](../../infra/services/speech-service/models.yaml). The weights live on CT 108's disk, fetched and verified by the deploy's pre-start hook; the service runs offline. Which model runs is `config.env`'s `SPEECH_TTS_MODEL` / `SPEECH_STT_MODEL`; a replaced model stays pinned and on disk. | Weights are a reviewed input like an image. Keeping them out of the image keeps CI's images small. Rolling back is one config line. |
+| T5 | **The one-shot API is OpenAI's speech shape:** `POST /v1/audio/speech`, audio streamed back chunked; default raw 16-bit PCM at 24 kHz, or WAV. | Tools that speak OpenAI's TTS API work unchanged; PCM needs no encoder, so the first packet leaves as soon as it's made. |
+| T6 | **A cancel or a disconnect stops the work at once** and frees the slot. | Barge-in: when you interrupt, the GPU stops speaking for you immediately. |
+| T7 | **Auth as every service:** auth-service tokens, audience `speech-service`, scopes `speech:create` (speak), `speech:transcribe` (hear), `status:read` (the status page). The service has no client of its own: it only checks tokens. | One identity model for the lab; no shared keys. |
+| T8 | **A reply streams into one session** as its text is written, and is spoken as one generation (T19); at most 4,096 characters (OpenAI's limit). | Speech starts while the rest is still being written, and no other caller can take the slot mid-reply. |
+| T9 | **Deployed like every service:** its manifest, the pipeline, a smoke test that speaks a sentence and hears it back, a token-protected `/v1/status` on the lab's status page. | Nothing new to operate. |
+| T10 | **speech-service is an engine; the caller orchestrates.** pi-server turns speech into text, sends it to agent-service, streams the reply's text here, plays the audio, and handles barge-in. speech-service knows nothing of chat. | Each piece does one job; any client (Hey Pi, a phone, a notification) can use speech alone. The cascaded voice-agent design (Pipecat, LiveKit Agents). |
+| T11 | **Our own TTS engine on Qwen's official code**, streaming: the talker generates frames (80 ms of audio each), the codec decodes them in chunks of 1, 1, 2, then every 4 frames with 25 frames of context, and only new audio is sent. Speed is ours: our own generation loops on a fixed KV cache, CUDA graphs, Triton kernels (RMSNorm, rotary + cache write, decode attention), and two CUDA streams (the decode above generation). **Correctness standard:** our exact paths reproduce Qwen's codes; fused kernels may differ only at near-ties (vLLM's standard). Each generation is capped at 50 + 8 frames a character of its text (within its row's cache). | Qwen's package doesn't stream (whole sentences: 1.7 s to first audio). Ours: first audio ~20–33 ms, 3× faster frames than Qwen's code. The cap stops a generation that never ends from holding the GPU. Building it was CP4's learning goal. |
+| T12 | **Speech-to-text runs in the same process**, Qwen3-ASR-0.6B, streamed: each pass re-reads the whole utterance with the text it's sure of as a prefix (Qwen's method), every 1 s to 10 s, every 2 s to 20 s, then every 4 s; a 60 s limit. The Pi keeps the wake word and voice detection and streams audio here only while someone speaks. | One CUDA context and one scheduler for the GPU: two processes would take turns in time slices, while one process can overlap them on streams (how Riva and Triton host several models). 3.9% / 4.2% / 12.5% errors (English / Chinese / mixed) against Whisper large-v3-turbo's 24.7% mixed. The Pi has no fan and made ~20% errors itself. |
+| T13 | **Concurrency: per model, a batch of 2 running + 1 waiting**; a 4th session is refused at the handshake (`503` + `Retry-After`). **A session is one WebSocket**: one reply (TTS) or one utterance (STT). Sessions never touch the GPU: **one work thread per model** owns its batch (continuous batching: streams join and leave between steps) and exchanges queues with them. A session releases its slot by itself: at its end, on cancel or disconnect, when idle (TTS 15 s, STT 10 s), when too long (10 min, 60 s), or after 10 s waiting. **No database:** what was said belongs to the caller. | Two callers at once (Hey Pi, Steven AI) cost ~1.3× one, not 2×: a step's cost is reading the weights, read once for the batch. Refusing fast beats a long queue: a reply that starts seconds late is worse than a retry. Separate threads per model keep an STT pass (~60 ms) from stalling the TTS. |
+| T14 | **Text normalization before the TTS:** each sentence's numbers, units, dates and symbols become words ("2026年" → 二零二六年, "5,959 metres" → five thousand nine hundred and fifty nine metres), with wetext (WeTextProcessing's grammars), the grammar picked by the sentence's script (Chinese, English, Japanese, Korean); anything else, or a failure, is spoken as written. Clients still see their own text. | A TTS model guesses at symbols (the same number read four ways); rules read the same text the same way every time. Heard right 56% → 90%. The front end of production TTS (Riva's). |
+| T15 | **The TTS model is Qwen3-TTS-12Hz-1.7B-CustomVoice with a steady-pace instruction** ("Speak at a steady, natural pace, without long pauses. 用平稳自然的语速说话，不要拖长或停顿。", `SPEECH_TTS_INSTRUCT`), Qwen's own sampling, and the language `Auto` unless a client names one. The talker's sampling stays configurable (`SPEECH_TTS_TEMPERATURE`, `_TOP_K`, `_TOP_P`, `_REPETITION_PENALTY`). | The 0.6B stretched short sentences, paused for seconds, and babbled, worst with some voices; it's the model (Qwen's own path does the same), and lower temperature doesn't fix it. The 1.7B with the instruction speaks short sentences at their natural length with no runaways or babble, and still fits 2 + 2 beside speech-to-text. Telling a voice its native language when the text is another made it worse: `Auto` lets the model read it. |
+| T16 | **A reply's first piece may end at a comma** ("好的，", "Sure, "), fed at once (`SPEECH_TTS_FIRST_CLAUSE`); later pieces end at sentence ends. Within one generation (T19) a piece is only where text is handed over, not a break in the voice. | The first audio comes after the first clause, not the first whole sentence (a Chinese reply's first audio 325 → 84 ms beside another reply). |
+| T17 | **Speech-to-text can end the turn itself** (`?turn_detection=server`): 700 ms of quiet after at least 150 ms of speech (`silence_ms` 300–3000); otherwise the client's `commit` ends it. | A client without its own voice detection (the test client, pi-server today) still gets turns; the threshold is the common default for voice agents. |
+| T18 | **Speech-to-text hears with context:** each pass's prompt carries the session's context (`?context=`, at most 1,000 characters: who speaks and in which languages, recent turns, names, places), after the service's own (`SPEECH_STT_CONTEXT`: empty unless a hint is true of every caller), as Qwen3-ASR's system message. pi-server sends "The speaker may speak English, Chinese, or both mixed in one sentence." and the voice session's last two turns. | A short phrase can be heard in the wrong language: "Seattle downtown" on its own came back as 死丫头当场 (Chinese, sounds alike). Context biases the words and the language toward what the conversation is about: the standard remedy (speech adaptation, phrase lists, Whisper's prompt). Who the speakers are is the caller's to say (T10). |
+| T19 | **A reply is spoken as one generation, fed its text as it's written** (Qwen's streaming mode): the prompt holds the first piece's first token, and each audio frame's input gets the next text token, one per 80 ms frame, then the end mark when the reply is complete. The session's splitter still cuts the text into pieces (the first clause, then sentences), each normalized and fed as it completes. A row whose next token isn't written yet **waits** (it skips the step; nothing of it is kept). A reply too long for one row's cache (2,048 positions, ~160 s) continues in a new generation on the same row after ~90 s of text. | Sentence by sentence, the voice reset at every sentence (tone, pace, pitch drawn afresh), each ended as if it were the whole message, and the gap between two was only the silence the clips carried (0.08–0.18 s whatever the punctuation). In one generation the model places its own pauses and speaks the reply as one passage, and reads more faithfully (spike 16). Waiting for text gives the model exactly the inputs it would have with the whole text known, so a live reply sounds as the spike's; generation is 4× faster than playback, so short waits aren't heard. |
 
 ## API (443)
 | Route | Scope | What |
 |---|---|---|
-| `WS /v1/realtime/speech` `?voice=…&language=…` | `speech:create` | a TTS session for one reply (`language`: none means `Auto`, as Qwen: the model reads it from the text; spikes/14). Client: `{type: text, text}` (as it's written), `{type: end}` (the reply is complete), `{type: cancel}`. Server: `queued` {position}, `started` {format: `pcm_s16le`, sample_rate: 24000, channels: 1}; then per sentence `sentence` {index, text}, its audio as binary frames (raw 16-bit PCM, no header: playable as it arrives), `sentence_done` {index, samples} (so a barge-in knows what was heard); at the end `done`, `cancelled`, or `error` {code: idle, too_long, queue_timeout, bad_message, failed}. Refused at the handshake with an HTTP status and a problem body (401/403, 400 unknown voice, 503 + Retry-After warming or full) |
-| `POST /v1/audio/speech` `{input, voice, language?, instructions?, response_format?: "pcm" \| "wav", speed?}` | `speech:create` | a one-shot TTS session (smoke tests, simple callers): audio, streamed as it's generated. `X-Sample-Rate`, `X-Request-Id` headers. `400` unknown voice or too long; `503` (`Retry-After`) queue full or still warming |
-| (both sessions) | | **The close frame's code says why too** (RFC 6455): 1000 a normal end (`done`, `final`, `cancelled`), 1008 idle / too long / a bad message, 1011 a failure, 1013 waited too long for a place (try again later). A connection that dies silently (no close) is noticed by uvicorn's pings (every 20 s, 20 s to answer) and ends as a disconnect: its work stops, its place frees. The end of speech comes from the client (`commit`), or with `?turn_detection=server` from the server (`turns.py`: 700 ms of quiet after at least 150 ms of speech, `silence_ms` 300-3000; the final's reason `silence`). **A reply's first segment may end at a comma** (`SPEECH_TTS_FIRST_CLAUSE`, on): "好的，", "Sure, " are spoken at once (a Chinese reply's first audio 325 → 84 ms beside another reply) |
-| `GET /v1/voices` | `speech:create` | the model's preset voices, with their languages |
-| `WS /v1/realtime/transcription` `?language=…` (OpenAI Realtime-shaped) | `speech:transcribe` | a speech-to-text session for one utterance. Client: binary audio (16 kHz 16-bit PCM, raw, ~100 ms each, starting with ~300 ms from before the Pi's voice detection fired), `{type: commit}` (the speaker stopped), `{type: cancel}`. Server: `queued`, `started` {format, sample_rate: 16000, channels}; `partial` {text, stable, language}: the whole text so far, which replaces the last (`stable`: its start that won't change); `final` {text, language, reason: `commit` | `idle` (audio stopped without a commit: what was heard) | `too_long` (the 60 s limit: what was heard up to it)}; or `cancelled`; or `error` {code: idle (no audio at all), queue_timeout, bad_message, failed}. Refused at the handshake as the TTS's |
-| `GET /v1/status` | `status:read` | for the status page: `ok`, `warm`, the models and revisions, GPU name, VRAM used and total, per kind the slots (running, waiting) and sessions, generations so far, last first-packet times (ms) |
-| `GET /health` | none | `200` once warm; `503` while loading (Docker's health check waits for it) |
+| `WS /v1/realtime/speech` `?voice=…&language=…` | `speech:create` | a TTS session for one reply (`language`: none means `Auto`). Client: `{type: text, text}` (as it's written), `{type: end}` (the reply is complete), `{type: cancel}`. Server: `queued` {position}, `started` {format: `pcm_s16le`, sample_rate: 24000, channels: 1}; `sentence` {index, text} as each piece is accepted for speaking; the reply's audio as binary frames (raw PCM, one continuous voice: T19, playable as it arrives); at the end `done` {samples}, `cancelled`, or `error` {code: idle (no text and nothing being spoken for 15 s), too_long, queue_timeout, bad_message, failed}. Refused at the handshake with an HTTP status and a problem body (401/403, 400 unknown voice, 503 + Retry-After warming or full) |
+| `WS /v1/realtime/transcription` `?language=…&turn_detection=server&silence_ms=…` | `speech:transcribe` | a speech-to-text session for one utterance (OpenAI Realtime-shaped). Client: binary audio (16 kHz 16-bit PCM, ~100 ms each, starting a little before the voice), `{type: commit}`, `{type: cancel}`. Server: `queued`, `started` {format, sample_rate: 16000, channels}; `partial` {text, stable, language}: the whole text so far (`stable`: its start that won't change); `final` {text, language, reason: `commit`, `silence`, `idle`, `too_long`}; or `cancelled`; or `error` {code: idle, queue_timeout, bad_message, failed}. Refused at the handshake as the TTS's |
+| `POST /v1/audio/speech` `{input, voice, language?, response_format?: "pcm" \| "wav"}` | `speech:create` | a one-shot TTS session: the whole input as one generation (T19), audio streamed as it's made. Headers `X-Sample-Rate`, `X-Request-Id`. `400` unknown voice or too long; `503` + Retry-After full or warming |
+| (both sessions) | | **The close code says why** (RFC 6455): 1000 a normal end, 1008 idle / too long / a bad message, 1011 a failure, 1013 waited too long for a place. A connection that dies silently is caught by pings (every 20 s) and ends as a disconnect |
+| `GET /v1/voices` | `speech:create` | the preset voices, each with its native language |
+| `GET /v1/status` | `status:read` | `ok`, `warm`, the models, the GPU and its VRAM, per kind the slots (running, waiting), sessions, sentences or finals, recent first-audio and final times |
+| `GET /health` | none | `200` once warm; `503` while loading |
 
 ## The container (CT 108)
 | | |
 |---|---|
-| name, DNS, alias | `speech-service`, `speech.lan.liustev6.ca`, `speech-host` |
-| size | 4 cores, 8 GB memory (weights pass through memory on load), 64 GB disk (the CUDA image, the weights) |
+| name, DNS, alias | `speech-service`, `speech.lan.liustev6.ca` (192.168.50.34), `speech-host` |
+| size | 4 cores, 8 GB memory, 64 GB disk (the images, the weights) |
 | boot | `onboot`, order 2 (it needs only auth-service, for token keys) |
 | GPU | `dev0` … `devN`: `/dev/nvidia0`, `/dev/nvidiactl`, `/dev/nvidia-uvm`, `/dev/nvidia-uvm-tools`, `/dev/nvidia-caps/*` |
-| inside | Debian 13, the NVIDIA user-space libraries (the host driver's exact version), Docker, the NVIDIA Container Toolkit; the service's image has PyTorch built for CUDA 12.8 or newer (the RTX 50 series needs it) |
+| the image | `speech-base` (python:3.12-slim + a lock of the tested packages: PyTorch 2.15 with CUDA 13.2, Triton, transformers, qwen-tts, qwen-asr, wetext; built by CI) and the service on it (code only), run as uid 10001, read-only, `/tmp` a tmpfs with exec (Triton) |
 
-**pve01's kernel and the driver:** the driver is a kernel module, built for each Proxmox kernel by
-DKMS. pve01 **follows Proxmox's kernel updates** (decided in 4.2, not pinned): `proxmox-default-headers`
-brings each new kernel's headers, DKMS builds the module for it at install, and `./setup.sh reboot`
-refuses to reboot into a kernel the module isn't built for. The steps: [lxc-gpu-passthrough-setup.md](../lxc-gpu-passthrough-setup.md).
+**pve01's kernel and the driver:** the driver is a kernel module, built for each Proxmox kernel by DKMS;
+pve01 follows Proxmox's kernel updates (not pinned), and `./setup.sh reboot` refuses to reboot into a
+kernel the module isn't built for ([lxc-gpu-passthrough-setup.md](../lxc-gpu-passthrough-setup.md)).
 
-## The spike (4.5a, 2026-11-17): what the RTX 5060 does
-Code, raw output and details: [spikes/01-engine-options](../../python/services/speech-service/spikes/01-engine-options/).
-PyTorch 2.15.0 (CUDA 13.2), `qwen-tts` 0.1.1
-(transformers 4.57.3), six sentences (four short voice replies, two of 8–9 s; English and Chinese).
-"Real-time factor" = generation time ÷ audio length (below 1: faster than speech).
-
-| Run | Real-time factor (median) | First audio (median / worst) | Peak VRAM |
-|---|---|---|---|
-| A: the official package, whole sentences | 0.47 | 1,735 / 4,177 ms | 2.5 GB |
-| **B: our streaming loop, plain PyTorch, 4-frame chunks** | **0.51** | **169 / 173 ms** | 2.5 GB |
-| B with 12-frame chunks (0.96 s) | 0.47 | 457 ms | |
-| C: a batch of 2 vs one at a time | throughput ×1.75–1.85 (similar lengths) | | |
-| **D: CUDA graphs (`faster-qwen3-tts` 0.5.4 as a reference), 4-frame chunks** | **0.33** | **112 / 179 ms** | 2.3 GB |
-
-- Streaming makes the first audio ~10× earlier at the same speed, and nearly independent of the
-  sentence's length. The 4-frame chunks sound as good as whole sentences (listened, 2026-11-17).
-- Loading: 1.7 s; the first generation ~10 s (CUDA starting up): the warm-up before healthy (T3).
-- Graphs: ~27 ms of work per 80 ms frame instead of ~40: the model is small but not purely
-  launch-bound, so ×1.5, not more. `faster-qwen3-tts` needed `transformers` pinned to 5.15.1 to run at
-  all (5.23 broke its copy of the model code).
-- Batching pays off for two callers at once, not for one conversation: one worker generating ahead
-  already outruns playback at a real-time factor of 0.3–0.5.
-
-## Build plan (CP4's first sub-checkpoints)
-| Sub-CP | What | Done when |
-|---|---|---|
-| 4.1 ✅ | **the design:** this document | reviewed and agreed (2026-11-17) |
-| 4.2 ✅ | **the GPU on pve01:** NVIDIA's open driver 620.70.06 with DKMS, following Proxmox's kernel updates (not pinned) | `nvidia-smi` on pve01 shows the card; the module rebuilds for a new kernel. **Done 2026-11-17:** built for 7.0.2 and 7.0.14, booted 7.0.14 with the RTX 5060 working ([lxc-gpu-passthrough-setup.md](../lxc-gpu-passthrough-setup.md) Part 1) |
-| 4.3 ✅ | **CT 108:** the container (lxc-setup part 1), the `devN` entries, the user-space libraries, Docker and the toolkit | `nvidia-smi` inside the container, and inside a CUDA container on its Docker. **Done 2026-11-17:** CT 108 `192.168.50.34`, `speech.lan.liustev6.ca`; `nvidia-smi` in CT 108 and in a CUDA container; NVIDIA's vector-add sample passed as uid 10001 ([lxc-gpu-passthrough-setup.md](../lxc-gpu-passthrough-setup.md) Part 2) |
-| 4.4 ✅ | **identity:** auth-service's policy: audience `speech-service` (`speech:create`, `status:read`); `smoke-test` gets `speech:create`, api-service `status:read`. **No client of its own** (it only receives tokens, checked against auth-service's public keys, and calls no service), so no secret | `explain` shows the grants; deployed. **Done 2026-11-17:** live (auth-service's installed policy) |
-| 4.5a ✅ | **the spike:** measure the model on the RTX 5060 (above) | done 2026-11-17: our streaming 169 ms, graphs 112 ms |
-| 4.5b ✅ | **the engine, plain:** our streaming loop as the `TTSEngine` (load, warm-up, `stream(text, voice, language)` → 24 kHz chunks, voices); the reference for everything after | on CT 108: same audio as the spike's B; a deterministic mode (no sampling) for comparisons. **Done 2026-11-17:** `app/engine/` (`base.py` the interface, `chunker.py` the chunked decode, `qwen.py` the engine; since 4.5e: `app/tts_engine/engine.py`, the STT in `app/stt_engine/`); 12 CPU tests (the chunker; they found a clipped-tail bug at exact multiples of the chunk) and 9 GPU tests on CT 108: **our codes equal Qwen's own, frame for frame**; streamed audio = the whole decode (>20 dB); cancel within 0.5 s; first audio <300 ms |
-| 4.5c ✅ | **CUDA graphs, step by step** (learning; each stage explained, then measured): 1. the code predictor's 15 steps as one graph; 2. the talker's step with a static KV cache; 3. the repetition penalty on the GPU, one end check per frame; 4. the same with `torch.compile` for contrast | each stage measured. **Bit-exact paths** (our loop, our fixed cache, the graph): Qwen's own codes with sampling off. **Fused kernels** (not bit-exact: they add in another order): vLLM's standard, against the exact path on the same inputs, pass by pass: a different pick only at near-ties (top two within 2 bfloat16 steps), under 1% of steps. At the end ≈ the spike's D (real-time factor ~0.33, first audio ~110 ms) or better. **Done 2026-11-17:** stages 1-3 (stage 3 inside our talker loop), plus our own Triton kernels (RMSNorm, rotary + cache write, decode attention) and two CUDA streams: **11.4 ms a frame (Qwen's code: 34.9), RTF 0.17, first audio 20 ms, margin 66 ms**, no stalls (the log below, spikes/01-09). `torch.compile` for contrast and a graph for the codec's decode: later, optional |
-| 4.5d ✅ | **speech-to-text** (T12): Qwen3-ASR-0.6B (Apache-2.0, 0.94B parameters, 1.79 GB). 1. **Dependencies:** `qwen-asr` loads beside `qwen-tts` in one environment (PyTorch 2.15 + CUDA 13.2, transformers 4.57.3); if not, stop and rethink. 2. **The spike** (`spikes/10`): accuracy on pi-server's test set (FLEURS English and Chinese, ASCEND mixed; WER, CER, MER), the time from the end of speech to the final text, VRAM with both models loaded, the TTS's frame time and margin while speech-to-text runs on its own stream (barge-in); Whisper large-v3-turbo as a reference point. 3. **The engine:** streaming recognition (partial text while the audio arrives, the final at its end) on our own loop, beside the TTS engine | the dependency check passes; the spike's numbers recorded; GPU tests for the engine; both models loaded with VRAM to spare; the TTS keeps ahead of playback while speech-to-text runs. **Parts 1-2 done 2026-11-17** ([spikes/10](../../python/services/speech-service/spikes/10-stt/)): loads with transformers 4.57.6 (the TTS's codes unchanged); error 3.9% English, 4.2% Chinese, 12.5% mixed (Whisper large-v3-turbo: 24.7% mixed); streaming (Qwen's method: re-feed all the audio each chunk, the text so far as the prefix) 58 ms after the speaker stops; both models 4.7 of 8 GB; realistic barge-in costs neither anything. Decided: 1 s chunks, our own loop on the transformers backend (no vLLM), the ASR's stream at priority 0 (the TTS's decode above). **Part 3 done 2026-11-17:** `app/stt_engine/engine.py` (`QwenSTTEngine`: Qwen's model, one pass on its own stream), `transcription.py` (the streaming logic, pure: Qwen's re-feed with the settled text as the prefix; passes every 1 s to 10 s, every 2 s to 20 s, then every 4 s, so long utterances stay cheap; a burst gets one pass; the 60 s limit), the `STTEngine` interface beside `TTSEngine` (`base.py`; the TTS engine renamed `tts.py`, `QwenTTSEngine`). 10 CPU tests; 8 GPU tests with no test data (the TTS speaks, the STT hears it back): whole utterances equal Qwen's own `transcribe`, English and Chinese heard right, partials then the final in under 0.3 s, silence empty, a forced language, 30 s streamed with every pass inside its interval. All 93 tests pass in one image (transformers 4.57.6) |
-| 4.5e ✅ | **batches of 2, both models** (continuous batching: T13). **Step 1 done** ([spikes/11](../../python/services/speech-service/spikes/11-batching/)): the TTS's generation costs ×1.07-1.08 at batch 2 (batch it); the codec's decode ×1.89 (compute-bound: decoded per stream; a stateful streaming decode later); the STT's passes ×1.64 but at unrelated moments. **Step 2 done (the TTS)**: `batch.py`, slots joining and leaving between steps, a position per row in our kernels; a row bit-identical whatever the others do; 2 streams: first audio 25 ms, margins 45-62 ms, no gaps; 4: no gaps but a 6 ms margin (the codec's decode: a stateful decode next). **Step 3 done (the STT)**: `app/stt_engine/batch.py`, one padded pass a tick for every utterance due or ending, nearly-due ones pulled forward; a batched row's text equals its text alone. **Step 4 done** ([spikes/12](../../python/services/speech-service/spikes/12-two-plus-two/)): 2 + 2 in real time, one work thread per model: no gaps, TTS first audio 27-49 ms and margins ≥ 37 ms, STT finals 63-130 ms after the speaker stops, every utterance heard right; 4 + 4 also without gaps (margins down to 20 ms). Slots are a setting (2 now). The TTS's design: a sentence or an utterance **joins between steps and leaves when it ends**, without waiting for the other. Each slot: its own row in the cache, its own position in GPU memory (our kernels read a position per row), its own end check, repetition penalty and sampling; a joiner's prefill runs between two steps; graphs for batch 2 (an empty slot ignored); the codec's decode batched too | each row's results match batch 1's (the near-tie standard); 2 TTS + 2 speech-to-text streams at once stay ahead of real time; measured: a joiner's first audio, the running stream's margin while one joins |
-| 4.5f ✅ | **the service: sessions and the API** (T13). **Sessions** (requests; async, one per connection) apart from **work** (one thread owns the GPU and runs the batches; sessions only exchange queues with it). Per kind (TTS, speech-to-text): **2 running (the batch) + 1 waiting = 3 accepted; a 4th is refused at once** with `503` and `Retry-After`. Both kinds are WebSocket sessions (T13; the API above): a TTS session for one reply, its text streamed in; a speech-to-text session for one utterance; `POST /v1/audio/speech` as a one-shot TTS session. Released by the stream's end, cancel or disconnect, idle, too long, or waiting too long. Session states `queued → running → done / cancelled / failed / timed out`; `/v1/status` lists slots and sessions; healthy only once warm; **no database**. Tests against a fake engine | tests: streaming order; a 4th session refused at the handshake, the waiting one starts when a slot frees; another caller can't take a slot between a reply's sentences; each release (end, cancel, disconnect, idle, too long, queue timeout) frees the slot; partial then final text; not healthy until warm. **Done 2026-11-18:** `app/work/` (admission, sentences, a work thread per model: the STT ticks at once on an end), `app/api/` (both sessions, the one-shot POST, voices, status, health; handshakes refused with an HTTP status and a problem body), `app/main.py` (listens at once, loads and warms through the work threads, then healthy). 29 CPU tests (fake models, fake auth). **End to end on CT 108** (`scripts/e2e.py`, real sessions over the network): warm in ~14 s; a streamed reply's first audio 22 ms; its audio heard back in real time, the final 58 ms after the commit, word for word; 2 + 2 at once all right (STT finals 69 ms); a third session queued, a fourth refused 503 + Retry-After; VRAM 5.1 of 7.6 GB. A Chinese reply whose first sentence ends only at its last piece starts at 323 ms (waiting for the sentence, not the GPU). auth-service: `speech:transcribe` added, granted to `smoke-test` |
-| 4.6 ✅ | **deploy:** the manifest, the hook (both models' weights fetched and checked), by hand, then the pipeline; the status page; a smoke test that synthesizes a sentence and transcribes a clip | deployed by the pipeline; the smoke test hears audio (non-empty, the right rate) and reads back the clip's text **Ready 2026-11-18:** the image: `speech-base` (base-image/: python:3.12-slim + a lock of the tested packages, ~7.1 GB, 3.28 GB compressed; built by CI with `large: true`) and the service on it (COPY only, 373 kB); all 148 tests pass in it, and the e2e as deployed (uid 10001, read-only, tmpfs with exec for Triton). The deploy: manifest (`health_wait: 300`, a new optional field), compose (the GPU), the weights' hook (`models.yaml`: each file's SHA-256, the weights' matching Hugging Face's; fetch adopts files already in place, checks a download before moving it in), the certificate hook, the smoke test (a sentence spoken, then heard back), CT 108 in the deployer's hosts. **Deployed by hand 2026-11-18** (c11dcdc), **on the pipeline since** (the deployer's allowlist has CT 108; its restricted key on CT 108): the certificate (certbot, once), the weights verified in place (nothing downloaded), warm 14 s after start (loaded 4.7 s), all 9 smoke checks (a sentence spoken, then heard back word for word); VRAM 4.8 of 8.2 GB. **Only one copy of the models fits the GPU:** a dev service left running (the test client's) made the first start fail out of memory; stop it before a deploy. On the way: CI tests each image on its own Python (`.python-version`: 3.12 here) |
-| 4.7 ⏭️ | **measured:** first packet (median of 20 short sentences), the real-time factor, VRAM, the time from start to warm; speech-to-text's latency and error rates; 2 + 2 streams at once; voices for Chinese and English chosen; recorded here | **the goal:** packets stream; the first within the 300 ms target (or a revised one, with the reason); no load time between requests; a restart warm before healthy **Skipped 2026-11-18** (your call): covered by what's already measured: scripts/e2e.py as deployed (first audio ~22 ms, STT finals ~60 ms after the commit, 2 + 2 at once), spikes/10-12, the smoke test's round trip, and listening through the test client. The voices: chosen per call |
-
-**4.5c log** (each result in [spikes/](../../python/services/speech-service/spikes/), with its code and raw output):
-- **Step 2, our own predictor loop** ([02](../../python/services/speech-service/spikes/02-predictor-loop/)): Qwen's
-  exact codes; 31.1 ms a frame (from 35.2), first audio 149 ms (from 165). Hugging Face's fixed cache drifts
-  (another attention kernel, via its mask), so step 3 uses our own attention on fixed slices.
-- **Step 3, graph-ready** ([02](../../python/services/speech-service/spikes/02-predictor-loop/)): our own fixed
-  cache, read in fixed slices, no mask: Qwen's exact codes again, and 27.0 ms a frame (RTF 0.38) before
-  any graph.
-- **Step 4, the CUDA graph** ([02](../../python/services/speech-service/spikes/02-predictor-loop/)): the 15
-  passes replayed as one graph: exact codes, **20.0 ms a frame** (−42% from Qwen's `generate`), RTF
-  **0.29**, already past the 4.5a spike's D (0.33). With 1, 1, 2, 4: first audio 45 ms, margin 56 ms
-  ([03](../../python/services/speech-service/spikes/03-chunk-schedule/)). Stage 1 done.
-- **Where a frame goes** ([04](../../python/services/speech-service/spikes/04-frame-split/)): predictor 11.5 ms,
-  talker 7.7, loop 0.7; the GPU busy ~16 of 20 ms, with 6,658 tiny kernels a frame. Graphing the talker
-  would win ~3 ms; fusing kernels more, so fusion first.
-- **A fused RMSNorm in Triton** ([05](../../python/services/speech-service/spikes/05-fused-rmsnorm/)): 8 kernels
-  → 1, the predictor's kernels 4,665 → ~2,460: **18.3 ms a frame**, RTF 0.27, first audio 43 ms. Not
-  bit-exact (1 element in 735,000 one bfloat16 step off), so fused paths are tested by the near-tie
-  standard above: 6 different picks in 2,790 steps, all near-ties.
-- **The rotary embedding and the cache write as one kernel** ([06](../../python/services/speech-service/spikes/06-fused-rope/)):
-  14 kernels → 1, **bit-exact** once the compiler's FMA contraction is off (it rounds once where PyTorch
-  rounds twice). **17.0 ms a frame**, RTF 0.25; with 1, 1, 2, 4: first audio 39 ms, margin 60 ms. The
-  predictor's GPU time 11.8 → 8.5 ms, 83% of it matrix multiplies (the weights' floor: ~5.2 ms): the
-  talker is the larger target now.
-- **Stage 2, step 2: our own talker loop** ([07](../../python/services/speech-service/spikes/07-talker-loop/)):
-  Qwen's `generate` replaced by our loop over Qwen's modules on our fixed cache, with its generation rules
-  (repetition penalty, suppressed control codes, minimum length) as GPU operations: Qwen's exact codes,
-  **12.9 ms a frame** (from 17.0), RTF 0.21. Next: a decode-attention kernel reading the length from GPU
-  memory (option c, agreed), then the talker's graph.
-- **Steps 3-4: decode attention and the talker's graph** ([08](../../python/services/speech-service/spikes/08-talker-graph/)):
-  our online-softmax kernel reads the length from GPU memory, so one graph serves every frame. Fused
-  talker **11.4 ms a frame**, RTF **0.18** (Qwen's code: 34.8). The graph itself bought ~nothing: the frame
-  is GPU-bound now (busy 90%).
-- **Streams and events** ([09](../../python/services/speech-service/spikes/09-streams/)): decode and
-  generation shared one CUDA stream, and the stream thread's end check waited for all of it. Now
-  generation on its own stream, the decode on a higher-priority one, each frame handed over with a CUDA
-  event (a GPU-side wait): **first audio 42 → 20 ms, margin 47 → 66 ms**, RTF 0.17.
-- **The chunk schedule** ([03](../../python/services/speech-service/spikes/03-chunk-schedule/)): decode after 1, 1, 2,
-  then every 4 frames: first audio **52 ms** (from 143) at the same cost (RTF 0.41), 43 ms of margin
-  before a gap. The standard from here on.
-- **Found on the way:** greedy, some sentences never end (11 minutes of audio); each sentence is now
-  capped at 50 + 8 frames a character.
-
-**Then, later in CP4** (sub-checkpoints defined when reached): text fed into Qwen3-TTS **as it arrives**
-within a session (its "trailing text" input, which we now fill all at once), so the voice flows across
-sentences: a spike after 4.5e; the
-voice path (Hey Pi → pi-server → agent-service, its reply's sentences → speech-service → the speaker);
-protocol B in shared-schemas; the agent's latency levers (a faster model for `voice`, the session
-started as you begin talking); barge-in end to end.
+## Operating it
+- **One copy of the models fits the GPU.** Anything else holding VRAM on CT 108 (a dev container)
+  makes a start fail out of memory: stop it before a deploy.
+- **GPU work that can't run beside the live service runs in a maintenance window:** the live service
+  stopped, the work run in its place (same port, same token), then the live one started again:
+  `scripts/gpu_window.sh` (the GPU tests, then the dev code as the service: e2e, a streamed reply), or
+  `scripts/evenness.py` against the dev service (a model or voice change).
+- **Changing a model:** lock it from a tested copy (`python -m app.models lock`), add it to
+  `models.yaml`, place its weights on CT 108 (or let the hook download them), point `config.env` at it.
 
 ## Not chosen
 | Option | Why not |
 |---|---|
 | A VM with the card passed through | heavier, and the card would belong to that one VM; LXC is enough for trusted code |
-| Loading the model per request (or per session) | seconds of load each time: the opposite of the goal |
+| Loading a model per request | seconds of load each time: the opposite of the goal |
 | Weights baked into the image | GBs more per image, rebuilt with every code change; pinned weights on disk are as reviewable |
-| A cloud TTS (OpenAI, others) | the GPU is here, local speech costs nothing per use, and audio stays home |
-| Encoding to Opus or MP3 on the server | an encoder adds latency to the first packet; PCM over the LAN is cheap. A compressed format can come with the phone (over the internet) |
+| A cloud TTS or STT | the GPU is here, local speech costs nothing per use, and audio stays home |
+| Encoding to Opus or MP3 on the server | an encoder delays the first packet; PCM over the LAN is cheap (a compressed format can come with the phone, over the internet) |
+| Qwen's official package, or `faster-qwen3-tts` | the package doesn't stream; the wrapper broke on a current `transformers` |
+| Speech-to-text in its own container, or on the Pi | two processes can't overlap on one GPU; the Pi throttles and errs ~20% |
+| Whisper large-v3-turbo | 24.7% errors on mixed Chinese/English against Qwen3-ASR's 12.5% |
+| A request per sentence | the slot could be lost mid-reply, and each sentence would pay a new prefill |
+| Lower sampling temperature to steady the TTS | fewer small wobbles, the same rare runaways (spike 15) |
+| Greedy decoding | some sentences never end; fine only for tests that compare exact codes |
 
-## Resolved in review (2026-11-17)
-1. **Speech-to-text:** ~~its own container, sharing the GPU (one service per container)~~. Revised the
-   same day: **in this service, in the same process** (T12).
-2. **Voices:** the preset voices (`CustomVoice`) first; cloning from a reference clip (`Base`) later.
-3. **The first-packet budget:** 300 ms (median, short sentences) as the target; confirmed or changed
-   by 4.7's measurement.
+## Appendix: the spikes
+Every measurement behind a decision. Each spike's write-up and raw results (the metrics) are kept in
+`docs/specs/speech-service-spikes/`; their code was removed once decided (2026-11-18; recover it with
+`git log --diff-filter=D -- python/services/speech-service/spikes`). The measuring tools still in use are
+`scripts/evenness.py` (pace, pauses, babble per voice), `scripts/roundtrip.py` (spoken, then heard back),
+`scripts/trace_reply.py` (one reply, step by step) and `scripts/gpu_window.sh`. All on CT 108's RTX 5060 (8 GB), PyTorch 2.15 with CUDA 13.2.
+Spikes 01–14 used the TTS model Qwen3-TTS-12Hz-0.6B-CustomVoice; 15 compared it with the 1.7B; 16 ran on the 1.7B.
+A frame is 80 ms of audio. RTF (real-time factor) is generation time ÷ audio length: below 1 is faster
+than speech. First audio is the time from a sentence's text to its first audio packet. Margin is how
+far generation stays ahead of playback (a negative margin is a gap you hear).
+
+### 01: which engine? (2026-11-16)
+Qwen's official package, our own streaming loop, batching, or CUDA graphs.
+
+| Run | RTF (median) | First audio (median / worst) | Peak VRAM |
+|---|---|---|---|
+| A: the official package, whole sentences | 0.47 | 1,735 / 4,177 ms | 2.5 GB |
+| B: our streaming loop, plain PyTorch, 4-frame chunks | 0.51 | 169 / 173 ms | 2.5 GB |
+| B with 12-frame chunks | 0.47 | 457 ms | |
+| C: a batch of 2 vs one at a time | throughput ×1.75–1.85 (similar lengths), ×1.03 (different) | | |
+| D: CUDA graphs (the `faster-qwen3-tts` wrapper), 4-frame chunks | 0.33 | 112 / 179 ms | 2.3 GB |
+
+Streaming makes the first audio ~10× earlier at the same speed. CUDA graphs cut a frame's work from
+~40 to ~27 ms. Decided: our own streaming engine, with our own graphs.
+
+### 02: can our own code-predictor loop match Qwen's exactly?
+| Predictor | Codes vs Qwen's | ms a frame | First audio | RTF |
+|---|---|---|---|---|
+| Qwen's `generate` | the reference | 35.2 | 165 ms | 0.49 |
+| our loop, Hugging Face's growing cache | identical | 31.1 | 149 ms | 0.43 |
+| our loop, Hugging Face's fixed cache | differ (44 of 1,320 steps, all near-ties) | 37.6 | 174 ms | 0.51 |
+| our loop, our own fixed cache read in fixed slices | identical | 27.0 | | 0.38 |
+| the same as a CUDA graph | identical | 20.0 | | 0.29 |
+
+Hugging Face's fixed cache drifts because its mask selects another attention kernel, which rounds
+differently. Our own cache, read without a mask, stays exact and can be captured in a graph.
+Found on the way: with greedy decoding some sentences never end, so each sentence is capped at
+50 + 8 frames a character.
+
+### 03: how small can the first audio chunk be?
+| Decode schedule (frames) | First audio | RTF | Stalls | Margin (worst) |
+|---|---|---|---|---|
+| 4 | 143 ms | 0.41 | none | 193 ms |
+| 1, 2, 4 | 52 ms | 0.41 | none (once 123 ms) | 13 ms |
+| **1, 1, 2, 4** | **52 ms** | **0.41** | **none** | **43 ms** |
+| 1, 1, 2, 2, 4 | 52 ms | 0.41 | one of 108 ms | −108 ms |
+
+Each frame not waited for saves ~30 ms of first audio. The second chunk is the tightest moment, so it
+stays small. Decided: 1, 1, 2, then every 4 frames, each with 25 frames of context.
+
+### 04: where does a frame's time go?
+| Part of a frame | Time (median) |
+|---|---|
+| a frame, end to end | 19.9 ms |
+| the predictor's graph replay | 11.5 ms |
+| the talker's own work | 7.7 ms |
+| between calls (the loop) | 0.7 ms |
+| the prompt's prefill | 8.0 ms |
+| GPU busy | ~16 of 20 ms; 6,658 kernels a frame |
+
+Each kernel costs a few microseconds whatever it does, so 6,658 of them cost ~13 ms. Fusing kernels
+would win more than graphing the talker (~3 ms).
+
+### 05: a fused RMSNorm in Triton
+| | Kernels a frame (predictor) | GPU time | Engine ms a frame | First audio | RTF |
+|---|---|---|---|---|---|
+| graph | 4,665 | 11.8 ms | 20.4 | 47 ms | 0.29 |
+| graph + fused RMSNorm | ~2,460 | ~9.7 ms | 18.3 | 43 ms | 0.27 |
+
+One kernel instead of 8 per norm: −10% a frame. Not bit-exact: 1 element in 735,000 lands one bfloat16
+step off, and 3 of 1,320 steps pick another code, all near-ties. So fused paths are judged by the
+near-tie standard (vLLM's), not by whole-sentence equality.
+
+### 06: the rotary embedding and the cache write as one kernel
+| Predictor | Kernels a frame | GPU time | Engine ms a frame | First audio (1, 1, 2, 4) | Margin | RTF |
+|---|---|---|---|---|---|---|
+| graph | 4,665 | 11.8 ms | 20.3 | 46 ms | 56 ms | 0.29 |
+| + fused RMSNorm and rotary | ~1,640 | ~8.5 ms | 17.0 | 39 ms | 60 ms | 0.25 |
+
+Bit-exact once the compiler's fused multiply-add is off (it rounds once where PyTorch rounds twice).
+The predictor is now 83% matrix multiplies, close to the weights' reading floor; the talker is the
+larger target.
+
+### 07: our own talker loop instead of Qwen's `generate`
+| Predictor : talker | ms a frame | First audio | RTF |
+|---|---|---|---|
+| fused : Qwen's | 17.0 | 40 ms | 0.25 |
+| fused : ours | 12.9 | 39 ms | 0.21 |
+
+Qwen's exact codes, −24% a frame with no graph: Hugging Face's per-step work (a growing cache, masks,
+rotary angles, stop checks) is gone.
+
+### 08: a decode-attention kernel and the talker's graph
+| Predictor : talker | ms a frame | First audio | RTF |
+|---|---|---|---|
+| Qwen's : Qwen's | 34.8 | 57 ms | 0.49 |
+| fused : ours | 12.9 | 39 ms | 0.21 |
+| fused : fused | 11.5 | 42 ms | 0.18 |
+| fused : graph | 11.4 | 43 ms | 0.18 |
+
+Our attention kernel reads the length from GPU memory, so one graph serves every frame. The graph
+itself won almost nothing: the GPU is busy 90% of a frame now. Capturing a graph while another thread
+uses the GPU needs `capture_error_mode="thread_local"`.
+
+### 09: why didn't faster frames give earlier audio?
+| | First audio | Chunk 2 | Chunk 3 | Margin | RTF |
+|---|---|---|---|---|---|
+| one CUDA stream | 42 ms | 75 ms | 104 ms | 47 ms | 0.18 |
+| two streams with events | 20 ms | 33 ms | 57 ms | 66 ms | 0.17 |
+
+Decoding and generation shared one stream, and the end check waited for both. Generation on its own
+stream, the decode on a higher-priority one, frames handed over with CUDA events.
+
+### 10: speech-to-text on the same GPU
+Errors (%: word error for English, character error for Chinese, mixed error for mixed; 120 clips):
+
+| Mode | English | Chinese | Mixed | RTF | Final after the speaker stops (p50 / p90) |
+|---|---|---|---|---|---|
+| Qwen3-ASR-0.6B, whole utterance | 3.9 | 4.2 | 12.5 | 0.027 | 177 / 289 ms |
+| Qwen3-ASR-0.6B, streaming 1 s chunks | 5.0 | 5.1 | 13.3 | 0.075 | 58 / 67 ms |
+| Qwen3-ASR-0.6B, streaming 2 s chunks | 4.5 | 5.0 | 12.9 | 0.051 | 60 / 103 ms |
+| Whisper large-v3-turbo, whole utterance | 3.6 | 4.8 | 24.7 | 0.026 | 189 / 219 ms |
+
+Both models in one process:
+
+| While the TTS speaks | TTS first audio | TTS margin (worst) | TTS RTF | STT final |
+|---|---|---|---|---|
+| the TTS alone | 21 ms | 66 ms | 0.172 | |
+| STT whole utterances nonstop (worst case) | 29 ms | 63 ms (60) | 0.241 | 293 ms |
+| STT streaming in real time (barge-in) | 20 ms | 66 ms (65) | 0.178 | 59 ms |
+
+Qwen3-ASR halves Whisper's error on mixed speech. Both models fit (4.7 of 8 GB). Listening while
+speaking (barge-in) costs the TTS nothing. Streaming re-reads the whole utterance each pass, with the
+text so far as a prefix.
+
+### 11: what does a batch of 2 cost?
+| Work | Batch 1 | Batch 2 | Batch 4 |
+|---|---|---|---|
+| the predictor's 15 passes (graph) | 8.41 ms | 9.09 ms (×1.08) | 9.52 ms (×1.13) |
+| the talker's step (graph) | 2.89 ms | 3.09 ms (×1.07) | 3.24 ms (×1.12) |
+| the codec's decode, batched | 16.98 ms | 32.11 ms (×1.89) | 60.68 ms (×3.57) |
+| an STT pass (3 s and 8 s clips), batched | 35.89 ms | 58.95 ms (×1.64) | 80.51 ms (×2.24) |
+| an STT pass, one after another | 36.02 ms | 76.07 ms (×2.11) | 152.24 ms (×4.23) |
+
+Generation batches almost for free: each step reads the weights once for the whole batch. The codec's
+decode is compute-bound, and 86% of it re-decodes context (a stateful streaming decode would cut it).
+STT passes batch somewhat.
+
+### 12: 2 TTS + 2 STT at once, in real time?
+| Load | TTS first audio | TTS worst margin | Gaps | STT finals after the speaker stops | VRAM peak |
+|---|---|---|---|---|---|
+| 2 + 2, staggered | 27, 31 ms | 43 ms | none | 63, 130 ms | 4.24 GB |
+| 2 + 2, all at once | 47, 49 ms | 37 ms | none | 73, 95 ms | 4.59 GB |
+| 4 + 4, staggered | 29–53 ms | 20 ms | none | 73–153 ms | 5.03 GB |
+
+Every utterance was heard right. One work thread per model: on a single thread an STT pass (~60 ms)
+would hold up the TTS's steps for its whole margin. STT finals wait for the next tick, so the service
+ticks at once when an utterance ends.
+
+### 13: text normalization before the TTS
+Runs heard right, of 6 each (3 by a Chinese voice, 3 by an English one), as written and after
+normalization with wetext:
+
+| Sentence | As written | Normalized | What normalization wrote |
+|---|---|---|---|
+| 今天是2026年11月17日。 | 6 | 6 | 二零二六年十一月十七日 |
+| 英国的首都用英文说是London。 | 5 | 6 | unchanged |
+| 这个耳机打折后是299元，便宜了15%。 | 5 | 6 | 两百九十九元，百分之十五 |
+| 我的电话号码是138-0013-8000。 | 0 | 6 | 一三八零零一三八零零零 |
+| 现在气温是-5.5°C，明天会升到3°C。 | 3 | 5 | 负五点五摄氏度 |
+| 我昨天用iPhone 17给Steven发了一条message。 | 6 | 6 | iPhone 十七 |
+| The meeting is at 3:30 PM on March 5th, 2026. | 2 | 4 | three thirty PM on the fifth of march, twenty twenty six |
+| Mount Logan is 5,959 metres tall, or 19,551 feet. | 0 | 4 | five thousand nine hundred and fifty nine metres … |
+| **all** | **27 / 48 (56%)** | **43 / 48 (90%)** | |
+
+English words inside Chinese ("London", "iPhone") were never the problem; numbers and symbols were.
+Normalization takes ~1–2 ms a sentence. Known misses: a bare "m" read as minutes, "$12.50" as
+"twelve point five dollars".
+
+### 14: why do some short sentences take so long?
+11 short replies (Chinese, English, mixed), each spoken 4–6 times per voice, measured from the audio
+and heard back:
+
+| Voice | Worst / median duration | Clips over 1.4× their median | Longest pause | Silence before / after | Babble heard |
+|---|---|---|---|---|---|
+| serena | 1.16× | 0 / 110 | 0.66 s | 0.22 / 0.30 s | 0 |
+| vivian | 1.28× | 0 / 44 | 1.22 s | 0.48 / 0.48 s | 0 |
+| dylan | 1.41× | 1 / 44 | 1.58 s | 0.48 / 0.52 s | 0 |
+| eric | 2.10× | 4 / 44 | 0.60 s | 0.09 / 0.18 s | 0 |
+| uncle_fu | 2.55× | 3 / 44 | 1.96 s | 0.46 / 0.55 s | 0 |
+| aiden | 4.09× | 1 / 44 | 1.64 s | 0.22 / 0.26 s | 0 |
+| ryan | 3.56× | 9 / 66 | 1.52 s | 0.45 / 0.55 s | 4 ("哈哈哈哈哈哈！好的", "嗯嗯嗯嗯嗯") |
+
+The 0.6B stretched short sentences, paused and babbled, depending on the voice ("好的。" by ryan:
+1.5–5.8 s). Every sentence carried ~0.5 s of silence at each end. The codec's chunks don't change a
+sentence's length: its length is its frame count. Speaking rate when it goes right: Chinese 4.7
+characters a second, English 3.1 syllables a second.
+
+### 15: the 1.7B model, the sampling, and Qwen's own path (2026-11-18)
+ryan and serena, 4 runs of spike 14's 11 sentences per variant, each variant run as the real service:
+
+| Variant | Clips over 1.4× median | Babble | ryan's longest pause | ryan's "好的。" / "Sure." | First audio | RTF | VRAM |
+|---|---|---|---|---|---|---|---|
+| 0.6B, Qwen's sampling (spike 14) | 9 / 66 (ryan) | 6 / 66 (ryan) | 1.52 s | 2.76 / 2.00 s | 28 ms | 0.19 | 4.8 GB |
+| 0.6B, temperature 0.7, top-k 20 | 6 / 88 | | 2.32 s | 1.76 / 1.60 s | 28 ms | 0.19 | 4.8 GB |
+| 0.6B, temperature 0.6, top-k 10 | 4 / 88 | | 1.32 s (one 10.8 s clip) | 1.88 / 1.60 s | 28 ms | 0.19 | 4.8 GB |
+| 0.6B, language Auto | 3 / 88 | 1 / 88 | 2.64 s (one 11.8 s clip) | 1.72 / 1.64 s | 28 ms | 0.19 | 4.8 GB |
+| 1.7B | 6 / 88 | | 1.08 s (one 20.7 s clip) | 0.64 / 0.60 s | 33 ms | 0.25 | 6.7 GB |
+| 1.7B + instruction | 5 / 88 | | 0.86 s | 0.68 / 0.88 s | 33 ms | 0.25 | 6.7 GB |
+| 1.7B, temperature 0.7, top-k 20 | 10 / 88 | | 0.88 s | 0.68 / 0.76 s | 33 ms | 0.25 | 6.7 GB |
+| **1.7B + instruction, language Auto** | **5 / 88** | **0 / 88** | **1.02 s** | **0.64 / 0.72 s** | **33 ms** | **0.25** | **6.7 GB** |
+
+2 TTS + 2 STT at once on the chosen setup: TTS first audio 37 and 103 ms, STT finals 109 and 61 ms
+(heard exactly), the third session queued, the fourth refused; VRAM 6.96 of 8.15 GB.
+
+Qwen's own `generate` stretched ryan as often as ours (7 of 66 runs over 1.4×), so it's the model, not
+our engine. Lower temperature didn't fix it. The 1.7B with a steady-pace instruction speaks short
+sentences at their natural length with no runaways and no babble. Decided: the 1.7B (T15).
+
+### 16: one continuous generation per reply, the text fed as it comes (2026-11-18)
+Today a reply is spoken as separate sentences, each its own generation. Qwen3-TTS can instead read the
+text while it speaks (its streaming mode: one text token added to each 80 ms frame's input). The 1.7B,
+the live settings, through Qwen's own `generate`:
+
+| Text | Mode | Pauses: longest, total | Heard alike | Gaps where pieces join |
+|---|---|---|---|---|
+| English story, ryan, ~75 s | sentences (today) | 1.18 s, 11.8 s | 0.99 | 0.08–0.18 s at every join |
+| | whole text in the prompt | 0.74 s, 13.6 s | 0.88–0.93 | |
+| | streaming, one token a frame | 0.82 s, 11.3 s | 0.99–1.00 | |
+| Chinese story, dylan, ~37 s | sentences (today) | 0.78 s, 4.7 s | 0.99 | 0.10–0.18 s |
+| | streaming | 0.72–1.42 s, 8.5–9.8 s | 0.99 | |
+| Mixed reply, dylan, ~13 s | sentences (today) | 0.40 s, 1.5 s | 0.99 ("记得在 umbrella") | 0.10–0.14 s |
+| | streaming | 0.80 s, 3.5 s | 1.00 ("记得带 umbrella。") | |
+
+Today's joins are the same short gap whatever the punctuation, which is what sounds wrong. In one
+generation the model places its own pauses and speaks the reply as one passage, with no reset of tone
+between sentences. A reply fed live waits for its next token when the agent hasn't written it, so the
+model sees the same inputs as with the whole text: the service would say exactly this. Decided: T19,
+live since 2026-11-18 (its GPU tests: a reply fed in pieces with waits is bit-identical to the same text
+fed at once, greedy; each step within the near-tie standard of Qwen's own streaming mode).
+
