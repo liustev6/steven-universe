@@ -69,9 +69,10 @@ class Speech:
 
     def __init__(self, heard=("what's the weather",), fail=None, speak_error=None):
         self.heard, self.fail, self.speak_error = list(heard), fail, speak_error
-        self.utterances, self.spoken, self.voices = [], [], []
+        self.utterances, self.spoken, self.voices, self.contexts = [], [], [], []
 
-    async def transcribe(self, frames, *, commit, silence_ms, language=None, on_partial=None):
+    async def transcribe(self, frames, *, commit, silence_ms, language=None, context="", on_partial=None):
+        self.contexts.append(context)
         if self.fail:
             raise self.fail
         got, spoke = [], False
@@ -390,4 +391,24 @@ def test_spoken_and_typed_turns_pick_the_voice():
         await r.va.say("What time is it?")
         await r.settle()
         assert r.speech.voices == ["dylan", "ryan"]
+    run(go())
+
+
+def test_speech_to_text_hears_with_the_sessions_last_two_turns():
+    async def go():
+        r = Rig(speech=Speech(heard=["what's the weather", "Seattle downtown", "and tomorrow?", "thanks"]))
+        turn = (QUIET, QUIET, QUIET, SPEECH, QUIET)
+        await r.frames(WAKE, *turn)
+        await r.settle()
+        for _ in range(3):
+            await r.frames(*turn)
+            await r.settle()
+        first, second, third, fourth = r.speech.contexts
+        assert first == ""                                               # nothing said yet
+        assert "User: what's the weather" in second and "Assistant: Sunny, and warm." in second
+        assert "Seattle downtown" in third
+        assert "what's the weather" not in fourth and "Seattle downtown" in fourth   # the last two only
+        await r.frames(*[QUIET] * 51)                                    # the session ends
+        await r.settle()
+        assert r.va.context() == ""                                      # a new session starts clean
     run(go())

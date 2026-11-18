@@ -15,6 +15,9 @@ import websockets
 logger = logging.getLogger(__name__)
 
 
+CONTEXT_CHARS = 1000                     # speech-service's limit for a session's context
+
+
 class SpeechError(Exception):
     pass
 
@@ -40,13 +43,16 @@ class SpeechClient:
             raise SpeechError(f"{kind}: refused, {e.response.status_code}") from e
 
     async def transcribe(self, frames: AsyncIterator[bytes], *, commit: asyncio.Event,
-                         silence_ms: int, language: Optional[str] = None,
+                         silence_ms: int, language: Optional[str] = None, context: str = "",
                          on_partial: Optional[Callable[[str], Awaitable[None]]] = None) -> Heard:
         """Send the mic's frames until the turn ends: the server hears the silence, or `commit` is set
-        (push-to-talk released). Returns the final text."""
+        (push-to-talk released). Returns the final text. `context`: what the speech is likely about
+        (speech-service T18: it biases the words and the language toward it)."""
         params = {"turn_detection": "server", "silence_ms": str(silence_ms)}
         if language:
             params["language"] = language
+        if context:
+            params["context"] = context[-CONTEXT_CHARS:]
         ws = await self._connect("transcription", params)
         try:
             async def send() -> None:

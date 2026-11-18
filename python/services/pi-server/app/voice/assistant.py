@@ -39,6 +39,8 @@ from app.voice.speech import SpeechClient
 logger = logging.getLogger(__name__)
 
 PREROLL_FRAMES = 5                    # 500 ms kept before a voice starts a turn
+CONTEXT_TURNS = 2                     # the last turns given to speech-to-text as context
+CONTEXT_TURN_CHARS = 300              # each side of a turn, at most
 HOLDOFF_SECONDS = 0.3                 # after the wake word and after a reply: not yet a new voice
 
 
@@ -104,6 +106,7 @@ class VoiceAssistant:
         self._claim: Optional[asyncio.Task] = None
         self._turn: Optional[asyncio.Task] = None
         self._ending: Optional[asyncio.Task] = None
+        self._recent: collections.deque[tuple[str, str]] = collections.deque(maxlen=CONTEXT_TURNS)
 
     # ---- the mic loop ------------------------------------------------------------------------------
     async def run(self) -> None:
@@ -161,6 +164,7 @@ class VoiceAssistant:
         turn, claim, turn_id = self._turn, self._claim, self.turn_id or "v0"
         self._turn = self._claim = None
         self.wake.reset()
+        self._recent.clear()                         # a new session is a new conversation (V4)
 
         async def release() -> None:
             if turn is not None and not turn.done():
@@ -191,7 +195,7 @@ class VoiceAssistant:
         try:
             heard = await self.speech.transcribe(
                 self._mic_frames(frames), commit=self._commit, silence_ms=self.options.silence_ms,
-                language=self.options.stt_language,
+                language=self.options.stt_language, context=self.context(),
                 on_partial=lambda text: self.ui.phase(turn_id, "listening", transcript=text))
         except asyncio.CancelledError:
             raise
@@ -223,6 +227,16 @@ class VoiceAssistant:
         except Exception as e:                           # V8: this turn ends, the session goes on
             logger.error("turn %s failed: %s: %s", turn_id, type(e).__name__, e)
         await self._wait(holdoff=HOLDOFF_SECONDS)
+
+    def context(self) -> str:
+        """For speech-to-text: this session's last turns, so a name or a place said again is heard as
+        itself ("Seattle downtown", not 死丫头当场), and the language follows the conversation."""
+        if not self._recent:
+            return ""
+        lines = ["Recent conversation:"]
+        for said, replied in self._recent:
+            lines += [f"User: {said[:CONTEXT_TURN_CHARS]}", f"Assistant: {replied[:CONTEXT_TURN_CHARS]}"]
+        return "\n".join(lines)
 
     # ---- push-to-talk, typed turns, cancel (Hey Pi, the debug endpoints) ---------------------------
     async def listen(self) -> None:
@@ -266,6 +280,7 @@ class VoiceAssistant:
 
         await self.ui.phase(turn_id, "thinking", transcript=text)
         texts: asyncio.Queue[Optional[str]] = asyncio.Queue()
+        reply: list[str] = []
         speaker = self.new_speaker()
         await speaker.open()                                           # aplay's start, hidden in the thinking
 
@@ -300,6 +315,7 @@ class VoiceAssistant:
                     kind = event.get("type")
                     if kind == "message.delta" and event.get("text"):
                         mark("first_text")
+                        reply.append(event["text"])
                         texts.put_nowait(event["text"])
                         await self.ui.reply_delta(turn_id, event["text"])
                     elif kind == "message.completed":
@@ -327,6 +343,7 @@ class VoiceAssistant:
             await player
             await speaker.drain()
             mark("played")
+            self._recent.append((text, "".join(reply).strip()))
             logger.info("turn %s (%s): timings (ms from heard) %s", turn_id, voice, timings)
         except BaseException:
             writing.cancel()
