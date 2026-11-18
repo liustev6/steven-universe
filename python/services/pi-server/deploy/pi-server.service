@@ -1,6 +1,7 @@
 [Unit]
 Description=pi-server (local service for Hey Pi)
-After=network.target
+After=network-online.target sound.target
+Wants=network-online.target
 
 [Service]
 User=@USER@

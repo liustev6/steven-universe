@@ -4,3 +4,8 @@ uvicorn[standard]==0.34.0
 
 # Configuration and validation
 pydantic-settings==2.8.1
+
+# The voice turn: speech-service's WebSocket sessions, agent-service's streamed turns
+websockets==17.4
+httpx==0.28.1
+# service-auth (python/libs/service-auth) is installed from the copy the deploy puts next to the code

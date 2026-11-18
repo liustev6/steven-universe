@@ -5,6 +5,7 @@ Every setting has a default, so the service runs with no configuration.
 """
 
 from pathlib import Path
+from typing import Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -35,6 +36,23 @@ class Settings(BaseSettings):
 
     # /debug/* endpoints for pushing test messages with curl.
     DEBUG_ENDPOINTS: bool = True
+
+    # The voice turn (docs/specs/voice-path.md): the mic, speech-service, agent-service, the speaker.
+    # Off: the mock assistant answers (MOCK). On the Pi: deploy/pi-server.env turns it on.
+    VOICE: bool = False
+    AUTH_ISSUER: str = "https://auth.lan.liustev6.ca"
+    CLIENT_ID: str = "pi-server"
+    CLIENT_SECRET_FILE: Path = Path("/etc/pi-server/credentials/client_secret")
+    SPEECH_URL: str = "https://speech.lan.liustev6.ca"
+    AGENT_URL: str = "https://agent.lan.liustev6.ca"
+    AGENT_PROFILE: str = "voice"
+    CONVERSATION_IDLE_SECONDS: float = 600       # a new conversation after 10 minutes without a turn (V4)
+    VOICE_NAME: str = "ryan"
+    TTS_LANGUAGE: Optional[str] = None           # None: the voice's own
+    STT_LANGUAGE: Optional[str] = None           # None: detected
+    SILENCE_MS: int = 700                        # the turn ends after this much silence
+    MIC_DEVICE: str = "plughw:CARD=Speakerphone,DEV=0"
+    SPEAKER_DEVICE: str = "plughw:CARD=Speakerphone,DEV=0"
 
     @field_validator("DATA_DIR")
     @classmethod

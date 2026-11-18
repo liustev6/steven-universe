@@ -41,6 +41,7 @@ from app.protocol import (
     client_message,
 )
 from app.settings_store import SettingsStore
+from app.voice.turn import VoiceAssistant
 
 logger = logging.getLogger(__name__)
 
@@ -67,14 +68,21 @@ class PiServer:
         self._turn_ids = itertools.count(1)
         self._turn_task: Optional[asyncio.Task] = None
         self._tasks: list[asyncio.Task] = []
+        self.voice: Optional[VoiceAssistant] = None   # the real assistant (VOICE); else the mock
 
     # --- lifecycle ----------------------------------------------------------
 
     async def start(self) -> None:
+        if self.settings.VOICE:
+            from app import voice
+            self.voice = voice.create(self.settings, self)
         if self.settings.MOCK:
             self._tasks.append(asyncio.create_task(self._weather_loop()))
 
     async def stop(self) -> None:
+        if self.voice:
+            await self.voice.cancel()
+            await self.voice.agent.close()
         for task in [*self._tasks, self._turn_task]:
             if task:
                 task.cancel()
@@ -121,11 +129,11 @@ class PiServer:
             case HaAction():
                 await self._ha_action(client, message)
             case AssistantText():
-                self.start_turn(message.text)
+                await self.say(message.text)
             case AssistantPtt(action="start"):
-                await self._set_phase(self._new_turn(), "listening")
+                await self.listen()
             case AssistantPtt(action="stop"):
-                self.start_turn("(push-to-talk)", turn_id=self.turn_id)
+                await self.commit()
             case AssistantCancel():
                 await self._cancel_turn()
             case SettingsUpdate():
@@ -169,6 +177,34 @@ class PiServer:
     def _new_turn(self) -> str:
         return f"t{next(self._turn_ids)}"
 
+    async def say(self, text: str) -> None:
+        """A typed turn: the voice assistant speaks the reply; or the mock answers on screen."""
+        if self.voice:
+            await self.voice.reply(self._new_turn(), text)
+        else:
+            self.start_turn(text)
+
+    async def listen(self) -> None:
+        """A spoken turn starts (push-to-talk, later the wake word)."""
+        if self.voice:
+            await self.voice.listen(self._new_turn())
+        else:
+            await self._set_phase(self._new_turn(), "listening")
+
+    async def commit(self) -> None:
+        """The user is done talking."""
+        if self.voice:
+            self.voice.commit()
+        else:
+            self.start_turn("(push-to-talk)", turn_id=self.turn_id)
+
+    # Phases (app.voice.turn): what the voice assistant tells Hey Pi.
+    async def phase(self, turn_id: str, phase: AssistantPhase, transcript: Optional[str] = None) -> None:
+        await self._set_phase(turn_id, phase, transcript=transcript)
+
+    async def reply_delta(self, turn_id: str, text: str) -> None:
+        await self.hub.broadcast(Assistant(turn_id=turn_id, phase=self.assistant_phase, reply_delta=text))
+
     def start_turn(self, text: str, turn_id: Optional[str] = None) -> None:
         if self._turn_task:
             self._turn_task.cancel()
@@ -186,6 +222,8 @@ class PiServer:
         await self._set_phase(turn_id, "idle")
 
     async def _cancel_turn(self) -> None:
+        if self.voice:
+            await self.voice.cancel()
         if self._turn_task:
             self._turn_task.cancel()
             self._turn_task = None

@@ -18,9 +18,12 @@ step() { printf '\n==> %s\n' "$*"; }
 cd "$SERVICE_DIR"
 
 step "Copying pi-server to $PI_HOST:~/pi-server"
-ssh -o BatchMode=yes "$PI_HOST" 'mkdir -p ~/pi-server'
+ssh -o BatchMode=yes "$PI_HOST" 'mkdir -p ~/pi-server/libs'
 rsync -a --delete --exclude '__pycache__' app/ "$PI_HOST:pi-server/app/"
 rsync -a requirements.txt deploy/pi-server.service "$PI_HOST:pi-server/"
+rsync -a deploy/pi-server.env "$PI_HOST:pi-server/.env"
+rsync -a --delete --exclude '__pycache__' --exclude '*.egg-info' --exclude tests \
+  ../../libs/service-auth/ "$PI_HOST:pi-server/libs/service-auth/"     # its token client (the voice turn)
 
 step "Installing Python packages and the service"
 ssh -o BatchMode=yes "$PI_HOST" '
@@ -29,6 +32,7 @@ ssh -o BatchMode=yes "$PI_HOST" '
   [ -d .venv ] || python3 -m venv .venv
   .venv/bin/pip install --quiet --upgrade pip
   .venv/bin/pip install --quiet -r requirements.txt
+  .venv/bin/pip install --quiet ./libs/service-auth
   sed -e "s#@USER@#$(id -un)#g" -e "s#@HOME@#$HOME#g" pi-server.service \
     | sudo tee /etc/systemd/system/pi-server.service > /dev/null
   rm pi-server.service

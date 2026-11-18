@@ -1,6 +1,6 @@
 # The voice path (CP4, after speech-service)
 
-**Status:** draft, 2026-11-17, for review. The rest of CP4: you talk to the Pi, it answers out loud.
+**Status:** agreed 2026-11-17; 4.9 and 4.10 done, 4.11 in progress. The rest of CP4: you talk to the Pi, it answers out loud.
 
 ```
  the Pi (panel)                                       the lab (LAN)
@@ -48,11 +48,19 @@
 ## Build plan
 | # | What | Done when |
 |---|---|---|
-| 4.8 | **this design** | reviewed and agreed |
-| 4.9 | **pi-server's identity:** grants in auth-service's policy (`speech-service`: `speech:create`, `speech:transcribe`; `agent-service`: `chat:read`, `chat:write`); its secret rotated onto the Pi (`scripts/add-client.sh pi-server pi /etc/pi-server/credentials/client_secret liustev6 --rotate`, then `promote-secret`) | on the Pi, a token for both audiences |
-| 4.10 | **the Pi's audio:** the speaker's level; `app/voice/audio.py` (the mic and the speaker, V2); a check on the Pi: speech-service speaks a sentence out of the speaker, the mic hears it, speech-to-text reads it back | the sentence comes back right; the speaker's latency known |
-| 4.11 | **the voice turn in pi-server** (V1, V3–V8): `app/voice/` (the agent client, the speech sessions, the turn), `POST /debug/voice/listen`; the mock assistant only when `MOCK`; tests with fake services; deployed with `pi-server.sh` (with `service-auth`) | on the Pi: curl, ask, hear the answer; timings in the log |
+| 4.8 ✅ | **this design** | reviewed and agreed (2026-11-17) |
+| 4.9 ✅ | **pi-server's identity:** grants in auth-service's policy (`speech-service`: `speech:create`, `speech:transcribe`; `agent-service`: `chat:read`, `chat:write`); its secret rotated onto the Pi (`scripts/add-client.sh pi-server pi /etc/pi-server/credentials/client_secret liustev6 --rotate`, then `promote-secret`) | on the Pi, a token for both audiences. **Done 2026-11-17:** the secret rotated onto the Pi and promoted; tokens for `speech-service` (`speech:create speech:transcribe`) and `agent-service` (`chat:read chat:write`) |
+| 4.10 ✅ | **the Pi's audio:** the speaker's level; `app/voice/audio.py` (the mic and the speaker, V2); a check on the Pi: speech-service speaks a sentence out of the speaker, the mic hears it, speech-to-text reads it back | the sentence comes back right; the speaker's latency known. **Done 2026-11-17:** the mic's own format is 16 kHz mono (no conversion); the speaker takes 48 kHz stereo (plughw converts our 24 kHz); the speaker at 60%; aplay adds ~120 ms at its start. **The speakerphone cleans the mic itself:** what isn't speech comes out as digital zero, and its own playback was removed entirely (echo cancellation: good for barge-in, 4.13); a voice is −30 dB, heard right |
+| 4.11 🔨 | **the voice turn in pi-server** (V1, V3–V8): `app/voice/` (the agent client, the speech sessions, the turn), `POST /debug/voice/listen`; the mock assistant only when `MOCK`; tests with fake services; deployed with `pi-server.sh` (with `service-auth`) | on the Pi: curl, ask, hear the answer; timings in the log. **So far (2026-11-17):** `app/voice/` and 9 tests with fakes; deployed (`deploy/pi-server.env` turns it on); a typed turn spoken on the Pi: first audio 3.6 s (the agent's first text 3.4 s, the first turn's tokens and session included) |
 | 4.12 | **the wake word:** openWakeWord on the Pi (a pre-trained word first, a custom "hey pi" later), listening locally; audio leaves the Pi only after it | say the word, ask, hear the answer; CPU and temperature measured |
 | 4.13 | **barge-in:** the wake word heard while the reply plays (the speakerphone's echo cancellation) cancels the agent's turn and stops the speaker | interrupting works without the reply triggering itself |
 | 4.14 | **Hey Pi shows it** (Flutter): connects to pi-server, the assistant overlay's phases, push-to-talk | later; the app's own work |
 | 4.15 | **protocol B in shared-schemas; the agent's latency levers** | defined when reached |
+
+## Found along the way
+- **The TTS misreads digits** (2026-11-17): "5,959 metres, or 19,551 feet", spoken 4 times, came back 4
+  ways ("nineteen point one five hundred…", "fifty desimples") and took 11–14 s for ~5 s of words.
+  The standard fix is text normalization before the TTS (numbers, units, dates as words: Riva's TTS
+  pipeline does it); a "say numbers in words" line in the `voice` profile as a cheap second guard.
+- **The agent dominates the wait:** heard → its first text ~2 s, against ~0.4 s for everything else
+  (the test client's e2e, 2026-11-17). The latency levers (4.15).
