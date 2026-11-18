@@ -115,3 +115,17 @@ def test_over_the_limit():
     feed_seconds(s, 60, piece=1.0)
     with pytest.raises(TooLong):
         s.feed(np.zeros(1, dtype=np.float32))
+
+
+def test_partials_say_which_start_is_stable():
+    """`stable`: the settled prefix the next pass will keep, as text; nothing for the first 2 passes."""
+    s, _ = session(texts=["hello", "hello wor", "hello world, how", "hello world, how are you"])
+    out = [t for t in (s.feed(np.zeros(SR, dtype=np.float32)) for _ in range(4)) if t]
+    assert [t.stable for t in out] == ["", "hell", "hello world", "hello world, how ar"]   # each less 5
+    assert all(t.text.startswith(t.stable) for t in out)
+
+
+def test_no_audio_at_all_is_an_empty_final():
+    s, calls = session()
+    final = s.finish()
+    assert final.final and final.text == "" and calls == []

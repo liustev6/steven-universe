@@ -6,9 +6,13 @@ Both, in order:
      (admission: 2 running + 1 waiting); refused here with an HTTP status and a problem body
      (401/403, 400, 503 + Retry-After), before the connection opens
   2. accepted: `queued` with its position if it must wait (10 s at most, then `error` queue_timeout),
-     then `started`
+     then `started`, which says the audio's format (raw 16-bit little-endian mono PCM, no header,
+     and its sample rate: 24 kHz out of a TTS session, 16 kHz into an STT session)
   3. the session: messages in, results out, until its end, a cancel, a disconnect, idle, or too long
-  4. its place is released, however it ended
+  4. the last message says why it ended (`done`, `final` with its reason, `cancelled`, or `error` with
+     its code), and the close frame's code says it too (RFC 6455): 1000 a normal end, 1008 idle /
+     too long / a bad message, 1011 a failure, 1013 waited too long for a place (try again later)
+  5. its place is released, however it ended
 
 The sessions never touch the GPU: they hand work to a work thread (app/work) and get results back
 through an asyncio queue (the worker's sink puts into it from its thread, call_soon_threadsafe).
@@ -33,6 +37,11 @@ from app.work.sentences import Sentences
 
 logger = logging.getLogger(__name__)
 TTS_RATE, STT_RATE = 24000, 16000
+CLOSE_CODES = {None: 1000, "idle": 1008, "too_long": 1008, "bad_message": 1008, "failed": 1011, "queue_timeout": 1013}
+
+
+def stream_format(rate: int) -> dict:
+    return {"format": "pcm_s16le", "sample_rate": rate, "channels": 1}
 
 
 def pcm16(audio: np.ndarray) -> bytes:
@@ -68,16 +77,15 @@ async def admit(ws: WebSocket, service: Service, admission):
         return None
 
 
-async def wait_for_place(ws: WebSocket, ticket, service: Service) -> bool:
-    """`queued`, then `started`; False (after an error message) if the wait ran out."""
+async def wait_for_place(ws: WebSocket, ticket, service: Service, started: dict) -> bool:
+    """`queued`, then `started` (with `started`'s fields); False if the wait ran out."""
     if not ticket.running:
         await ws.send_json({"type": "queued", "position": ticket.position})
         try:
             await ticket.started(service.settings.QUEUE_WAIT_SECONDS)
         except QueueTimeout:
-            await ws.send_json({"type": "error", "code": "queue_timeout", "message": "no place in time"})
             return False
-    await ws.send_json({"type": "started"})
+    await ws.send_json({"type": "started", **started})
     return True
 
 
@@ -111,10 +119,11 @@ class Inbox:
 
 
 async def close(ws: WebSocket, error: str | None = None, message: str = "") -> None:
+    """`error`, if any, as the last message; the close frame's code from it (CLOSE_CODES)."""
     with contextlib.suppress(Exception):
         if error:
             await ws.send_json({"type": "error", "code": error, "message": message})
-        await ws.close()
+        await ws.close(code=CLOSE_CODES.get(error, 1011), reason=error or "")
 
 
 def control(raw) -> dict:
@@ -128,8 +137,10 @@ def control(raw) -> dict:
 
 # ---- TTS: one reply ----------------------------------------------------------------------------------
 async def speech_session(ws: WebSocket, service: Service, auth) -> None:
-    """Client: {type: text, text} (as it's written), {type: end}, {type: cancel}. Server: queued, started,
-    binary audio (24 kHz 16-bit PCM), done, error (idle, too_long, queue_timeout, bad_message, failed)."""
+    """Client: {type: text, text} (as it's written), {type: end} (the reply is complete), {type: cancel}.
+    Server: queued, started {format, sample_rate, channels}, then per sentence {type: sentence, index,
+    text}, its binary audio (24 kHz 16-bit PCM, raw), {type: sentence_done, index, samples}; at the end
+    done, or cancelled, or error {code: idle | too_long | queue_timeout | bad_message | failed}."""
     s = service.settings
     voice, language = ws.query_params.get("voice", ""), ws.query_params.get("language") or None
     if await authenticate(ws, auth, "speech:create") is None:
@@ -143,15 +154,19 @@ async def speech_session(ws: WebSocket, service: Service, auth) -> None:
     service.sessions["tts"] += 1
     inbox, reader, job = Inbox(), None, None
     try:
-        if not await wait_for_place(ws, ticket, service):
-            return await close(ws)
+        if not await wait_for_place(ws, ticket, service, stream_format(TTS_RATE)):
+            return await close(ws, "queue_timeout", "no place in time")
         reader = asyncio.create_task(inbox.read(ws))
         sentences, pending = Sentences(), deque()
         ended, chars, start = False, 0, time.monotonic()
         idle_since, first_audio_at, asked_at = time.monotonic(), None, None
+        index, samples = -1, 0                                     # the sentence being spoken, its audio so far
         while True:
             if job is None and pending:                            # the next sentence, when the last is done
-                job = service.tts.say(pending.popleft(), voice, language, inbox.sink)
+                text = pending.popleft()
+                index, samples = index + 1, 0
+                await ws.send_json({"type": "sentence", "index": index, "text": text})
+                job = service.tts.say(text, voice, language, inbox.sink)
                 asked_at = asked_at or time.monotonic()
             if job is None and ended and not pending:
                 await ws.send_json({"type": "done"})
@@ -176,6 +191,7 @@ async def speech_session(ws: WebSocket, service: Service, auth) -> None:
                     pending.extend(sentences.flush())
                     ended = True
                 elif msg.get("type") == "cancel":
+                    await ws.send_json({"type": "cancelled"})
                     return await close(ws)
                 else:
                     return await close(ws, "bad_message", "expected {type: text|end|cancel}")
@@ -183,8 +199,10 @@ async def speech_session(ws: WebSocket, service: Service, auth) -> None:
                 if first_audio_at is None:
                     first_audio_at = time.monotonic()
                     service.first_audio_ms.append(round((first_audio_at - asked_at) * 1000))
+                samples += len(payload)
                 await ws.send_bytes(pcm16(payload))
             elif kind == "done":
+                await ws.send_json({"type": "sentence_done", "index": index, "samples": samples})
                 job, idle_since = None, time.monotonic()
             elif kind == "error":
                 job = None
@@ -201,9 +219,12 @@ async def speech_session(ws: WebSocket, service: Service, auth) -> None:
 
 # ---- STT: one utterance -----------------------------------------------------------------------------
 async def transcription_session(ws: WebSocket, service: Service, auth) -> None:
-    """Client: binary audio (16 kHz 16-bit PCM, ~100 ms each), {type: commit} (end of speech),
-    {type: cancel}. Server: queued, started, {type: partial, text, language}, {type: final, text,
-    language}, error (idle, too_long, queue_timeout, bad_message, failed)."""
+    """Client: binary audio (16 kHz 16-bit PCM, raw, ~100 ms each), {type: commit} (the speaker stopped),
+    {type: cancel}. Server: queued, started {format, sample_rate, channels}, {type: partial, text,
+    stable, language} (the whole text so far, which replaces the last; `stable`: its start that won't
+    change), {type: final, text, language, reason}, where reason is commit, idle (no audio for a while
+    after some: what was heard is the final), or too_long (the 60 s limit: what was heard up to it);
+    or cancelled; or error {code: idle (no audio at all) | queue_timeout | bad_message | failed}."""
     s = service.settings
     language = ws.query_params.get("language") or None
     if await authenticate(ws, auth, "speech:transcribe") is None:
@@ -215,19 +236,25 @@ async def transcription_session(ws: WebSocket, service: Service, auth) -> None:
         return
     await ws.accept()
     service.sessions["stt"] += 1
-    inbox, reader, utterance, committed = Inbox(), None, None, None
+    inbox, reader, utterance, committed, reason = Inbox(), None, None, None, "commit"
     try:
-        if not await wait_for_place(ws, ticket, service):
-            return await close(ws)
+        if not await wait_for_place(ws, ticket, service, stream_format(STT_RATE)):
+            return await close(ws, "queue_timeout", "no place in time")
         reader = asyncio.create_task(inbox.read(ws))
         utterance = service.stt.open(language, inbox.sink)
-        start, last_audio = time.monotonic(), time.monotonic()
+        start, last_audio, heard = time.monotonic(), time.monotonic(), False
         while True:
             limit = start + s.STT_MAX_SECONDS + 5.0                 # the worker enforces the audio's 60 s
             idle = last_audio + s.STT_IDLE_SECONDS if committed is None else limit
             source, kind, payload = await inbox.next(min(limit, idle) - time.monotonic())
             if source == "timeout":
-                return await close(ws, "idle" if time.monotonic() < limit else "too_long", "no audio for a while")
+                if time.monotonic() >= limit:
+                    return await close(ws, "failed", "no final in time")
+                if not heard:
+                    return await close(ws, "idle", "no audio")
+                committed, reason = time.monotonic(), "idle"            # stopped sending: what was heard
+                service.stt.end(utterance)
+                continue
             if source == "client":
                 if kind == "gone":
                     return
@@ -235,26 +262,31 @@ async def transcription_session(ws: WebSocket, service: Service, auth) -> None:
                     if committed is not None or len(payload) % 2:
                         return await close(ws, "bad_message", "16-bit PCM frames, before the commit")
                     service.stt.audio(utterance, np.frombuffer(payload, dtype="<i2"))
-                    last_audio = time.monotonic()
+                    last_audio, heard = time.monotonic(), True
                     continue
                 msg = control(payload)
                 if msg.get("type") == "commit" and committed is None:
                     committed = time.monotonic()
                     service.stt.end(utterance)
                 elif msg.get("type") == "cancel":
+                    await ws.send_json({"type": "cancelled"})
                     return await close(ws)
                 else:
                     return await close(ws, "bad_message", "expected audio, {type: commit} or {type: cancel}")
-            elif kind in ("partial", "final"):
-                await ws.send_json({"type": kind, "text": payload.text, "language": payload.language})
-                if kind == "final":
-                    utterance = None
-                    if committed is not None:
-                        service.final_ms.append(round((time.monotonic() - committed) * 1000))
-                    return await close(ws)
+            elif kind == "limit":                                       # the 60 s limit: its final follows
+                committed, reason = time.monotonic(), "too_long"
+            elif kind == "partial":
+                await ws.send_json({"type": "partial", "text": payload.text, "stable": payload.stable,
+                                    "language": payload.language})
+            elif kind == "final":
+                await ws.send_json({"type": "final", "text": payload.text, "language": payload.language, "reason": reason})
+                utterance = None
+                if committed is not None:
+                    service.final_ms.append(round((time.monotonic() - committed) * 1000))
+                return await close(ws)
             elif kind == "error":
                 utterance = None
-                return await close(ws, "too_long" if payload == "too_long" else "failed", str(payload))
+                return await close(ws, "failed", str(payload))
     except WebSocketDisconnect:
         pass
     finally:

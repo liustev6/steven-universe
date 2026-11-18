@@ -21,8 +21,9 @@ import numpy as np
 @dataclass(frozen=True)
 class Transcript:
     language: str           # detected (or the one asked for); "" when nothing was said
-    text: str
+    text: str               # the whole text so far (not a delta: a partial replaces the last one)
     final: bool = False     # the end of the utterance: this text won't change
+    stable: str = ""        # the start of `text` the next passes keep (only the rest may still change)
 
 
 class TooLong(Exception):

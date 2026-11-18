@@ -5,7 +5,9 @@ thread-safe calls. It ticks the batch every `tick` seconds, and **at once when a
 so a final never waits for the next tick (spikes/12: up to 100 ms of a final's latency was waiting).
 
     open(language, sink) → a handle   one utterance; `sink(kind, payload)` gets ("partial", Transcript)
-                                      …, then ("final", Transcript), or ("error", code)
+                                      …, then ("final", Transcript), or ("error", message); ("limit",
+                                      None) first if its audio reached the limit (the final is then
+                                      what was heard up to it; later audio is dropped)
     audio(handle, pcm)                its audio as it arrives (16 kHz)
     end(handle)                       the speaker stopped: its final, at once
     cancel(handle)                    stop now: its slot is free
@@ -87,8 +89,7 @@ class STTWorker:
                     continue
                 by_slot[u.slot] = u
                 for kind, pcm in u.pending:                         # audio that arrived while it waited
-                    self._apply(u, kind, pcm, by_slot)
-                    now_due |= kind == "end"
+                    now_due |= self._apply(u, kind, pcm, by_slot)
             if now_due or time.monotonic() >= next_tick:
                 next_tick = time.monotonic() + self.tick
                 if by_slot:
@@ -115,25 +116,30 @@ class STTWorker:
                 else:
                     u.pending.append((kind, pcm))
             else:
-                self._apply(u, kind, pcm, by_slot)
-                ended |= kind == "end"
+                ended |= self._apply(u, kind, pcm, by_slot)
 
-    def _apply(self, u: Utterance, kind: str, pcm, by_slot) -> None:
+    def _apply(self, u: Utterance, kind: str, pcm, by_slot) -> bool:
+        """One message for an utterance with a slot; True if it ended now (tick at once for its final)."""
         if u.slot not in by_slot:
-            return
+            return False
         if kind == "audio":
+            if u.ended:
+                return False                                          # past the limit, or after the end
             try:
                 self.batch.add(u.slot, pcm)
-            except TooLong:
-                self.batch.leave(u.slot)
-                del by_slot[u.slot]
-                u.sink("error", "too_long")
-        elif kind == "end":
+            except TooLong:                                           # the limit: what was heard is the final
+                u.ended = True
+                self.batch.end(u.slot)
+                u.sink("limit", None)
+                return True
+        elif kind == "end" and not u.ended:
             u.ended = True
             self.batch.end(u.slot)
+            return True
         elif kind == "cancel":
             self.batch.leave(u.slot)
             del by_slot[u.slot]
+        return False
 
     def _tick(self, by_slot: dict) -> None:
         try:

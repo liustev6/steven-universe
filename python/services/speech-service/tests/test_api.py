@@ -55,13 +55,13 @@ def make(slots=2, warm=True, **settings):
     return TestClient(create_api(service, FakeAuth())), service
 
 
-def drain(ws):
-    """Messages until the server closes: (json messages, total audio bytes)."""
+def drain(ws, with_code=False):
+    """Messages until the server closes: (json messages, total audio bytes[, the close code])."""
     msgs, audio = [], 0
     while True:
         m = ws.receive()
         if m["type"] == "websocket.close":
-            return msgs, audio
+            return (msgs, audio, m.get("code")) if with_code else (msgs, audio)
         if m.get("bytes") is not None:
             audio += len(m["bytes"])
         elif m.get("text") is not None:
@@ -93,13 +93,19 @@ def test_handshakes_are_refused_with_http_statuses():
 def test_a_reply_streamed_in_comes_back_as_audio_then_done():
     client, service = make()
     with client.websocket_connect("/v1/realtime/speech?voice=ryan", headers=ALL) as ws:
-        assert ws.receive_json() == {"type": "started"}
+        assert ws.receive_json() == {"type": "started", "format": "pcm_s16le", "sample_rate": 24000, "channels": 1}
         for piece in ["Sure, tomorrow ", "looks cloudy. And ", "then some rain"]:
             ws.send_json({"type": "text", "text": piece})
         ws.send_json({"type": "end"})
-        msgs, audio = drain(ws)
-    words = len("Sure, tomorrow looks cloudy. And then some rain".split())
-    assert msgs == [{"type": "done"}] and audio == words * SPF * 2           # 16-bit: 2 bytes a sample
+        msgs, audio, code = drain(ws, with_code=True)
+    first, second = "Sure, tomorrow looks cloudy.", "And then some rain"
+    assert msgs == [{"type": "sentence", "index": 0, "text": first},
+                    {"type": "sentence_done", "index": 0, "samples": len(first.split()) * SPF},
+                    {"type": "sentence", "index": 1, "text": second},
+                    {"type": "sentence_done", "index": 1, "samples": len(second.split()) * SPF},
+                    {"type": "done"}]
+    assert audio == (len(first.split()) + len(second.split())) * SPF * 2     # 16-bit: 2 bytes a sample
+    assert code == 1000
     assert service.tts_admission.counts()["running"] == 0
     assert len(service.first_audio_ms) == 1
 
@@ -115,7 +121,7 @@ def test_two_run_one_waits_then_starts_and_the_fourth_is_refused():
             assert r.status_code == 503 and "retry-after" in r.headers
             a.send_json({"type": "end"})                                         # a's reply: nothing; done
             assert drain(a)[0] == [{"type": "done"}]
-            assert c.receive_json() == {"type": "started"}                       # c gets a's place
+            assert c.receive_json()["type"] == "started"                         # c gets a's place
 
 
 def test_waiting_too_long_gives_up():
@@ -133,7 +139,8 @@ def test_idle_and_too_much_text_end_the_session_and_free_the_place():
     client, service = make()
     with client.websocket_connect("/v1/realtime/speech?voice=ryan", headers=ALL) as ws:
         ws.receive_json()
-        assert drain(ws)[0][-1]["code"] == "idle"
+        msgs, _, code = drain(ws, with_code=True)
+        assert msgs[-1]["code"] == "idle" and code == 1008
     client2, service2 = make(MAX_TEXT_CHARS=10)
     with client2.websocket_connect("/v1/realtime/speech?voice=ryan", headers=ALL) as ws:
         ws.receive_json()
@@ -149,7 +156,8 @@ def test_cancel_and_disconnect_free_the_place():
         ws.receive_json()
         ws.send_json({"type": "text", "text": "a long sentence that is still being spoken. "})
         ws.send_json({"type": "cancel"})
-        drain(ws)
+        msgs, _, code = drain(ws, with_code=True)
+        assert msgs[-1] == {"type": "cancelled"} and code == 1000
     with client.websocket_connect(url, headers=ALL) as ws:                       # disconnect mid-reply
         assert ws.receive_json()["type"] == "started"
         ws.send_json({"type": "text", "text": "another one. "})
@@ -169,15 +177,17 @@ def test_a_bad_message_ends_the_session():
 def test_an_utterance_gives_partials_then_the_final():
     client, service = make()
     with client.websocket_connect("/v1/realtime/transcription", headers=ALL) as ws:
-        assert ws.receive_json() == {"type": "started"}
-        for _ in range(23):                                                     # 2.3 s, 100 ms at a time
+        assert ws.receive_json() == {"type": "started", "format": "pcm_s16le", "sample_rate": 16000, "channels": 1}
+        for _ in range(35):                                                     # 3.5 s, 100 ms at a time
             ws.send_bytes(np.zeros(1600, dtype="<i2").tobytes())
+            time.sleep(0.01)
         time.sleep(0.2)
         ws.send_json({"type": "commit"})
         msgs, _ = drain(ws)
-    kinds = [m["type"] for m in msgs]
-    assert kinds[-1] == "final" and "partial" in kinds
-    assert msgs[-1]["text"] == "hello world 2s" and msgs[-1]["language"] == "English"
+    partials = [m for m in msgs if m["type"] == "partial"]
+    assert msgs[-1] == {"type": "final", "text": "hello world 3s", "language": "English", "reason": "commit"}
+    assert partials and all(set(p) == {"type", "text", "stable", "language"} for p in partials)
+    assert any(p["stable"] and p["text"].startswith(p["stable"]) for p in partials)   # after 2 passes
     assert service.stt_admission.counts()["running"] == 0 and len(service.final_ms) == 1
 
 
@@ -185,7 +195,29 @@ def test_an_utterance_with_no_audio_goes_idle():
     client, _ = make()
     with client.websocket_connect("/v1/realtime/transcription", headers=ALL) as ws:
         ws.receive_json()
-        assert drain(ws)[0][-1]["code"] == "idle"
+        msgs, _, code = drain(ws, with_code=True)
+        assert msgs[-1]["code"] == "idle" and code == 1008
+
+
+def test_audio_then_silence_without_a_commit_is_still_heard():
+    """The client stops sending without a commit: after the idle time, what was heard is the final."""
+    client, _ = make()
+    with client.websocket_connect("/v1/realtime/transcription", headers=ALL) as ws:
+        ws.receive_json()
+        for _ in range(12):
+            ws.send_bytes(np.zeros(1600, dtype="<i2").tobytes())
+        msgs, _, code = drain(ws, with_code=True)
+    assert msgs[-1] == {"type": "final", "text": "hello world 1s", "language": "English", "reason": "idle"}
+    assert code == 1000
+
+
+def test_cancel_is_acknowledged():
+    client, _ = make()
+    with client.websocket_connect("/v1/realtime/transcription", headers=ALL) as ws:
+        ws.receive_json()
+        ws.send_json({"type": "cancel"})
+        msgs, _, code = drain(ws, with_code=True)
+    assert msgs[-1] == {"type": "cancelled"} and code == 1000
 
 
 def test_odd_audio_is_a_bad_message():
@@ -193,7 +225,8 @@ def test_odd_audio_is_a_bad_message():
     with client.websocket_connect("/v1/realtime/transcription", headers=ALL) as ws:
         ws.receive_json()
         ws.send_bytes(b"\x00\x01\x02")
-        assert drain(ws)[0][-1]["code"] == "bad_message"
+        msgs, _, code = drain(ws, with_code=True)
+        assert msgs[-1]["code"] == "bad_message" and code == 1008
 
 
 # ---- HTTP ----------------------------------------------------------------------------------------------

@@ -91,4 +91,4 @@ class STTBatch:
         return out
 
     def _final_without_pass(self, b: int) -> Transcript:
-        return self.sessions[b].finish()
+        return self.sessions[b].finish()            # no audio since the last pass, or none at all

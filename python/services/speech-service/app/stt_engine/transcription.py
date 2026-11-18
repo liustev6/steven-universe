@@ -77,7 +77,10 @@ class StreamingTranscription:
         return self.apply(self._decode(*self.pending()), final=False)
 
     def finish(self) -> Transcript:
-        """The final text: one more pass if audio arrived since the last (else the last pass's text)."""
+        """The final text: one more pass if audio arrived since the last (else the last pass's text);
+        nothing at all if no audio ever came."""
+        if len(self.audio) == 0:
+            return Transcript("", "", final=True)
         if self.needs_final_pass():
             return self.apply(self._decode(*self.pending()), final=True)
         language, text = self._parse(self.raw)
@@ -102,7 +105,7 @@ class StreamingTranscription:
         return len(self.audio) - self.decoded_upto >= fraction * interval
 
     def needs_final_pass(self) -> bool:
-        return self.passes == 0 or len(self.audio) > self.decoded_upto
+        return len(self.audio) > 0 and (self.passes == 0 or len(self.audio) > self.decoded_upto)
 
     def pending(self) -> tuple[np.ndarray, str]:
         """The next pass's input: all the audio so far, and the settled text as its prefix."""
@@ -114,4 +117,11 @@ class StreamingTranscription:
         self.passes, self.decoded_upto = self.passes + 1, len(self.audio)
         self.next_pass_at = len(self.audio) + int(pass_interval(len(self.audio) / SAMPLE_RATE) * SAMPLE_RATE)
         language, text = self._parse(raw)
-        return Transcript(language, text, final=final)
+        return Transcript(language, text, final=final, stable=text if final else self.stable(text))
+
+    def stable(self, text: str) -> str:
+        """The part of `text` the next pass will keep: the settled prefix it'll be given, as text
+        ("" for the first passes, or if the cut fell inside Qwen's language tag)."""
+        prefix = settled_prefix(self.raw, self.passes, self._tokenizer)
+        _, settled = self._parse(prefix) if prefix else ("", "")
+        return settled if settled and text.startswith(settled) else ""

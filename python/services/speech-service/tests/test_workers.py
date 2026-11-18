@@ -158,8 +158,11 @@ def test_cancel_and_too_long():
     ua, ub = w.open(None, a), w.open(None, b)
     w.audio(ua, np.zeros(16000, dtype=np.float32))
     w.cancel(ua)
-    w.audio(ub, np.zeros(61 * 16000, dtype=np.float32))    # past the 60 s limit
-    assert b.done.wait(2) and b.items[-1] == ("error", "too_long")
+    w.audio(ub, np.zeros(30 * 16000, dtype=np.float32))
+    w.audio(ub, np.zeros(31 * 16000, dtype=np.float32))    # past the 60 s limit: what was heard is final
+    w.audio(ub, np.zeros(16000, dtype=np.float32))         # later audio is dropped
+    assert b.done.wait(2)
+    assert [k for k, _ in b.items][-2:] == ["limit", "final"] and b.items[-1][1].text == "hello world 30s"
     time.sleep(0.2)
     assert not a.done.is_set() and w.busy() == 0
     w.stop()

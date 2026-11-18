@@ -51,7 +51,7 @@ async def speak(pieces, voice="aiden", *, gap=0.15):
                 audio.append(np.frombuffer(m, dtype="<i2").astype(np.float32) / 32768)
             else:
                 msgs.append(json.loads(m))
-                if msgs[-1]["type"] in ("done", "error"):
+                if msgs[-1]["type"] in ("done", "error", "cancelled"):
                     break
         await sender
         return (first or 0) * 1000, time.perf_counter() - start, np.concatenate(audio) if audio else np.zeros(0), msgs
@@ -104,13 +104,17 @@ async def main():
     print(f"1. warm after {time.perf_counter() - t:.1f} s of waiting")
 
     first, total, audio, msgs = await speak(REPLY)
-    print(f"2. TTS: first audio {first:.0f} ms, {len(audio) / 24000:.1f} s of speech in {total:.1f} s, ends {msgs[-1]['type']}")
+    marks = [m for m in msgs if m["type"] in ("sentence", "sentence_done")]
+    print(f"2. TTS: {msgs[0]}; first audio {first:.0f} ms, {len(audio) / 24000:.1f} s of speech in {total:.1f} s; "
+          f"{len(marks) // 2} sentences ({', '.join(str(m['samples']) for m in marks if m['type'] == 'sentence_done')} samples); "
+          f"ends {msgs[-1]['type']}")
     import soundfile as sf
     sf.write("/tmp/e2e-reply.wav", audio, 24000)
 
     final_ms, text, partials, msgs = await hear(to16k(audio))
-    print(f"3. STT: {len(partials)} partials, final {final_ms:.0f} ms after the commit: {text!r} "
-          f"({same(text, ''.join(REPLY)):.2f} alike)")
+    last = [m for m in msgs if m["type"] == "partial"][-1]
+    print(f"3. STT: {len(partials)} partials (the last: stable {last['stable']!r} of {last['text']!r}); final {final_ms:.0f} ms "
+          f"after the commit, reason {msgs[-1].get('reason')}: {text!r} ({same(text, ''.join(REPLY)):.2f} alike)")
 
     zh = ["好的，", "我现在帮你", "把客厅的灯关掉。"]
     results = await asyncio.gather(speak(REPLY, "aiden"), speak(zh, "vivian"), hear(to16k(audio)), hear(to16k(audio)))
