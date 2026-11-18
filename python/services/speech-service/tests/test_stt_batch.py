@@ -13,11 +13,11 @@ class FakeEngine:
     def __init__(self):
         self.passes = []                             # each pass: [(seconds of audio, prompt, prefix)]
 
-    def session(self, language=None, *, decode="own"):
+    def session(self, language=None, *, context="", decode="own"):
         return StreamingTranscription(None, Tokenizer(), lambda raw: (language or "English", raw))
 
-    def prompt(self, language=None):
-        return f"<{language or 'auto'}>"
+    def prompt(self, language=None, context=""):
+        return f"<{language or 'auto'}>" + (f"[{context}]" if context else "")
 
     def decode_batch(self, audios, prompts, prefixes):
         self.passes.append([(len(a) / SR, p, x) for a, p, x in zip(audios, prompts, prefixes)])
@@ -106,3 +106,9 @@ def test_lined_up_passes_are_fewer_than_separate_ones():
         b.tick()
     shared = sum(1 for p in e.passes if len(p) == 2)
     assert shared >= 3 and len(e.passes) < 6 + 5
+
+
+def test_a_row_keeps_its_context_in_its_prompt():
+    b = STTBatch(FakeEngine(), slots=2)
+    s = b.join("Chinese", "Seattle downtown")
+    assert b.prompts[s] == "<Chinese>[Seattle downtown]"

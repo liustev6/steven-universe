@@ -14,7 +14,7 @@ One pass = one padded batch through the model (the processor pads the prompts on
 row's text continues its own prompt). Each row keeps its own prompt (a language, if asked for) and
 its own prefix (its settled text).
 
-    join(language)   a free slot for a new utterance (Full if none)
+    join(language, context)   a free slot for a new utterance (Full if none)
     add(slot, pcm)   its audio as it arrives (TooLong past the limit)
     end(slot)        the speaker stopped: its final comes at the next tick
     leave(slot)      cancelled: free at once
@@ -48,13 +48,13 @@ class STTBatch:
     def free(self) -> list[int]:
         return [i for i, s in enumerate(self.sessions) if s is None]
 
-    def join(self, language: str | None = None) -> int:
+    def join(self, language: str | None = None, context: str = "") -> int:
         free = self.free()
         if not free:
             raise Full(f"all {self.slots} slots are busy")
         b = free[0]
-        self.sessions[b] = self.engine.session(language, decode=None)
-        self.prompts[b] = self.engine.prompt(language)
+        self.sessions[b] = self.engine.session(language, context=context, decode=None)
+        self.prompts[b] = self.engine.prompt(language, context)
         return b
 
     def add(self, b: int, pcm) -> None:

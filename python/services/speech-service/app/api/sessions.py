@@ -227,6 +227,10 @@ async def transcription_session(ws: WebSocket, service: Service, auth) -> None:
     final), or too_long (the 60 s limit: what was heard up to it); or cancelled; or error {code: idle
     (no audio at all) | queue_timeout | bad_message | failed}.
 
+    `?context=` (at most STT_MAX_CONTEXT_CHARS): what the speech is likely about (recent turns, names,
+    places), after the service's own (STT_CONTEXT): Qwen3-ASR's system message, which biases the words
+    and the language toward it (T18).
+
     `?turn_detection=server` (default: none, the client commits): the server ends the turn itself
     after `silence_ms` (300-3000, default 700) of quiet following speech (turns.py)."""
     s = service.settings
@@ -237,6 +241,11 @@ async def transcription_session(ws: WebSocket, service: Service, auth) -> None:
     if language and language not in service.languages:
         await ws.send_denial_response(problem(400, "unknown_language", f"languages: {', '.join(service.languages)}"))
         return
+    own = q.get("context", "").strip()
+    if len(own) > s.STT_MAX_CONTEXT_CHARS:
+        await ws.send_denial_response(problem(400, "bad_parameter", f"context: at most {s.STT_MAX_CONTEXT_CHARS} characters"))
+        return
+    context = "\n".join(part for part in (s.STT_CONTEXT.strip(), own) if part)
     endpoint = None
     if q.get("turn_detection", "none") not in ("none", "server") or not q.get("silence_ms", "700").isdigit() \
             or not 300 <= int(q.get("silence_ms", "700")) <= 3000:
@@ -254,7 +263,7 @@ async def transcription_session(ws: WebSocket, service: Service, auth) -> None:
         if not await wait_for_place(ws, ticket, service, stream_format(STT_RATE)):
             return await close(ws, "queue_timeout", "no place in time")
         reader = asyncio.create_task(inbox.read(ws))
-        utterance = service.stt.open(language, inbox.sink)
+        utterance = service.stt.open(language, inbox.sink, context)
         start, last_audio, heard = time.monotonic(), time.monotonic(), False
         while True:
             limit = start + s.STT_MAX_SECONDS + 5.0                 # the worker enforces the audio's 60 s

@@ -46,16 +46,19 @@ class QwenSTTEngine:
     def languages(self) -> list[str]:
         return list(self._asr.get_supported_languages())
 
-    def session(self, language: str | None = None, *, decode="own") -> StreamingTranscription:
-        """One utterance. `decode=None`: no decode of its own (a batch runs its passes: batch.py)."""
-        prompt, forced = self._prompt(language), self._language(language)
+    def session(self, language: str | None = None, *, context: str = "", decode="own") -> StreamingTranscription:
+        """One utterance. `decode=None`: no decode of its own (a batch runs its passes: batch.py).
+        `context`: text the speech is likely about (Qwen3-ASR's system message: it biases the words and
+        the language toward it; T18)."""
+        prompt, forced = self._prompt(language, context), self._language(language)
         own = (lambda audio, prefix: self.decode_batch([audio], [prompt + prefix], [prefix])[0]) if decode else None
         return StreamingTranscription(own, self._processor.tokenizer,
                                       lambda raw: self._parse_raw(raw, user_language=forced), max_seconds=self.max_seconds)
 
-    def prompt(self, language: str | None = None) -> str:
-        """Qwen's prompt; with a language, it asks for that language's text only."""
-        return self._prompt(language)
+    def prompt(self, language: str | None = None, context: str = "") -> str:
+        """Qwen's prompt; with a language, it asks for that language's text only; with a context, it
+        carries it as the system message."""
+        return self._prompt(language, context)
 
     def batch(self, slots: int = 2, **kw):
         """Several utterances sharing passes (batch.py)."""
@@ -63,8 +66,8 @@ class QwenSTTEngine:
 
         return STTBatch(self, slots=slots, **kw)
 
-    def transcribe(self, audio: np.ndarray, language: str | None = None) -> Transcript:
-        session = self.session(language)
+    def transcribe(self, audio: np.ndarray, language: str | None = None, context: str = "") -> Transcript:
+        session = self.session(language, context=context)
         session.audio = np.asarray(audio, dtype=np.float32).reshape(-1)
         return session.finish()
 
@@ -92,6 +95,6 @@ class QwenSTTEngine:
         validate_language(name)
         return name
 
-    def _prompt(self, language: str | None) -> str:
+    def _prompt(self, language: str | None, context: str = "") -> str:
         """Qwen's prompt; with a language, it asks for that language's text only."""
-        return self._asr._build_text_prompt(context="", force_language=self._language(language))
+        return self._asr._build_text_prompt(context=context, force_language=self._language(language))

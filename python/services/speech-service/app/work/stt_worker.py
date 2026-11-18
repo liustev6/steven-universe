@@ -4,7 +4,7 @@ One thread owns the STT's batch (`STTBatch`, stt_engine/batch.py); sessions talk
 thread-safe calls. It ticks the batch every `tick` seconds, and **at once when an utterance ends**,
 so a final never waits for the next tick (spikes/12: up to 100 ms of a final's latency was waiting).
 
-    open(language, sink) → a handle   one utterance; `sink(kind, payload)` gets ("partial", Transcript)
+    open(language, sink, context) → a handle   one utterance; `sink(kind, payload)` gets ("partial", Transcript)
                                       …, then ("final", Transcript), or ("error", message); ("limit",
                                       None) first if its audio reached the limit (the final is then
                                       what was heard up to it; later audio is dropped)
@@ -34,6 +34,7 @@ class Utterance:
     id: int
     language: str | None
     sink: Callable[[str, object], None]
+    context: str = ""                                 # what the speech is likely about (T18)
     slot: int | None = None
     ended: bool = False
     pending: list = field(default_factory=list)       # what arrived while it waited for a slot
@@ -56,8 +57,8 @@ class STTWorker:
         self._inbox.put(None)
         self._thread.join(timeout=5)
 
-    def open(self, language: str | None, sink) -> Utterance:
-        u = Utterance(next(self._ids), language, sink)
+    def open(self, language: str | None, sink, context: str = "") -> Utterance:
+        u = Utterance(next(self._ids), language, sink, context)
         self._inbox.put(("open", u, None))
         return u
 
@@ -83,7 +84,7 @@ class STTWorker:
             while waiting and self.batch.free():
                 u = waiting.popleft()
                 try:
-                    u.slot = self.batch.join(u.language)
+                    u.slot = self.batch.join(u.language, u.context)
                 except Exception as exc:                            # an unknown language: this one only
                     u.sink("error", str(exc))
                     continue

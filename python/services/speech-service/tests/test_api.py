@@ -266,3 +266,20 @@ def test_server_side_turn_detection_commits_by_itself():
     assert msgs[-1]["type"] == "final" and msgs[-1]["reason"] == "silence" and code == 1000
     assert denied(client, "/v1/realtime/transcription?turn_detection=maybe", ALL).status_code == 400
     assert denied(client, "/v1/realtime/transcription?turn_detection=server&silence_ms=50", ALL).status_code == 400
+
+
+def test_a_transcription_carries_its_context_after_the_services_own():
+    """T18: the service's context, then the session's (recent turns, names), in every pass's prompt."""
+    client, service = make()
+    url = "/v1/realtime/transcription?context=" + "Steven lives in Seattle. Last turn: what's the weather downtown?".replace(" ", "%20")
+    with client.websocket_connect(url, headers=ALL) as ws:
+        ws.receive_json()
+        ws.send_bytes(np.zeros(16000, dtype="<i2").tobytes())
+        ws.send_json({"type": "commit"})
+        msgs, _ = drain(ws)
+    assert msgs[-1]["type"] == "final"
+    prompts = [p for run in service.stt.batch.engine.passes for _, p, _ in run]
+    assert prompts and all("English, Chinese, or both mixed" in p and "Steven lives in Seattle." in p for p in prompts)
+    assert prompts[0].index("English, Chinese") < prompts[0].index("Steven lives")
+    too_long = "/v1/realtime/transcription?context=" + "x" * 1001
+    assert denied(client, too_long, ALL).status_code == 400
