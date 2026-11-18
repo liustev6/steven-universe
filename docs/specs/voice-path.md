@@ -58,7 +58,7 @@
 | 4.15 | **protocol B in shared-schemas; the agent's latency levers** | defined when reached |
 
 ## Found along the way
-- **The TTS misreads digits** (2026-11-17): "5,959 metres, or 19,551 feet", spoken 4 times, came back 4
+- **The TTS misreads digits** (2026-11-17; **fixed** by text normalization in speech-service, its T14 and spikes/13: 56% → 90% read right): "5,959 metres, or 19,551 feet", spoken 4 times, came back 4
   ways ("nineteen point one five hundred…", "fifty desimples") and took 11–14 s for ~5 s of words.
   The standard fix is text normalization before the TTS (numbers, units, dates as words: Riva's TTS
   pipeline does it); a "say numbers in words" line in the `voice` profile as a cheap second guard.

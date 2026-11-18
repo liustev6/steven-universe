@@ -1,0 +1,71 @@
+
+[1] 今天是2026年11月17日。
+    → 今天是二零二六年十一月十七日。
+  serena  1   3.3 s  今天是二零二六年十一月十七日。
+  serena  2   3.0 s  今天是二零二六年十一月十七日。
+  serena  3   2.9 s  今天是二零二六年十一月十七日。
+  ryan    1   4.4 s  今天是二零二六年十一月十七日。
+  ryan    2   4.6 s  今天是二零二六年十一月十七日。
+  ryan    3   5.1 s  今天是二零二六年十一月十七日。
+
+[2] 英国的首都用英文说是London。
+  serena  1   2.7 s  英国的首都用英文说是London。
+  serena  2   3.4 s  英国的首都用英文说是London。
+  serena  3   3.0 s  英国的首都用英文说是London。
+  ryan    1   3.5 s  英国的首都用英文说是London。
+  ryan    2   4.8 s  英国的首都用英文说是London。
+  ryan    3   3.7 s  英国的首都用英文说是London。
+
+[3] 这个耳机打折后是299元，便宜了15%。
+    → 这个耳机打折后是两百九十九元，便宜了百分之十五。
+  serena  1   5.4 s  这个耳机打折后是两百九十九元，便宜了百分之十五。
+  serena  2   5.5 s  这个耳机打折后是两百九十九元，便宜了百分之十五。
+  serena  3   5.6 s  这个耳机打折后是两百九十九元，便宜了百分之十五。
+  ryan    1   8.1 s  这个耳机打折后是两百九十九元，便宜了百分之十五。
+  ryan    2   7.2 s  这个耳机打折后是两百九十九元，便宜了百分之十五。
+  ryan    3   6.8 s  这个耳机打折后是两百九十九元，便宜了百分之十五。
+
+[4] 我的电话号码是138-0013-8000。
+    → 我的电话号码是一三八零零一三八零零零。
+  serena  1   5.4 s  我的电话号码是一三八零零一三八零零零。
+  serena  2   4.2 s  我的电话号码是一三八零零一三八零零零。
+  serena  3   4.3 s  我的电话号码是一三八零零一三八零零零。
+  ryan    1   8.8 s  我的电话号码是：一三八零零一三八零零零。
+  ryan    2  15.4 s  我的电话号码是一三八零零一三八零零零。
+  ryan    3   6.1 s  我的电话号码是一三八零零一三八零零零。
+
+[5] 现在气温是-5.5°C，明天会升到3°C。
+    → 现在气温是负五点五摄氏度，明天会升到三摄氏度。
+  serena  1   5.6 s  现在气温是负五点五摄氏度，明天会升到三摄氏度。
+  serena  2   5.0 s  现在气温是负五点五摄氏度，明天会升到三摄氏度。
+  serena  3   4.5 s  现在气温是负五点五摄氏度，明天会升到三摄氏度。
+  ryan    1   6.7 s  现在气温是负五点五摄氏度，明天会升到三摄氏度。
+  ryan    2   7.7 s  现在气温是负五点五摄氏度。哼，明天会升到三摄氏度。
+  ryan    3   6.2 s  现在气温是负五点五摄氏度，明天会升到三摄氏度。
+
+[6] 我昨天用iPhone 17给Steven发了一条message。
+    → 我昨天用iPhone 十七给Steven发了一条message。
+  serena  1   4.0 s  我昨天用iPhone十七给Steven发了一条message。
+  serena  2   3.8 s  我昨天用iPhone十七给Steven发了一条message。
+  serena  3   3.7 s  我昨天用iPhone十七给Steven发了一条message。
+  ryan    1   5.7 s  我昨天用iPhone十七给Steven发了一条message。
+  ryan    2   5.7 s  我昨天用iPhone十七给Steven发了一条message。
+  ryan    3   4.7 s  我昨天用iPhone十七给Steven发了一条message。
+
+[7] The meeting is at 3:30 PM on March 5th, 2026.
+    → The meeting is at three thirty PM on the fifth of march, twenty twenty six.
+  serena  1   6.1 s  The meeting is at three thirty p.m. on the fifth of March, twenty twenty-six.
+  serena  2   6.6 s  The meeting is at three thirty p.m. on the fifth of March, twenty twenty-six.
+  serena  3   5.5 s  The meeting is at three thirty p.m. on the fifth of March, twenty twenty-six.
+  ryan    1   8.2 s  The meeting is at three thirty p.m. on March fifth, twenty twenty-six.
+  ryan    2   7.1 s  The meeting is at three thirty p.m. on the March of fifth, twenty twenty six.
+  ryan    3   6.6 s  The meeting is at three thirty p.m. on March fifth of twenty twenty-six.
+
+[8] Mount Logan is 5,959 metres tall, or 19,551 feet.
+    → Mount Logan is five thousand nine hundred and fifty nine metres tall, or nineteen thousand five hundred and fifty one feet.
+  serena  1   9.8 s  Mount Logan is five thousand nine hundred and fifty-nine meters tall, or nineteen thousand five hundred and fifty-one feet.
+  serena  2   8.5 s  Mount Logan is five thousand nine hundred and fifteen nine meters tall, or nineteen thousand five hundred and fifty one feet.
+  serena  3   9.0 s  Mount Logan is five thousand nine hundred and fifty-nine meters tall, or nineteen thousand five hundred and fifty-one feet.
+  ryan    1  11.2 s  Mount Logan is five thousand nine hundred and fifty-nine meters tall, or nineteen thousand five hundred and fifty-one feet.
+  ryan    2  19.4 s  Mount Logan is five thousand nine hundred and fifty-nine meters tall. Or, or nineteen thousand five hundred and fifty-one feet.
+  ryan    3  12.2 s  Mount Logan is five thousand nine hundred and fifty-nine meters tall, or nineteen thousand five hundred and fifty-one feet.

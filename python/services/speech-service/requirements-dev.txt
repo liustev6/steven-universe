@@ -3,4 +3,6 @@
 -e ../../libs/service-auth[fastapi]   # token checks (ServiceAuth)
 numpy==2.5.4                          # the image's (base-image/requirements.lock)
 PyYAML==6.0.3                         # app.models (the weights' lock)
+wetext==0.2.1                         # app.work.normalize (the image's: base-image/requirements.lock)
+kaldifst==1.9.0
 pytest==9.2.0

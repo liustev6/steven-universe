@@ -37,6 +37,7 @@ def load(service: Service, settings: Settings) -> None:
     from app.stt_engine.engine import QwenSTTEngine
     from app.tts_engine.engine import QwenTTSEngine
     from app.work.gpu import CudaGPU
+    from app.work.normalize import TextNormalizer
     from app.work.stt_worker import STTWorker
     from app.work.tts_worker import TTSWorker
 
@@ -50,7 +51,10 @@ def load(service: Service, settings: Settings) -> None:
     def decode(frames) -> np.ndarray:
         return tts._codec.decode([{"audio_codes": torch.stack(list(frames))}])[0][0]
 
-    tts_worker = TTSWorker(tts.batch(slots=settings.TTS_SLOTS), prompt=lambda text, voice, language: tts.prompt(text, voice, language),
+    normalize = TextNormalizer(enabled=settings.TTS_NORMALIZE)
+    normalize.warm()                                    # its grammars loaded now, not in the first reply
+    tts_worker = TTSWorker(tts.batch(slots=settings.TTS_SLOTS),
+                           prompt=lambda text, voice, language: tts.prompt(normalize(text), voice, language),
                            decode=decode, gpu=CudaGPU(tts._generation, tts._decoding))
     stt_worker = STTWorker(stt.batch(slots=settings.STT_SLOTS), tick=settings.STT_TICK_SECONDS)
     tts_worker.start()

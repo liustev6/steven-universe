@@ -11,7 +11,7 @@
 
 # speech-base, pinned by digest: bumped by hand after CI publishes a new base (infra/images/speech-base.yaml).
 # This one: built from 7c3692b (3.28 GB compressed).
-ARG BASE=ghcr.io/liustev6/steven-universe/speech-base@sha256:4c2c237192e7be86172e8e78734334513df500d589508ee886b55193fab80758
+ARG BASE=ghcr.io/liustev6/steven-universe/speech-base@sha256:80b6c52aa7fbd5b814472b4f6c42fa832f41944d59f4ab5a0aa068c3f3f176ac
 FROM ${BASE}
 ARG REVISION=unknown
 LABEL org.opencontainers.image.title="speech-service" \
