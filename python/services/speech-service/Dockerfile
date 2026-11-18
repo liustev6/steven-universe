@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# speech-service image: our code on speech-base (the model stack, python/images/speech-base). Build
+# speech-service image: our code on speech-base (the model stack, ./base-image). Build
 # context is python/ so the shared library is available:
 #   docker build -f services/speech-service/Dockerfile python/
 # Spec: docs/specs/speech-service.md. The models' weights are not in the image: the deploy's hook puts
