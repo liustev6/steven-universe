@@ -1,0 +1,18 @@
+# Training "Hey Pi" (train.py): what changes between runs lives here, in git.
+word: hey pie                    # what Piper says (phonetic spellings work better: "Hey Pi")
+wake_word: Hey Pi                # the manifest's name
+model_name: hey_pi
+piper_samples: 2000
+own_voice_copies: 5              # data/positives/me, weighted: the real voice and the real microphone
+probability_cutoff: 0.95         # tuned on the Pi (higher: fewer false wakes, more misses)
+
+augmentation:                    # the notebook's
+  probabilities: {SevenBandParametricEQ: 0.1, TanhDistortion: 0.1, PitchShift: 0.1, BandStopFilter: 0.1,
+                  AddColorNoise: 0.1, AddBackgroundNoise: 0.75, Gain: 1.0, RIR: 0.5}
+  background_min_snr_db: -5
+  background_max_snr_db: 10
+
+training:
+  steps: 10000
+  negative_class_weight: 20      # the notebook's; higher: fewer false wakes ("Hey Pi" is short)
+  near_miss_weight: 5.0          # data/negatives/* ("hey", "pie", "happy", "bye", "嗨", "拜拜", ...)

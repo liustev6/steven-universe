@@ -3,3 +3,9 @@
 data/
 *.wav
 *.zip
+
+# The trainer: its environment, its cache (~8 GB of downloads), its output
+.venv/
+work/
+out/
+__pycache__/

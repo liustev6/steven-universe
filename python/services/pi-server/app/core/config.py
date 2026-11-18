@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     SPEECH_URL: str = "https://speech.lan.liustev6.ca"
     AGENT_URL: str = "https://agent.lan.liustev6.ca"
     AGENT_PROFILE: str = "pi"                    # its own profile (infra/services/agent-service/profiles.yaml)
-    WAKE_WORD: str = "hey_jarvis"                # a built-in microWakeWord model, or a trained one's .json
+    WAKE_WORD: str = "models/hey_pi.json"        # our trained "Hey Pi" (python/features/wake-word); or a built-in name (hey_jarvis)
     LISTEN_WINDOW_SECONDS: float = 10.0          # a session waits this long for someone to speak (V9): room for a follow-up
     VOICE_EN: str = "ryan"                       # a voice session that starts in English speaks with this
     VOICE_ZH: str = "dylan"                      # ... in Chinese (mixed: its main language); kept all session

@@ -20,6 +20,7 @@ cd "$SERVICE_DIR"
 step "Copying pi-server to $PI_HOST:~/pi-server"
 ssh -o BatchMode=yes "$PI_HOST" 'mkdir -p ~/pi-server/libs'
 rsync -a --delete --exclude '__pycache__' app/ "$PI_HOST:pi-server/app/"
+rsync -a --delete models/ "$PI_HOST:pi-server/models/"                  # the wake word (python/features/wake-word)
 rsync -a requirements.txt deploy/pi-server.service "$PI_HOST:pi-server/"
 rsync -a deploy/pi-server.env "$PI_HOST:pi-server/.env"
 rsync -a --delete --exclude '__pycache__' --exclude '*.egg-info' --exclude tests \
