@@ -4,7 +4,7 @@
     idle ──wake word──▶ waiting ──someone speaks──▶ listening ──the turn ends──▶ replying ──played──┐
      ▲   (claim the       │ ▲   (open an STT       (speech to text)       (agent → speech →      │
      │    agent session)  │ └─────────────────────────────────────────────────── speaker) ◀────────┘
-     └──10 s and nobody speaks: release the agent session──┘         back to waiting, for 10 s more
+     └──7 s and nobody speaks: release the agent session───┘         back to waiting, for 7 s more
 
   - idle: only the wake word listens, on the Pi; nothing leaves it
   - waiting: the session is open (its agent session claimed at the wake word); the first voice
@@ -76,7 +76,7 @@ class VoiceOptions:
     stt_language: Optional[str] = None
     stt_context: str = ""              # who speaks to Hey Pi (their languages): every context starts with it
     silence_ms: int = 700
-    window: float = 10.0               # the session waits this long for someone to speak
+    window: float = 7.0                # the session waits this long for someone to speak
 
     def voice_for(self, text: str, heard: str = "") -> str:
         """The voice for a turn's main language (mixed Chinese and English: whichever most of it is).

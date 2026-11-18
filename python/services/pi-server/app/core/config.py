@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     LOCATION: str = ""                           # city, country: e.g. "Seattle, United States"
     TIMEZONE: str = ""                           # an IANA name, e.g. "America/Los_Angeles"
     WAKE_WORD: str = "models/hey_pi.json"        # our trained "Hey Pi" (python/features/wake-word); or a built-in name (hey_jarvis)
-    LISTEN_WINDOW_SECONDS: float = 10.0          # a session waits this long for someone to speak (V9): room for a follow-up
+    LISTEN_WINDOW_SECONDS: float = 7.0           # a session waits this long for someone to speak (V9): room for a follow-up
     VOICE_EN: str = "ryan"                       # a voice session that starts in English speaks with this
     VOICE_ZH: str = "dylan"                      # ... in Chinese (mixed: its main language); kept all session
     TTS_LANGUAGE: Optional[str] = None           # None: Auto (the model reads it from the text)
