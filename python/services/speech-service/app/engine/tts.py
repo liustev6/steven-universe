@@ -165,6 +165,44 @@ class QwenTTSEngine:
         if errors:
             raise errors[0]
 
+    def prompt(self, text: str, voice: str, language: str | None = None, *, sample: bool = True) -> dict:
+        """One sentence's prompt, as Qwen's code builds it, without generating: what it would pass to
+        `talker.generate` (the prompt's embeddings, the text still to speak, the pad embedding, the
+        generation rules). The batch (batch.py) joins sentences from these. Qwen's `generate` builds them
+        and calls the talker; a stand-in there captures its arguments and stops it."""
+        import torch
+
+        tts = self._tts
+        language = language or NATIVE.get(voice, "Auto")
+        tts._validate_languages([language])
+        tts._validate_speakers([voice])
+        input_ids = tts._tokenize_texts([tts._build_assistant_text(text)])
+        kwargs = tts._merge_generate_kwargs(do_sample=sample, subtalker_dosample=sample,
+                                            max_new_tokens=max_frames(text))
+
+        class Captured(Exception):
+            pass
+
+        def capture(**got):
+            raise Captured(got)
+
+        self._talker.generate = capture
+        try:
+            with torch.inference_mode():
+                self._model.generate(input_ids=input_ids, instruct_ids=[None], languages=[language],
+                                     speakers=[voice], non_streaming_mode=True, **kwargs)
+        except Captured as c:
+            return c.args[0]
+        finally:
+            self._talker.__dict__.pop("generate", None)
+        raise RuntimeError("Qwen's generate never called the talker")
+
+    def batch(self, slots: int = 2, *, capacity: int = 2048):
+        """A batch of `slots` sentences generated together (batch.py): fused kernels, CUDA graphs."""
+        from app.engine.batch import TTSBatch
+
+        return TTSBatch(self._talker, slots=slots, capacity=capacity)
+
     def stream(self, text: str, voice: str, language: str | None = None, *, sample: bool = True,
                cancel: threading.Event | None = None) -> Iterator[np.ndarray]:
         import torch

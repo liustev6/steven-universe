@@ -94,3 +94,29 @@ def test_decode_attention_matches_pytorch(length):
     err = (got.float() - want.float()).abs().max().item()
     print(f"length {length}: max |difference| {err:.2e}")
     assert err < 2e-2
+
+
+def test_each_batch_row_has_its_own_position():
+    """A batch of 3 at positions 5, 200 and 0: each row equals that row alone at its position, for the
+    rotary/cache write and for the decode attention (a batch's sentences are at different points)."""
+    from app.engine.kernels import decode_attention, rope_and_cache
+
+    torch.manual_seed(7)
+    dt, dev, d, cap = torch.bfloat16, "cuda", 128, 256
+    positions = [5, 200, 0]
+    q = torch.randn(3, 1, 16, d, device=dev).to(dt)
+    k = torch.randn(3, 1, 8, d, device=dev).to(dt)
+    v = torch.randn(3, 1, 8, d, device=dev).to(dt)
+    angles = torch.arange(cap, device=dev)[:, None] * (1e6 ** (-torch.arange(0, d, 2, device=dev) / d))[None]
+    cos, sin = torch.cat([angles, angles], -1).cos().to(dt), torch.cat([angles, angles], -1).sin().to(dt)
+    base = torch.randn(3, 8, cap, d, device=dev).to(dt)
+    keys, values = base.clone(), base.clone()
+    pos = torch.tensor(positions, dtype=torch.int32, device=dev)
+    q_rot = rope_and_cache(q, k, v, cos, sin, keys, values, 0, position=pos)
+    out = decode_attention(q_rot, keys, values, pos, d ** -0.5)
+    for b, p in enumerate(positions):
+        keys1, values1 = base[b:b + 1].clone(), base[b:b + 1].clone()
+        p1 = torch.tensor([p], dtype=torch.int32, device=dev)
+        q1 = rope_and_cache(q[b:b + 1], k[b:b + 1], v[b:b + 1], cos, sin, keys1, values1, 0, position=p1)
+        assert torch.equal(q_rot[b:b + 1], q1) and torch.equal(keys[b:b + 1], keys1) and torch.equal(values[b:b + 1], values1)
+        assert torch.equal(out[b:b + 1], decode_attention(q1, keys1, values1, p1, d ** -0.5))

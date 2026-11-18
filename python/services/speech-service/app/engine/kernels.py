@@ -73,13 +73,14 @@ def _rope_and_cache(q_ptr, k_ptr, v_ptr, cos_ptr, sin_ptr, q_out_ptr, keys_ptr, 
     """One program per (batch × position, head) row of head_dim = 2 × HALF values. Heads 0…q_heads-1:
     rotate q into `q_out` (batch, heads, n, head_dim). The next kv_heads: rotate k, write it straight
     into the key cache at position start + t. The last kv_heads: copy v into the value cache.
-    START_FROM_PTR: `start` read from GPU memory (a graph replays at whatever position it holds)."""
-    if START_FROM_PTR:
-        start = tl.load(start_ptr)
-    else:
-        start = start_arg
+    START_FROM_PTR: `start` read from GPU memory, one per batch row (`start_ptr[b]`): a graph replays
+    at whatever positions they hold, and each row (each sentence in a batch) has its own."""
     row, head = tl.program_id(0), tl.program_id(1)
     b, t = row // n, row % n
+    if START_FROM_PTR:
+        start = tl.load(start_ptr + b)
+    else:
+        start = start_arg
     lo = tl.arange(0, HALF)
     dtype = q_out_ptr.dtype.element_ty
     if head < q_heads + kv_heads:                                  # q or k: rotate
@@ -108,7 +109,8 @@ def _rope_and_cache(q_ptr, k_ptr, v_ptr, cos_ptr, sin_ptr, q_out_ptr, keys_ptr, 
 
 def rope_and_cache(q, k, v, cos, sin, keys, values, start: int, position=None):
     """Qwen's rotary embedding on q and k, and the cache write, as one kernel (6 + 6 + 2 kernels before).
-    `position`: a GPU int32 tensor holding the start position, read by the kernel (then `start` unused).
+    `position`: a GPU int32 tensor, one start position per batch row, read by the kernel (then `start`
+    unused).
 
     q (batch, n, q_heads, head_dim), k and v (batch, n, kv_heads, head_dim): as the projections make
     them, before any transpose. cos, sin (16, head_dim): every cache position's angles, bfloat16.
@@ -141,10 +143,11 @@ def _decode_attention(q_ptr, k_ptr, v_ptr, pos_ptr, out_ptr, scale,
     0…position in blocks of BLOCK, with an online softmax (FlashAttention's trick): running max `m`,
     running sum of exponentials `l`, running weighted sum of values `acc`, rescaled by exp(m_old - m_new)
     whenever a block raises the max. One pass; the scores are never stored. GQA: query head h reads key
-    and value head h // GROUP."""
+    and value head h // GROUP. Each batch row has its own position (`pos_ptr[b]`): a batch's
+    sentences are at different points."""
     b, h = tl.program_id(0), tl.program_id(1)
     kv = h // GROUP
-    n = tl.load(pos_ptr) + 1                                       # positions 0…position: from GPU memory
+    n = tl.load(pos_ptr + b) + 1                                   # positions 0…position: from GPU memory
     d = tl.arange(0, D)
     q = tl.load(q_ptr + b * q_sb + h * q_sh + d).to(tl.float32)
     k_base, v_base = k_ptr + b * k_sb + kv * k_sh, v_ptr + b * v_sb + kv * v_sh
@@ -169,8 +172,8 @@ def _decode_attention(q_ptr, k_ptr, v_ptr, pos_ptr, out_ptr, scale,
 def decode_attention(q, keys, values, position, scale: float):
     """Attention for one new position over the cache, its length read from GPU memory.
 
-    q (batch, q_heads, 1, head_dim), rotated; keys, values (batch, kv_heads, capacity, head_dim), filled
-    through `position` (a GPU int32 tensor, shape (1,)). Returns (batch, 1, q_heads × head_dim): the
+    q (batch, q_heads, 1, head_dim), rotated; keys, values (batch, kv_heads, capacity, head_dim), each
+    row filled through its `position` (a GPU int32 tensor, shape (batch,)). Returns (batch, 1, q_heads × head_dim): the
     layout the output projection takes, so no transpose and copy after."""
     import torch
 

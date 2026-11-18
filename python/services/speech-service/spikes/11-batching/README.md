@@ -35,3 +35,38 @@ utterances of 3 and 8 s (synthetic), one padded batch vs one after the other.
     TTS, 2 streams batched:   generation 12.2 ms + decode 2 × 4.2 ms = ~20.6 ms per 80 ms of audio   ~26%
     STT, 2 streams in turn:   ~60-150 ms per second (grows with the utterances; the schedule caps it)  ~6-15%
                                                                                           total   ~32-41%
+
+## Step 2: the TTS's batch, as streams (`streams.py`, 2026-11-17)
+`app/engine/batch.py` (`TTSBatch`): slots join (their prompt's prefill on their own cache row,
+between steps) and leave; each step runs every row at its own position (our kernels read a position per
+row); one graph per piece at `slots` rows. Tests (`tests/test_batch_gpu.py`): a row's frames are
+**bit-identical** whatever the other rows do (2 slots, and 4 joining at steps 0, 2, 4, 6); each row
+close to Qwen's exact path (near-tie standard); ends and limits; full, then free.
+
+`streams.py`: a generation thread steps the batch and hands each frame over with an event; a thread per
+stream decodes its chunks (1, 1, 2, 4) on the high-priority stream into a simulated player. Sampled,
+3 runs each; first audio from the sentence's arrival.
+
+    first run (frames handed over after the whole step):
+      1 stream: first audio 38 ms        2 at once: 51, 50 ms       2, 1 s apart: 40, 39 ms
+    handed over right after the predictor (`step(on_frames=...)`, as TalkerLoop does):
+    1 stream (slots=2):
+      stream 1: first audio   25 ms, worst margin   59 ms, gaps    0 ms
+    2 at once (slots=2):
+      stream 1: first audio   44 ms, worst margin   45 ms, gaps    0 ms
+      stream 2: first audio   44 ms, worst margin   46 ms, gaps    0 ms
+    2, the second 1 s later (slots=2):
+      stream 1: first audio   25 ms, worst margin   61 ms, gaps    0 ms
+      stream 2: first audio   25 ms, worst margin   62 ms, gaps    0 ms
+    4, 0.5 s apart (slots=4):
+      stream 1: first audio   28 ms, worst margin   61 ms, gaps    0 ms
+      stream 2: first audio   48 ms, worst margin   51 ms, gaps    0 ms
+      stream 3: first audio   41 ms, worst margin    6 ms, gaps    0 ms
+      stream 4: first audio   57 ms, worst margin   26 ms, gaps    0 ms
+
+- **Hand frames over before the talker's step:** the decode then overlaps it. 38 → 25 ms first audio.
+- **2 streams: no gaps, margins 45-62 ms**, a joiner's first audio 25 ms (44 when both arrive at once:
+  two prefills back to back).
+- **4 streams: no gaps, but a margin down to 6 ms.** Not the generation (×1.13 at 4 rows): the codec's
+  decode, ~17 ms a chunk a stream, 86% of it re-decoding context, all on one decode stream. The
+  stateful streaming decode is the lever before going past 2.
