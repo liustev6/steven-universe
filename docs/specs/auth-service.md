@@ -144,6 +144,7 @@ which the tests use. Tokens live 10 minutes (`token_ttl_seconds: 600`), downscop
 | `api-service` | file-management: `read`, `list` on `public/`; sandbox-runner, agent-service and speech-service: `status:read` | its own token = what anonymous visitors may do; `can_relay_clients` |
 | `pi-server` | api-service: all `files:*`; file-management: all on `private/${client}/` | Hey Pi's backend |
 | `smoke-test` | file-management: all on `private/${client}/`; agent-service and api-service: `chat:read`, `chat:write`; speech-service: `speech:create`, `speech:transcribe` | deploy checks only (A15) |
+| `speech-test-client` | speech-service: `speech:create`, `speech:transcribe`, `status:read` | speech-service's test client on the Mac (its page); secret in `~/.config/speech-test-client/secret` |
 | `agent-service` | sandbox-runner: claim, release, read; secrets-manager: `secrets:read` | the agents' control plane on CT 107 ([control-plane.md](agent-service/control-plane.md)) |
 | `agent-cli` | agent-service: `chat:read`, `chat:write`, `chat:admin` | the `agent` CLI on CT 107 |
 

@@ -74,6 +74,13 @@ clients:
       agent-service:
         scopes: [chat:read, chat:write, chat:admin]
 
+  # speech-service's test client on your Mac (python/services/speech-service/test-client): talk to
+  # the live service and hear it, and read its status. Secret in ~/.config/speech-test-client/secret.
+  speech-test-client:
+    grants:
+      speech-service:
+        scopes: [speech:create, speech:transcribe, status:read]
+
   # can_relay_clients: may pass an outside machine client's own identity downstream (grant 3).
   # Relayed to agent-service, a caller gets ITS OWN agent-service grants, never these.
   api-service:
