@@ -53,7 +53,7 @@ class UI(Protocol):
 
 @dataclass
 class VoiceOptions:
-    voice: str = "ryan"
+    voice: str = "dylan"
     tts_language: Optional[str] = None
     stt_language: Optional[str] = None
     silence_ms: int = 700
