@@ -88,8 +88,9 @@ function log(el, line) { const d = $(el); d.textContent += line + "\n"; d.scroll
 
 // ---- setup ------------------------------------------------------------------------------------------
 (async () => {
-  WS = (await (await fetch("/config")).json()).ws;
-  $("conn").textContent = `· ${WS}`;
+  const cfg = await (await fetch("/config")).json();
+  WS = cfg.ws;
+  $("conn").textContent = `· ${cfg.service} as ${cfg.client}`;
   const v = await (await fetch("/v1/voices")).json();
   for (const { name, language } of v.voices || []) $("voice").add(new Option(`${name} (${language})`, name, name === "ryan", name === "ryan"));
   refreshStatus();

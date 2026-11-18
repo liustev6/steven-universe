@@ -13,7 +13,7 @@ Speech out and in, streamed, from two models kept loaded on pve01's GPU (CT 108)
 | `base-image/` | speech-base: the model stack (PyTorch + CUDA 13.2 libraries, Triton, qwen-tts, qwen-asr), ~7 GB, built by CI from a lock |
 | `Dockerfile` | the service image: speech-base (pinned by digest) + our code, COPY only |
 | `scripts/` | `smoke_test.py` (a sentence spoken, then heard back), `cert-hook.sh`, `bench.py`, `chunks.py`, `e2e.py` |
-| `test-client/` | a local page to talk to a dev service and hear it |
+| `test-client/` | a local page that talks to the live service and plays it, as `speech-test-client` (its server forwards the WebSockets with the token) |
 | `spikes/` | every measurement behind the design, with its code and raw output |
 
 ## Configuration
