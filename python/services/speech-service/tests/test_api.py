@@ -19,7 +19,7 @@ from app.work.gpu import NoGPU
 from app.work.stt_worker import STTWorker
 from app.work.tts_worker import TTSWorker
 from tests.test_stt_batch import FakeEngine
-from tests.test_workers import FakeTTSBatch
+from tests.test_workers import FakeReplyText, FakeTTSBatch
 
 
 class FakeAuth:
@@ -46,7 +46,7 @@ ALL = {"authorization": "Bearer speech:create speech:transcribe status:read"}
 def make(slots=2, warm=True, **settings):
     s = Settings(TTS_SLOTS=slots, STT_SLOTS=slots, QUEUE_WAIT_SECONDS=0.5, TTS_IDLE_SECONDS=0.5,
                  STT_IDLE_SECONDS=0.5, **settings)
-    tts = TTSWorker(FakeTTSBatch(slots), prompt=lambda text, voice, language: text,
+    tts = TTSWorker(FakeTTSBatch(slots), text=FakeReplyText(),
                     decode=lambda frames: np.zeros(len(frames) * SPF, dtype=np.float32), gpu=NoGPU())
     stt = STTWorker(STTBatch(FakeEngine(), slots=slots), tick=0.05)
     tts.start(); stt.start()
@@ -99,12 +99,10 @@ def test_a_reply_streamed_in_comes_back_as_audio_then_done():
         ws.send_json({"type": "end"})
         msgs, audio, code = drain(ws, with_code=True)
     segments = ["Sure,", "tomorrow looks cloudy.", "And then some rain"]  # the first clause starts at once
-    expected = []
-    for i, text in enumerate(segments):
-        expected += [{"type": "sentence", "index": i, "text": text},
-                     {"type": "sentence_done", "index": i, "samples": len(text.split()) * SPF}]
-    assert msgs == expected + [{"type": "done"}]
-    assert audio == sum(len(t.split()) for t in segments) * SPF * 2          # 16-bit: 2 bytes a sample
+    words = sum(len(t.split()) for t in segments)
+    assert msgs == [{"type": "sentence", "index": i, "text": t} for i, t in enumerate(segments)] \
+        + [{"type": "done", "samples": words * SPF}]                       # one generation: done once
+    assert audio == words * SPF * 2                                       # 16-bit: 2 bytes a sample
     assert code == 1000
     assert service.tts_admission.counts()["running"] == 0
     assert len(service.first_audio_ms) == 1
@@ -120,7 +118,7 @@ def test_two_run_one_waits_then_starts_and_the_fourth_is_refused():
             r = denied(client, url, ALL)
             assert r.status_code == 503 and "retry-after" in r.headers
             a.send_json({"type": "end"})                                         # a's reply: nothing; done
-            assert drain(a)[0] == [{"type": "done"}]
+            assert drain(a)[0] == [{"type": "done", "samples": 0}]
             assert c.receive_json()["type"] == "started"                         # c gets a's place
 
 

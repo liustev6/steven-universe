@@ -14,34 +14,68 @@ from tests.test_stt_batch import FakeEngine
 
 
 # ---- TTS -------------------------------------------------------------------------------------------
+class FakeReplyText:
+    """A piece's words are its tokens; the voice "x" can't start."""
+
+    def prompt(self, text, voice, language):
+        if voice == "x":
+            raise ValueError("no voice")
+        return {"words": text.split()}
+
+    def more(self, text, after):
+        return text.split()
+
+    def end(self):
+        return "END"
+
+    def limit(self, text):
+        return 10_000
+
+
 class FakeTTSBatch:
-    """A sentence of n words is n frames; a step makes one frame for every busy slot."""
+    """Each word of a reply is one frame, made one a step; a row whose words run out before its end mark
+    waits (as a streamed row waiting for text); it ends on the step after its last word once finished."""
 
     def __init__(self, slots=2):
-        self.slots, self.state, self.steps = slots, [None] * slots, 0
+        self.slots, self.state, self.steps, self.joins = slots, [None] * slots, 0, []
 
     def free(self):
         return [i for i, s in enumerate(self.state) if s is None]
 
-    def join(self, prompt):
-        b = self.free()[0]
-        self.state[b] = {"left": len(prompt.split()), "made": 0}
+    def ready(self):
+        return [b for b, s in enumerate(self.state) if s is not None and (s["words"] or s["done"])]
+
+    def join(self, prompt, slot=None):
+        b = slot if slot is not None else self.free()[0]
+        assert self.state[b] is None
+        self.state[b] = {"words": list(prompt["words"]), "made": 0, "done": False}
+        self.joins.append(b)
         return b
+
+    def feed(self, b, words, limit=None):
+        assert not self.state[b]["done"]
+        self.state[b]["words"] += words
+
+    def finish(self, b, end):
+        self.state[b]["done"] = True
 
     def leave(self, b):
         self.state[b] = None
 
     def step(self, on_frames=None):
-        time.sleep(0.005)
+        time.sleep(0.002)
         self.steps += 1
-        frames = {b: s["made"] for b, s in enumerate(self.state) if s is not None}
-        if on_frames:
+        ready = self.ready()
+        frames = {b: self.state[b]["made"] for b in ready if self.state[b]["words"]}
+        if on_frames and frames:
             on_frames(frames)
         ended = []
-        for b in frames:
+        for b in ready:
             s = self.state[b]
-            s["made"] += 1
-            if s["made"] == s["left"]:
+            if s["words"]:
+                s["words"].pop(0)
+                s["made"] += 1
+            if s["done"] and not s["words"]:
                 ended.append(b)
                 self.state[b] = None
         return frames, ended
@@ -60,20 +94,48 @@ class Collect:
         return sum(len(p) for k, p in self.items if k == "audio")
 
 
-def tts_worker(slots=2):
-    w = TTSWorker(FakeTTSBatch(slots), prompt=lambda text, voice, language: text,
-                  decode=lambda frames: np.zeros(len(frames) * SPF, dtype=np.float32), gpu=NoGPU())
+def tts_worker(slots=2, **kw):
+    w = TTSWorker(FakeTTSBatch(slots), text=FakeReplyText(),
+                  decode=lambda frames: np.zeros(len(frames) * SPF, dtype=np.float32), gpu=NoGPU(), **kw)
     w.start()
     return w
 
 
-def test_a_sentence_comes_out_whole_then_done():
+def test_a_reply_comes_out_whole_then_done():
     w = tts_worker()
     c = Collect()
     w.say("one two three four five six seven", "ryan", None, c)
     assert c.done.wait(5)
     assert c.items[-1] == ("done", None) and c.samples() == 7 * SPF
     assert [len(p) // SPF for k, p in c.items if k == "audio"] == [1, 1, 2, 3]   # 1, 1, 2, then the rest
+    w.stop()
+
+
+def test_a_reply_fed_piece_by_piece_is_one_generation_that_waits_for_its_text():
+    w = tts_worker()
+    c = Collect()
+    job = w.open("ryan", None, c)
+    w.feed(job, "Sure,")
+    time.sleep(0.05)                                     # its one word spoken; then it waits, not ends
+    assert not c.done.is_set() and w.batch.state[0] is not None
+    w.feed(job, "tomorrow looks cloudy.")
+    w.feed(job, "And then some rain")
+    w.end(job)
+    assert c.done.wait(5) and c.items[-1] == ("done", None)
+    assert c.samples() == 8 * SPF and w.batch.joins == [0]   # every word, one generation
+    w.stop()
+
+
+def test_a_long_reply_continues_in_new_generations_on_its_row():
+    w = tts_worker(generation_frames=10)                 # ~11 words a generation (0.9 frames a character)
+    c = Collect()
+    job = w.open("ryan", None, c)
+    for i in range(6):
+        w.feed(job, f"piece {i} has five words")         # 5 words, ~22 characters each
+    w.end(job)
+    assert c.done.wait(5) and [k for k, _ in c.items].count("done") == 1
+    assert c.samples() == 30 * SPF                       # nothing lost at the seams
+    assert len(w.batch.joins) == 6 and set(w.batch.joins) == {0}   # each piece a generation here, same row
     w.stop()
 
 
@@ -84,6 +146,18 @@ def test_two_at_once_and_a_third_waits_its_turn():
         w.say(" ".join(["w"] * (20 + i)), "ryan", None, c)
     assert all(c.done.wait(5) for c in cs)
     assert [c.samples() // SPF for c in cs] == [20, 21, 22]
+    w.stop()
+
+
+def test_a_reply_waiting_for_text_doesnt_hold_up_the_other():
+    w = tts_worker(slots=2)
+    slow, fast = Collect(), Collect()
+    job = w.open("ryan", None, slow)
+    w.feed(job, "one")                                   # then nothing more for a while
+    w.say("a b c d e", "ryan", None, fast)
+    assert fast.done.wait(5) and fast.samples() == 5 * SPF and not slow.done.is_set()
+    w.end(job)
+    assert slow.done.wait(5) and slow.samples() == 1 * SPF
     w.stop()
 
 
@@ -99,10 +173,17 @@ def test_cancel_stops_it_and_frees_the_slot():
     w.stop()
 
 
-def test_a_sentence_that_cant_start_errors_alone():
-    w = TTSWorker(FakeTTSBatch(), prompt=lambda text, voice, language: (_ for _ in ()).throw(ValueError("no voice")) if voice == "x" else text,
-                  decode=lambda frames: np.zeros(len(frames) * SPF, dtype=np.float32), gpu=NoGPU())
-    w.start()
+def test_an_empty_reply_is_done_at_once():
+    w = tts_worker()
+    c = Collect()
+    job = w.open("ryan", None, c)
+    w.end(job)
+    assert c.done.wait(5) and c.items == [("done", None)]
+    w.stop()
+
+
+def test_a_reply_that_cant_start_errors_alone():
+    w = tts_worker()
     bad, good = Collect(), Collect()
     w.say("a b", "x", None, bad)
     w.say("a b", "ryan", None, good)

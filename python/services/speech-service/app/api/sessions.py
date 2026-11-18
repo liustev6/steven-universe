@@ -25,7 +25,6 @@ import contextlib
 import json
 import logging
 import time
-from collections import deque
 
 import numpy as np
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect
@@ -138,9 +137,13 @@ def control(raw) -> dict:
 # ---- TTS: one reply ----------------------------------------------------------------------------------
 async def speech_session(ws: WebSocket, service: Service, auth) -> None:
     """Client: {type: text, text} (as it's written), {type: end} (the reply is complete), {type: cancel}.
-    Server: queued, started {format, sample_rate, channels}, then per sentence {type: sentence, index,
-    text}, its binary audio (24 kHz 16-bit PCM, raw), {type: sentence_done, index, samples}; at the end
-    done, or cancelled, or error {code: idle | too_long | queue_timeout | bad_message | failed}."""
+    Server: queued, started {format, sample_rate, channels}; {type: sentence, index, text} as each
+    sentence (or the first clause) is accepted for speaking; the reply's binary audio (24 kHz 16-bit
+    PCM, raw), one continuous voice (T19); at the end done {samples}, or cancelled, or error {code:
+    idle | too_long | queue_timeout | bad_message | failed}.
+
+    The reply is one generation, fed each sentence as the splitter completes it (Qwen's streaming
+    mode: the model reads the text as it speaks, so the voice doesn't reset between sentences)."""
     s = service.settings
     voice, language = ws.query_params.get("voice", ""), ws.query_params.get("language") or None
     if await authenticate(ws, auth, "speech:create") is None:
@@ -157,22 +160,23 @@ async def speech_session(ws: WebSocket, service: Service, auth) -> None:
         if not await wait_for_place(ws, ticket, service, stream_format(TTS_RATE)):
             return await close(ws, "queue_timeout", "no place in time")
         reader = asyncio.create_task(inbox.read(ws))
-        sentences, pending = Sentences(first_clause=s.TTS_FIRST_CLAUSE), deque()
-        ended, chars, start = False, 0, time.monotonic()
+        sentences = Sentences(first_clause=s.TTS_FIRST_CLAUSE)
+        ended, chars, start, index, samples = False, 0, time.monotonic(), -1, 0
         idle_since, first_audio_at, asked_at = time.monotonic(), None, None
-        index, samples = -1, 0                                     # the sentence being spoken, its audio so far
-        while True:
-            if job is None and pending:                            # the next sentence, when the last is done
-                text = pending.popleft()
-                index, samples = index + 1, 0
+
+        async def speak(pieces: list[str]) -> None:
+            nonlocal job, index, asked_at
+            for text in pieces:
+                if job is None:
+                    job, asked_at = service.tts.open(voice, language, inbox.sink), time.monotonic()
+                index += 1
                 await ws.send_json({"type": "sentence", "index": index, "text": text})
-                job = service.tts.say(text, voice, language, inbox.sink)
-                asked_at = asked_at or time.monotonic()
-            if job is None and ended and not pending:
-                await ws.send_json({"type": "done"})
-                return await close(ws)
+                service.tts.feed(job, text)
+
+        while True:
             limit = start + s.TTS_MAX_SECONDS
-            idle = idle_since + s.TTS_IDLE_SECONDS if job is None and not pending and not ended else limit
+            # Idle: no new text and nothing being spoken (no audio: the generation is waiting for text)
+            idle = idle_since + s.TTS_IDLE_SECONDS if not ended else limit
             source, kind, payload = await inbox.next(min(limit, idle) - time.monotonic())
             if source == "timeout":
                 return await close(ws, "too_long" if time.monotonic() >= limit else "idle",
@@ -185,25 +189,30 @@ async def speech_session(ws: WebSocket, service: Service, auth) -> None:
                     chars += len(msg["text"])
                     if chars > s.MAX_TEXT_CHARS:
                         return await close(ws, "too_long", f"over {s.MAX_TEXT_CHARS} characters")
-                    pending.extend(sentences.add(msg["text"]))
+                    await speak(sentences.add(msg["text"]))
                     idle_since = time.monotonic()
-                elif msg.get("type") == "end":
-                    pending.extend(sentences.flush())
+                elif msg.get("type") == "end" and not ended:
+                    await speak(sentences.flush())
                     ended = True
+                    if job is None:                                # no text at all: nothing to say
+                        await ws.send_json({"type": "done", "samples": 0})
+                        return await close(ws)
+                    service.tts.end(job)
                 elif msg.get("type") == "cancel":
                     await ws.send_json({"type": "cancelled"})
                     return await close(ws)
-                else:
+                elif msg.get("type") != "end":
                     return await close(ws, "bad_message", "expected {type: text|end|cancel}")
             elif kind == "audio":
                 if first_audio_at is None:
                     first_audio_at = time.monotonic()
                     service.first_audio_ms.append(round((first_audio_at - asked_at) * 1000))
-                samples += len(payload)
+                samples, idle_since = samples + len(payload), time.monotonic()
                 await ws.send_bytes(pcm16(payload))
             elif kind == "done":
-                await ws.send_json({"type": "sentence_done", "index": index, "samples": samples})
-                job, idle_since = None, time.monotonic()
+                job = None
+                await ws.send_json({"type": "done", "samples": samples})
+                return await close(ws)
             elif kind == "error":
                 job = None
                 return await close(ws, "failed", str(payload))

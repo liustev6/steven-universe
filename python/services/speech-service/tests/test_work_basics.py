@@ -101,3 +101,12 @@ def test_the_first_clause_starts_at_a_comma():
     assert out == ["3,500 people came."]                               # "," not before a space: no cut
     out, _ = feed(["好的，我现在帮你。"], first_clause=False)
     assert out == ["好的，我现在帮你。"]
+
+
+def test_a_replys_pieces_join_as_continuous_text():
+    """T19: each piece continues the text before it: a space between words, none around Chinese."""
+    from app.work.reply_text import joined
+
+    assert joined("Sure,", "tomorrow") == " tomorrow"
+    assert joined("好的，", "明天") == "明天" and joined("Sure.", "好的") == "好的"
+    assert joined("明天下雨。", "Take care") == "Take care" and joined("", "Hi") == "Hi"

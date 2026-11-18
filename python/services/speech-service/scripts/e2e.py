@@ -104,10 +104,9 @@ async def main():
     print(f"1. warm after {time.perf_counter() - t:.1f} s of waiting")
 
     first, total, audio, msgs = await speak(REPLY)
-    marks = [m for m in msgs if m["type"] in ("sentence", "sentence_done")]
+    marks = [m for m in msgs if m["type"] == "sentence"]
     print(f"2. TTS: {msgs[0]}; first audio {first:.0f} ms, {len(audio) / 24000:.1f} s of speech in {total:.1f} s; "
-          f"{len(marks) // 2} sentences ({', '.join(str(m['samples']) for m in marks if m['type'] == 'sentence_done')} samples); "
-          f"ends {msgs[-1]['type']}")
+          f"{len(marks)} pieces fed to one generation; ends {msgs[-1]['type']} ({msgs[-1].get('samples')} samples)")
     import soundfile as sf
     sf.write("/tmp/e2e-reply.wav", audio, 24000)
 

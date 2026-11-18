@@ -178,11 +178,13 @@ class QwenTTSEngine:
         if errors:
             raise errors[0]
 
-    def prompt(self, text: str, voice: str, language: str | None = None, *, sample: bool = True) -> dict:
+    def prompt(self, text: str, voice: str, language: str | None = None, *, sample: bool = True,
+               streaming: bool = False) -> dict:
         """One sentence's prompt, as Qwen's code builds it, without generating: what it would pass to
         `talker.generate` (the prompt's embeddings, the text still to speak, the pad embedding, the
         generation rules). The batch (batch.py) joins sentences from these. Qwen's `generate` builds them
-        and calls the talker; a stand-in there captures its arguments and stops it."""
+        and calls the talker; a stand-in there captures its arguments and stops it. `streaming`: Qwen's
+        streaming mode (see stream_prompt)."""
         import torch
 
         tts = self._tts
@@ -206,12 +208,40 @@ class QwenTTSEngine:
         try:
             with torch.inference_mode():
                 self._model.generate(input_ids=input_ids, instruct_ids=instruct_ids, languages=[language],
-                                     speakers=[voice], non_streaming_mode=True, **kwargs)
+                                     speakers=[voice], non_streaming_mode=not streaming, **kwargs)
         except Captured as c:
             return c.args[0]
         finally:
             self._talker.__dict__.pop("generate", None)
         raise RuntimeError("Qwen's generate never called the talker")
+
+    def stream_prompt(self, text: str, voice: str, language: str | None = None, *, sample: bool = True) -> dict:
+        """A reply's prompt in Qwen's streaming mode (spikes/16): the prompt holds `text`'s first token,
+        `trailing_text_hidden` the rest, one per step to come; more text comes with `text_hidden`, the
+        end with `end_hidden` (TTSBatch.feed, .finish). Qwen ends the trailing text with the end mark;
+        here it's left off until the reply is complete."""
+        got = self.prompt(text, voice, language, sample=sample, streaming=True)
+        got["trailing_text_hidden"] = got["trailing_text_hidden"][:, :-1]          # its end mark: later
+        got["streaming"] = True
+        return got
+
+    def text_hidden(self, text: str):
+        """More of a reply's text as the talker reads it: its tokens' hidden states, (1, n, hidden), as
+        Qwen's streaming mode builds `trailing_text_hidden` (the text embedding, then its projection).
+        `text` carries its own leading space where one belongs (an English word after another)."""
+        import torch
+
+        ids = self._tts._tokenize_texts([text])[0].to(self._talker.device)
+        with torch.inference_mode():
+            return self._talker.text_projection(self._talker.get_text_embeddings()(ids.reshape(1, -1)))
+
+    def end_hidden(self):
+        """The end-of-text mark's hidden state, (1, 1, hidden)."""
+        import torch
+
+        ids = torch.tensor([[self._model.config.tts_eos_token_id]], device=self._talker.device)
+        with torch.inference_mode():
+            return self._talker.text_projection(self._talker.get_text_embeddings()(ids))
 
     def batch(self, slots: int = 2, *, capacity: int = 2048):
         """A batch of `slots` sentences generated together (batch.py): fused kernels, CUDA graphs."""
@@ -237,8 +267,9 @@ class QwenTTSEngine:
                 yield audio
 
     # ---- the reference, for comparisons -------------------------------------------------------------
-    def official_codes(self, text: str, voice: str, language: str | None = None) -> object:
-        """Qwen's own whole-sentence path, without sampling: the codes the engines must reproduce."""
+    def official_codes(self, text: str, voice: str, language: str | None = None, *, streaming: bool = False) -> object:
+        """Qwen's own path, without sampling: the codes the engines must reproduce (`streaming`: its
+        streaming mode, the text fed one token a step)."""
         import torch
 
         tts = self._tts
@@ -246,6 +277,6 @@ class QwenTTSEngine:
         input_ids = tts._tokenize_texts([tts._build_assistant_text(text)])
         with torch.inference_mode():
             codes, _ = self._model.generate(input_ids=input_ids, instruct_ids=[None], languages=[language],
-                                            speakers=[voice], non_streaming_mode=True,
+                                            speakers=[voice], non_streaming_mode=not streaming,
                                             **tts._merge_generate_kwargs(do_sample=False, subtalker_dosample=False))
         return codes[0]

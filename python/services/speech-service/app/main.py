@@ -38,6 +38,7 @@ def load(service: Service, settings: Settings) -> None:
     from app.tts_engine.engine import QwenTTSEngine
     from app.work.gpu import CudaGPU
     from app.work.normalize import TextNormalizer
+    from app.work.reply_text import QwenReplyText
     from app.work.stt_worker import STTWorker
     from app.work.tts_worker import TTSWorker
 
@@ -57,8 +58,7 @@ def load(service: Service, settings: Settings) -> None:
 
     normalize = TextNormalizer(enabled=settings.TTS_NORMALIZE)
     normalize.warm()                                    # its grammars loaded now, not in the first reply
-    tts_worker = TTSWorker(tts.batch(slots=settings.TTS_SLOTS),
-                           prompt=lambda text, voice, language: tts.prompt(normalize(text), voice, language),
+    tts_worker = TTSWorker(tts.batch(slots=settings.TTS_SLOTS), text=QwenReplyText(tts, normalize),
                            decode=decode, gpu=CudaGPU(tts._generation, tts._decoding))
     stt_worker = STTWorker(stt.batch(slots=settings.STT_SLOTS), tick=settings.STT_TICK_SECONDS)
     tts_worker.start()

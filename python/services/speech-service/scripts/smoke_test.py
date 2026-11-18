@@ -91,9 +91,9 @@ async def main() -> int:
                 if msgs[-1]["type"] in ("done", "error"):
                     break
         kinds = [m["type"] for m in msgs]
-        check("a TTS session: started, sentence markers, audio, done",
-              kinds[0] == "started" and msgs[0].get("sample_rate") == 24000 and "sentence_done" in kinds
-              and kinds[-1] == "done" and samples > 0, f"{kinds}, {samples / 24000:.1f} s")
+        check("a TTS session: started, sentence markers, one reply's audio, done",
+              kinds[0] == "started" and msgs[0].get("sample_rate") == 24000 and "sentence" in kinds
+              and kinds[-1] == "done" and msgs[-1].get("samples") == samples > 0, f"{kinds}, {samples / 24000:.1f} s")
     await tokens.aclose()
     print("ALL PASSED" if not failures else f"{failures} FAILED")
     return 1 if failures else 0

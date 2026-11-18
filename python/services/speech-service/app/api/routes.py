@@ -63,20 +63,22 @@ def router(service: Service, auth) -> APIRouter:
             try:
                 if req.response_format == "wav":
                     yield wav_header(TTS_RATE)
+                job = service.tts.open(req.voice, req.language, inbox.sink)    # one generation, the whole reply (T19)
                 for sentence in parts:
-                    job = service.tts.say(sentence, req.voice, req.language, inbox.sink)
-                    while True:
-                        _, kind, payload = await inbox.next(s.TTS_MAX_SECONDS)
-                        if kind == "audio":
-                            if first is None:
-                                first = time.monotonic()
-                                service.first_audio_ms.append(round((first - asked) * 1000))
-                            yield pcm16(payload)
-                        elif kind == "done":
-                            job = None
-                            break
-                        else:                                              # an error, or the limit
-                            return
+                    service.tts.feed(job, sentence)
+                service.tts.end(job)
+                while True:
+                    _, kind, payload = await inbox.next(s.TTS_MAX_SECONDS)
+                    if kind == "audio":
+                        if first is None:
+                            first = time.monotonic()
+                            service.first_audio_ms.append(round((first - asked) * 1000))
+                        yield pcm16(payload)
+                    elif kind == "done":
+                        job = None
+                        return
+                    else:                                                  # an error, or the limit
+                        return
             finally:                                                       # done, failed, or the client left
                 if job is not None:
                     service.tts.cancel(job)
