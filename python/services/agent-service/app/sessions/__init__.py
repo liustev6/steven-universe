@@ -6,9 +6,10 @@
 """
 
 from app.sessions.errors import (
-    Busy, BudgetExceeded, Ended, NotFound, ProfileMismatch, SessionError, Stopped, UnknownProfile,
+    Busy, BudgetExceeded, Ended, InstructionsNotAllowed, NotFound, ProfileMismatch, SessionError, Stopped,
+    UnknownProfile,
 )
 from app.sessions.manager import Live, Sessions, capability_hash
 
-__all__ = ["Busy", "BudgetExceeded", "Ended", "Live", "NotFound", "ProfileMismatch", "SessionError", "Sessions",
+__all__ = ["Busy", "BudgetExceeded", "Ended", "InstructionsNotAllowed", "Live", "NotFound", "ProfileMismatch", "SessionError", "Sessions",
            "Stopped", "UnknownProfile", "capability_hash"]

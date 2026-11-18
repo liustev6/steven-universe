@@ -1,6 +1,6 @@
 # The voice path (CP4, after speech-service)
 
-**Status:** agreed 2026-11-17; 4.9-4.10 done, 4.11 (the turn) and 4.12 (the wake word, the session) in progress. The rest of CP4: you talk to the Pi, it answers out loud.
+**Status:** agreed 2026-11-17; 4.8–4.12 done (2026-11-18: the turn, the wake word and the session, live on the Pi); 4.12b ("Hey Pi") in its test. The rest of CP4: you talk to the Pi, it answers out loud.
 
 ```
  the Pi (panel)                                       the lab (LAN)
@@ -11,7 +11,7 @@
 │                     (the voice turn)     │   text   └────────────────────────────┘
 │                                    │     │   text   ┌────────────────────────────┐
 │                                    ├─────│ ───────▶ │ agent-service (CT 107)     │
-│                                    │     │ ◀─────── │  profile voice, streamed   │
+│                                    │     │ ◀─────── │  profile pi, streamed      │
 │                                    │     │  deltas  └────────────────────────────┘
 │                                    │     │   text   ┌────────────────────────────┐
 │                                    ├─────│ ───────▶ │ speech-service             │
@@ -52,8 +52,8 @@
 | 4.8 ✅ | **this design** | reviewed and agreed (2026-11-17) |
 | 4.9 ✅ | **pi-server's identity:** grants in auth-service's policy (`speech-service`: `speech:create`, `speech:transcribe`; `agent-service`: `chat:read`, `chat:write`); its secret rotated onto the Pi (`scripts/add-client.sh pi-server pi /etc/pi-server/credentials/client_secret liustev6 --rotate`, then `promote-secret`) | on the Pi, a token for both audiences. **Done 2026-11-17:** the secret rotated onto the Pi and promoted; tokens for `speech-service` (`speech:create speech:transcribe`) and `agent-service` (`chat:read chat:write`) |
 | 4.10 ✅ | **the Pi's audio:** the speaker's level; `app/voice/audio.py` (the mic and the speaker, V2); a check on the Pi: speech-service speaks a sentence out of the speaker, the mic hears it, speech-to-text reads it back | the sentence comes back right; the speaker's latency known. **Done 2026-11-17:** the mic's own format is 16 kHz mono (no conversion); the speaker takes 48 kHz stereo (plughw converts our 24 kHz); the speaker at 60%; aplay adds ~120 ms at its start. **The speakerphone cleans the mic itself:** what isn't speech comes out as digital zero, and its own playback was removed entirely (echo cancellation: good for barge-in, 4.13); a voice is −30 dB, heard right |
-| 4.11 🔨 | **the voice turn in pi-server** (V1, V3–V8): `app/voice/` (the agent client, the speech sessions, the turn), `POST /debug/voice/listen`; the mock assistant only when `MOCK`; tests with fake services; deployed with `pi-server.sh` (with `service-auth`) | on the Pi: curl, ask, hear the answer; timings in the log. **So far (2026-11-17):** `app/voice/` and 9 tests with fakes; deployed (`deploy/pi-server.env` turns it on); a typed turn spoken on the Pi: first audio 3.6 s (the agent's first text 3.4 s, the first turn's tokens and session included) |
-| 4.12 🔨 | **the wake word and the voice session** (V9, V4): microWakeWord and a voice detector on the Pi, the session's 10 s windows, the agent session claimed and released with it | say the word, ask, hear the answer, ask again without it; 10 s later the pod is released; CPU and temperature measured. **So far (2026-11-17):** `app/voice/wake.py`, `assistant.py` (the session as a state machine), 14 tests with fakes and a fake clock; `hey_jarvis` fires on English voices (1.00), never on "Hey Pi", "Hey, how are you" or Chinese (0.00) |
+| 4.11 ✅ | **the voice turn in pi-server** (V1, V3–V8): `app/voice/` (the agent client, the speech sessions, the turn), `POST /debug/voice/listen`; the mock assistant only when `MOCK`; tests with fake services; deployed with `pi-server.sh` (with `service-auth`) | on the Pi: curl, ask, hear the answer; timings in the log. **Done 2026-11-18:** spoken turns end to end on the Pi, English and Chinese, in its own profile `pi` (luna, effort low); the session's voice set by its first turn (ryan, or dylan for Chinese), speech-to-text given the language hint and the last two turns. **First audio after you stop speaking** (9 turns, the 1.7B TTS streaming its generation, the first clause off): median 1.9 s, 1.4–2.0 s for short questions, 2.9 s once; 5.9 and 6.6 s when the agent took longer to start (two questions about Nvidia's earnings: no web search yet). The agent's first text is most of it (1.1–1.9 s); speech then adds 0.1–0.6 s |
+| 4.12 ✅ | **the wake word and the voice session** (V9, V4): microWakeWord and a voice detector on the Pi, the session's 10 s windows, the agent session claimed and released with it | say the word, ask, hear the answer, ask again without it; 10 s later the pod is released; CPU and temperature measured. **Done 2026-11-18:** `app/voice/wake.py`, `assistant.py` (the session as a state machine; tests with fakes and a fake clock); follow-ups without the word, the agent session released (`DELETE`) after 10 s of nobody; a follow-up window of 10 s (from 5). **On the Pi:** pi-server 3.7% of one core while listening (25 min), the Pi at 61 °C. The word: `hey_jarvis` at first, "Hey Pi" since 2026-11-18 (4.12b) |
 | 4.12b 🔨 | **"Hey Pi":** a microWakeWord model trained for it (`python/features/wake-word`: microWakeWord's recipe as one script, on a Mac) | the word fires for you and not for the room. **So far (2026-11-18):** trained on 171 of your clips on the Pi's mic (×5), 2,000 Piper clips (904 speakers), 510 from our TTS's 9 voices, 1,530 near misses; 10,000 steps in 7.7 min on an M-series Mac, best at step 8,000. Held-out test, quantized streaming model: cutoff 0.90 misses 21% at 1.1 false wakes/h, **0.95 (deployed) misses 24% at 0.4/h**. Through pi-server's own code at 0.95: your clips 99%, Piper/TTS voices 73–97% by voice ("嘿，Pi" 42%), music 0 wakes in 105 min, AudioSet 1.2% of clips. Weak spot: "Hey pal" and "Hey, hi" still wake it about half the time, "Apple pie" and "Hey Bai" 13–14%. On the Pi since 2026-11-18, the only wake word; next: ~30 wakes at different distances and an evening of TV |
 | 4.13 | **barge-in:** the wake word heard while the reply plays (the speakerphone's echo cancellation) cancels the agent's turn and stops the speaker | interrupting works without the reply triggering itself |
 | 4.14 | **Hey Pi shows it** (Flutter): connects to pi-server, the assistant overlay's phases, push-to-talk | later; the app's own work |
@@ -70,4 +70,9 @@
   models for short voice turns (agent-service's first-word time, 18 turns each: luna 1.15 s median, 90%
   under 2.3 s; `gpt-6.1-terra` 1.38, `gpt-6-sol` 1.48, `gpt-6-astra` 2.73, `gpt-6.1-sol` 4.26). It told
   the truth about having no tools (`gpt-5.6-luna` claimed to set a reminder). Caveats: one evening, simple
-  questions only. It also knows it's in Seattle, on Pacific time (the first turn answered by UTC).
+  questions only. Where the panel is (Seattle, Pacific time: the first turn answered by UTC) was in the
+  profile; it kept saying "Seattle", so since 2026-11-18 pi-server sends it as its own instructions
+  (agent-service C15), an "Additional Client Info" block built at each session start (`timezone`,
+  `City, Country`, `now` in local time; from `PI_SERVER_TIMEZONE` and `PI_SERVER_LOCATION`), and the
+  profile's rules say how to use it: for place and time questions only, never naming the city. **Web search on** (`pi`'s `tools: [web_search]`, Codex's own, run at OpenAI: the sandbox
+  still reaches only the gateway): a weather question searched and answered in ~9 s on the Mac.

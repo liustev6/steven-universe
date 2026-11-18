@@ -61,7 +61,7 @@ async def api(db):
     a = API()
     a.sessions, a.runner, a.client = sessions, runner, client
 
-    async def start(profile="steven-ai", who=ME, conversation=None, ready=True):
+    async def start(profile="chat", who=ME, conversation=None, ready=True):
         body = {"profile": profile} | ({"conversation_id": conversation} if conversation else {})
         r = await client.post("/v1/sessions", json=body, headers=caller(who))
         assert r.status_code == 201, r.text
@@ -85,7 +85,7 @@ async def api(db):
 async def test_start_then_continue(api):
     s, _ = await api.start()
     assert s["state"] == "starting" and s["conversation_id"]
-    r = await api.client.post("/v1/sessions", json={"profile": "steven-ai", "conversation_id": s["conversation_id"]},
+    r = await api.client.post("/v1/sessions", json={"profile": "chat", "conversation_id": s["conversation_id"]},
                               headers=caller())
     assert r.status_code == 200 and r.json()["session_id"] == s["session_id"]   # the live one, no new pod
     assert len(api.runner.claims) == 1
@@ -94,8 +94,8 @@ async def test_start_then_continue(api):
 @pytest.mark.parametrize("body, who, status, code", [
     ({"profile": "nope"}, ME, 400, "unknown_profile"),
     ({"profile": "voice", "conversation_id": "CONV"}, ME, 409, "profile_mismatch"),
-    ({"profile": "steven-ai", "conversation_id": "CONV"}, OTHER, 404, "not_found"),
-    ({"profile": "steven-ai", "conversation_id": str(uuid.uuid4())}, ME, 404, "not_found"),
+    ({"profile": "chat", "conversation_id": "CONV"}, OTHER, 404, "not_found"),
+    ({"profile": "chat", "conversation_id": str(uuid.uuid4())}, ME, 404, "not_found"),
 ])
 async def test_start_errors_are_problem_details(api, body, who, status, code):
     s, _ = await api.start()
@@ -105,6 +105,16 @@ async def test_start_errors_are_problem_details(api, body, who, status, code):
     assert r.status_code == status
     assert r.headers["content-type"] == "application/problem+json"
     assert r.json()["code"] == code and r.json()["status"] == status and r.json()["detail"]
+
+
+async def test_the_callers_instructions(api):
+    r = await api.client.post("/v1/sessions", json={"profile": "panel", "instructions": "In Seattle."}, headers=caller())
+    assert r.status_code == 201 and r.json()["instructions"] == "In Seattle."
+    assert api.runner.claims[-1]["profile"]["instructions"].endswith("\n\nIn Seattle.")
+    r = await api.client.post("/v1/sessions", json={"profile": "voice", "instructions": "In Seattle."}, headers=caller())
+    assert r.status_code == 400 and r.json()["code"] == "instructions_not_allowed"
+    r = await api.client.post("/v1/sessions", json={"profile": "panel", "instructions": "x" * 4001}, headers=caller())
+    assert r.status_code == 422                                                 # at most 4,000 characters
 
 
 async def test_no_sandbox_says_when_to_retry(api):
@@ -211,7 +221,7 @@ async def test_conversations_and_their_turns_across_sessions(api):
                                                headers=caller()))
     await api.runtime_answers(s2["session_id"], rt2, "two")
     await post
-    await api.start("steven-ai", who=OTHER)                            # someone else's conversation
+    await api.start("chat", who=OTHER)                            # someone else's conversation
     mine = (await api.client.get("/v1/conversations", headers=caller())).json()["conversations"]
     assert [c["conversation_id"] for c in mine] == [s["conversation_id"]]
     assert mine[0]["live_session_id"] == s2["session_id"]

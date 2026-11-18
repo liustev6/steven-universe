@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     SPEECH_URL: str = "https://speech.lan.liustev6.ca"
     AGENT_URL: str = "https://agent.lan.liustev6.ca"
     AGENT_PROFILE: str = "pi"                    # its own profile (infra/services/agent-service/profiles.yaml)
+    # The panel's Additional Client Info, added to the profile's instructions (agent-service C15)
+    # with the time at each session start; empty: left out (the time is then UTC)
+    LOCATION: str = ""                           # city, country: e.g. "Seattle, United States"
+    TIMEZONE: str = ""                           # an IANA name, e.g. "America/Los_Angeles"
     WAKE_WORD: str = "models/hey_pi.json"        # our trained "Hey Pi" (python/features/wake-word); or a built-in name (hey_jarvis)
     LISTEN_WINDOW_SECONDS: float = 10.0          # a session waits this long for someone to speak (V9): room for a follow-up
     VOICE_EN: str = "ryan"                       # a voice session that starts in English speaks with this

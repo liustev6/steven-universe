@@ -5,10 +5,11 @@ between the hops, and how turns end (cancel, failures)."""
 
 import asyncio
 import json
+from datetime import UTC, datetime
 
 import httpx
 
-from app.voice.agent import AgentClient
+from app.voice.agent import AgentClient, client_info
 from app.voice.assistant import State, VoiceAssistant, VoiceOptions, main_language
 from app.voice.speech import Heard, SpeechError
 
@@ -304,14 +305,14 @@ def agent_service(log):
     return handle, state
 
 
-def client(log):
+def client(log, instructions=None):
     handle, state = agent_service(log)
 
     async def token():
         return "t"
 
     http = httpx.AsyncClient(transport=httpx.MockTransport(handle), base_url="http://agent")
-    return AgentClient("http://agent", token, "voice", http=http), state
+    return AgentClient("http://agent", token, "pi", http=http, instructions=instructions), state
 
 
 async def all_of(agen):
@@ -328,7 +329,7 @@ def test_each_voice_session_is_a_new_conversation_released_at_its_end():
         assert ("DELETE", "/v1/sessions/s1", {}) in log and agent.session_id is None
         await agent.start()
         starts = [b for m, p, b in log if p == "/v1/sessions"]
-        assert starts == [{"profile": "voice"}, {"profile": "voice"}]   # a new conversation each time
+        assert starts == [{"profile": "pi"}, {"profile": "pi"}]   # a new conversation each time
     run(go())
 
 
@@ -340,7 +341,7 @@ def test_an_ended_session_is_replaced_in_the_same_conversation():
         state["ended"].add(agent.session_id)                         # e.g. its wall time
         events = await all_of(agent.turn("two"))
         assert events[-1]["type"] == "turn.completed" and agent.session_id == "s2"
-        assert [b for _, p, b in log if p == "/v1/sessions"][-1] == {"profile": "voice", "conversation_id": "c1"}
+        assert [b for _, p, b in log if p == "/v1/sessions"][-1] == {"profile": "pi", "conversation_id": "c1"}
     run(go())
 
 
@@ -421,4 +422,25 @@ def test_speech_to_text_hears_with_the_sessions_last_two_turns():
         await r.frames(*[QUIET] * 51)                                    # the session ends
         await r.settle()
         assert r.va.context() == "Speaks English and Chinese."           # a new session starts clean
+    run(go())
+
+
+def test_the_client_info_goes_with_every_start():
+    winter = datetime(2026, 11, 18, 10, 55, tzinfo=UTC)
+    assert client_info("Seattle, United States", "America/Los_Angeles", winter) == (
+        "Additional Client Info:\n"
+        "timezone: America/Los_Angeles\n"
+        "City, Country: Seattle, United States\n"
+        "now: 2026-11-18 02:55 (Wednesday, UTC-0800)")
+    assert client_info("", "", winter) == "Additional Client Info:\nnow: 2026-11-18 10:55 (Wednesday, UTC+0000)"
+
+    async def go():
+        log, told = [], iter(["info 1", "info 2"])
+        agent, state = client(log, instructions=lambda: next(told))
+        await agent.start()
+        state["ended"].add(agent.session_id)
+        await all_of(agent.turn("again"))                            # replaced: told again, built anew
+        starts = [b for _, p, b in log if p == "/v1/sessions"]
+        assert starts == [{"profile": "pi", "instructions": "info 1"},
+                          {"profile": "pi", "conversation_id": "c1", "instructions": "info 2"}]
     run(go())

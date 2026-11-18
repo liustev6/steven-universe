@@ -49,7 +49,7 @@ from app.history.eventlog import EventLog
 from app.profiles import AgentProfile
 from app.protocol.translate import Translator
 from app.sessions.errors import (
-    Busy, BudgetExceeded, Ended, NotFound, ProfileMismatch, Stopped, UnknownProfile,
+    Busy, BudgetExceeded, Ended, InstructionsNotAllowed, NotFound, ProfileMismatch, Stopped, UnknownProfile,
 )
 from app.sessions.runner import NoSandbox, Runner, RunnerError
 
@@ -110,12 +110,17 @@ class Sessions:
         logger.info("loaded %d live session(s)%s", len(self._live), "; the kill switch is ON" if self.stopped else "")
 
     # ==== callers' side ===========================================================================
-    async def start(self, owner: str, profile: str,
-                    conversation_id: uuid.UUID | None = None) -> tuple[ChatSession, bool]:
-        """The conversation's live session (False), or a new session with a claimed pod (True)."""
+    async def start(self, owner: str, profile: str, conversation_id: uuid.UUID | None = None,
+                    instructions: str | None = None) -> tuple[ChatSession, bool]:
+        """The conversation's live session (False), or a new session with a claimed pod (True).
+        `instructions`: the caller's, after the profile's, if the profile allows them (C15); a live
+        session keeps the ones it started with."""
         p = self.profiles.get(profile)
         if p is None:
             raise UnknownProfile(f"unknown profile: {profile}")
+        instructions = (instructions or "").strip() or None
+        if instructions and p.caller_instructions != "append":
+            raise InstructionsNotAllowed(f"the profile {profile!r} takes no caller instructions")
         if self.stopped:
             raise Stopped("agent-service is stopped (the kill switch)")
         capability = secrets.token_urlsafe(32)                  # 256 random bits (C7)
@@ -133,7 +138,7 @@ class Sessions:
                     db.add(conversation)
                     await db.flush()
                 session = ChatSession(conversation_id=conversation.id, owner=owner, state=SessionState.STARTING,
-                                      capability_hash=capability_hash(capability))
+                                      capability_hash=capability_hash(capability), instructions=instructions)
                 db.add(session)
                 await db.flush()     # the one-live-session index decides a race here (C6)
                 carried = await recent_turns(db, conversation.id, p.history.carry_turns) if conversation_id else []
@@ -144,7 +149,7 @@ class Sessions:
                 raise
             return live, False
 
-        runtime = p.runtime(profile, context_text(carried, self.s.CARRY_CHARS))
+        runtime = p.runtime(profile, context_text(carried, self.s.CARRY_CHARS), instructions or "")
         try:
             sandbox_id = await self.runner.claim(p.template, session.id, capability, runtime.model_dump(mode="json"))
         except (NoSandbox, RunnerError):

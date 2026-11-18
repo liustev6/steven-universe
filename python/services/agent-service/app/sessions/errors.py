@@ -15,6 +15,10 @@ class UnknownProfile(SessionError):    # 400
     pass
 
 
+class InstructionsNotAllowed(SessionError):   # 400: the profile takes no caller instructions (C15)
+    pass
+
+
 class ProfileMismatch(SessionError):   # 409: a conversation keeps its profile (C6)
     pass
 

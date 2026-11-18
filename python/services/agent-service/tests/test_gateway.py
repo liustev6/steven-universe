@@ -80,7 +80,7 @@ async def gw(db):
     app = create_gateway(sessions, login, up)
     client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="https://gateway.test")
 
-    async def session(profile="steven-ai"):
+    async def session(profile="chat"):
         row, _ = await sessions.start(ME, profile)
         claim = runner.claims[-1]
         headers = {"authorization": f"Bearer {claim['capability']}", "x-sandbox-id": str(claim["sandbox_id"])}
@@ -204,7 +204,7 @@ async def test_a_pinned_model_is_enforced(gw, body, extra, status):
 
 
 async def test_an_unpinned_profile_takes_codexs_choice(gw):
-    row, headers = await gw.session("steven-ai")                                     # model: null
+    row, headers = await gw.session("chat")                                     # model: null
     r = await gw.client.post("/model/responses", headers=headers, json={"model": "anything"})
     assert r.status_code == 200
 

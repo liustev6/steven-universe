@@ -97,7 +97,7 @@ def main() -> int:
         r = http.get("/v1/agent/conversations", headers={"Authorization": f"Bearer {token}"})
         check("agent relay as smoke-test: exchanged and answered by agent-service",
               r.status_code == 200 and isinstance(r.json().get("conversations"), list), f"{r.status_code} {r.text[:100]}")
-        r = http.post("/v1/agent/sessions", json={"profile": "voice"}, headers={"Authorization": f"Bearer {token}"})
+        r = http.post("/v1/agent/sessions", json={"profile": "smoke"}, headers={"Authorization": f"Bearer {token}"})
         check("agent relay: a scope the token lacks (chat:write) is refused (403)", r.status_code == 403,
               str(r.status_code))
 

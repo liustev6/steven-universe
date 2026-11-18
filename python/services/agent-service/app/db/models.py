@@ -102,6 +102,7 @@ class ChatSession(Base):
     sandbox_id: Mapped[uuid.UUID | None]
     # SHA-256 of the capability (C7): the capability itself is only ever in the sandbox's session file.
     capability_hash: Mapped[bytes | None] = mapped_column(LargeBinary(32), unique=True)
+    instructions: Mapped[str | None] = mapped_column(Text)        # the caller's, if any (C15): what it was told
     next_seq: Mapped[int] = mapped_column(BigInteger, default=0)  # the next protocol B seq (one per session)
     turns_used: Mapped[int] = mapped_column(Integer, default=0)   # for max_turns (C13)
     started_at: Mapped[datetime] = mapped_column(server_default=func.now())

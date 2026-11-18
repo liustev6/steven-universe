@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.sessions import (
-    Busy, BudgetExceeded, Ended, NotFound, ProfileMismatch, SessionError, Stopped, UnknownProfile,
+    Busy, BudgetExceeded, Ended, InstructionsNotAllowed, NotFound, ProfileMismatch, SessionError, Stopped, UnknownProfile,
 )
 from app.sessions.runner import NoSandbox, RunnerError
 
@@ -17,6 +17,7 @@ from app.sessions.runner import NoSandbox, RunnerError
 MAPPING: dict[type[Exception], tuple[int, str]] = {
     NotFound: (404, "not_found"),
     UnknownProfile: (400, "unknown_profile"),
+    InstructionsNotAllowed: (400, "instructions_not_allowed"),
     ProfileMismatch: (409, "profile_mismatch"),
     Busy: (409, "busy"),
     Ended: (409, "ended"),

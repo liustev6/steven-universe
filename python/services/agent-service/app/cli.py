@@ -228,7 +228,7 @@ def parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True)
 
     def session_args(sp):
-        sp.add_argument("-p", "--profile", default="steven-ai")
+        sp.add_argument("-p", "--profile", default="pi")
         g = sp.add_mutually_exclusive_group()
         g.add_argument("-c", "--conversation", help="continue this conversation")
         g.add_argument("--last", action="store_true", help="continue your latest conversation with this profile")

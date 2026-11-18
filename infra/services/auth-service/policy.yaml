@@ -76,7 +76,7 @@ clients:
 
   # speech-service's test client on your Mac (python/services/speech-service/test-client): talk to
   # the live service and hear it, and read its status; and its voice loop (speech → agent → speech),
-  # which talks to the agent (profile voice) as its own sessions. Secret in ~/.config/speech-test-client/secret.
+  # which talks to the agent (profile pi) as its own sessions. Secret in ~/.config/speech-test-client/secret.
   speech-test-client:
     grants:
       speech-service:
@@ -102,7 +102,7 @@ clients:
           - {type: file_access, actions: [read, list], locations: ["public/"]}
 
   # Hey Pi's backend (BFF); the Flutter UI only talks to it. It runs the voice turn
-  # (docs/specs/voice-path.md V1): speech in and out, the agent (profile voice) in between.
+  # (docs/specs/voice-path.md V1): speech in and out, the agent (profile pi) in between.
   pi-server:
     grants:
       speech-service:

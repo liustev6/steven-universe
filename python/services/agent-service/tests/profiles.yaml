@@ -1,0 +1,44 @@
+# The tests' own profiles (tests/helpers.py): shaped like infra/services/agent-service/profiles.yaml,
+# but fixed, so a change to the real profiles doesn't change what the tests mean.
+profiles:
+  # a general assistant: Codex's default model, its own instructions kept, long sessions
+  chat:
+    template: chat
+    model: null
+    effort: medium
+    instructions: |
+      You are a personal assistant. Answer directly.
+    codex_instructions: true
+    limits: {wall_seconds: 3600, max_turns: 100, max_turn_tokens: 200000}
+    history: {carry_turns: 6}
+
+  # spoken replies, short sessions
+  voice:
+    template: chat
+    effort: low
+    instructions: |
+      You answer by voice. Reply in one to three short sentences of plain speech.
+    codex_instructions: false
+    limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
+    history: {carry_turns: 4}
+
+  # a caller adds its own instructions (C15), as pi-server does
+  panel:
+    template: chat
+    effort: low
+    instructions: |
+      You are the panel's voice assistant.
+    caller_instructions: append
+    codex_instructions: false
+    tools: [web_search]
+    limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
+    history: {carry_turns: 4}
+
+  # one short turn (max_turns 2, a small token budget)
+  smoke:
+    template: chat
+    effort: low
+    instructions: Reply with exactly the word the user asks for, and nothing else.
+    codex_instructions: false
+    limits: {wall_seconds: 120, max_turns: 2, max_turn_tokens: 20000}
+    history: {carry_turns: 0}

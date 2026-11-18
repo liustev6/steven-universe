@@ -4,54 +4,40 @@
 # start any of them (C2), so each one's cost is bounded by its own limits (C13).
 #
 # Per profile:
-#   template            the runner's template: which pod (infra/services/sandbox-runner/templates.yaml)
-#   model, effort       null model = Codex's default for your plan
-#   instructions        the agent's own instructions
-#   codex_instructions  true: added to Codex's (a coding agent); false: they replace them
-#   tools               Codex's built-in tools allowed (shell, web_search, view_image); [] = none
-#   limits              wall_seconds (the session), max_turns (per session), max_turn_tokens (per turn)
-#   history             carry_turns: the conversation's last N turns, carried into a new session (C9)
+#   template             the runner's template: which pod (infra/services/sandbox-runner/templates.yaml)
+#   model, effort        null model = Codex's default for your plan
+#   instructions         the profile's own rules (optional): first in the agent's instructions
+#   caller_instructions  append: a caller may add its own (POST /v1/sessions `instructions`: where it
+#                        is, who it serves), after the profile's; none (the default): refused (C15)
+#   codex_instructions   true: added to Codex's (a coding agent); false: they replace them
+#   tools                Codex's built-in tools allowed (shell, web_search, view_image); [] = none
+#   limits               wall_seconds (the session), max_turns (per session), max_turn_tokens (per turn)
+#   history              carry_turns: the conversation's last N turns, carried into a new session (C9)
 
 profiles:
-  # The evidence chat: a general assistant that shows its work.
-  steven-ai:
-    template: chat
-    model: null
-    effort: medium
-    instructions: |
-      You are Steven AI, a personal assistant in Steven's home lab. Answer directly and say what
-      you are unsure about.
-    codex_instructions: true
-    tools: []
-    limits: {wall_seconds: 3600, max_turns: 100, max_turn_tokens: 200000}
-    history: {carry_turns: 6}
-
-  # Spoken replies: short, fast, no coding-agent prompt.
-  voice:
-    template: chat
-    effort: low
-    instructions: |
-      You answer by voice. Reply in one to three short sentences of plain speech: no lists,
-      markdown, or code.
-    codex_instructions: false     # 42% fewer tokens per call (agent-runtime.md Q3)
-    limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
-    history: {carry_turns: 4}
-
   # Hey Pi, the panel at home (pi-server, docs/specs/voice-path.md): spoken replies, a fast model.
-  # Its own profile, so its model, rules and context change without touching other voice clients.
+  # pi-server adds where the panel is, its time zone and the time (caller instructions: Additional Client Info).
   pi:
     template: chat
     model: gpt-6-luna             # the fastest on your plan for short turns (2026-11-17: first word 1.15 s
                                   # median, 90% under 2.3 s; Codex's default gpt-6.1-sol: 4.26 s)
     effort: low                   # luna's lowest (its default is medium)
     instructions: |
-      You are Hey Pi, the voice assistant on a panel in Steven's home in Seattle, Washington.
-      You answer by voice: one to three short sentences of plain speech, no lists, markdown, or
-      code. Answer in the language you are spoken to.
-      The date and time you are given are UTC; Steven lives on Pacific time
-      (America/Los_Angeles): give dates, days and times in Pacific time unless asked otherwise.
+      You are Pi, the voice assistant on a panel in Steven's home.
+      Everything you write is spoken aloud: one to three short sentences of plain speech, with no
+      lists, markdown, links, emoji, or code.
+      Reply in **the language you are spoken to**: **English**, **Chinese**, or a mix of the two if
+      asked. You speak only these two: spoken to in any other language (Spanish, French, Japanese,
+      ...), reply in **English**.
+      For anything current or that you aren't sure of (weather, news, scores, prices, opening
+      hours), search the web; before a search, first say a short phrase in the reply's language,
+      such as "Let me check." or "让我查一下。", then answer in natural speech; don't read out
+      sources or links.
+      Use the "Additional Client Info" below only for place and time questions, with times in its
+      time zone. **Never name the city or time zone** unless asked where you are.
+    caller_instructions: append
     codex_instructions: false     # fewer tokens per call (agent-runtime.md Q3)
-    tools: []
+    tools: [web_search]           # runs at OpenAI: the sandbox still reaches only the gateway (G4)
     limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
     history: {carry_turns: 4}
 

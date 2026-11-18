@@ -22,6 +22,7 @@ from service_auth import Principal
 
 from app.api import stream
 from app.db.models import ChatSession, EndReason
+from app.profiles import CALLER_INSTRUCTIONS_MAX
 from app.sessions import Sessions
 
 
@@ -29,6 +30,9 @@ class StartRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     profile: str = Field(min_length=1, max_length=32)
     conversation_id: uuid.UUID | None = None      # continue this conversation; none = a new one
+    # Added to the profile's instructions when the profile allows it (C15): where the caller is, whom
+    # it serves. A live session keeps the instructions it started with.
+    instructions: str | None = Field(None, max_length=CALLER_INSTRUCTIONS_MAX)
 
 
 class TurnRequest(BaseModel):
@@ -46,7 +50,7 @@ def describe(row: ChatSession) -> dict:
             "end_reason": row.end_reason.value if row.end_reason else None, "turns_used": row.turns_used,
             "started_at": row.started_at.isoformat() if row.started_at else None,
             "ready_at": row.ready_at.isoformat() if row.ready_at else None,
-            "ended_at": row.ended_at.isoformat() if row.ended_at else None}
+            "ended_at": row.ended_at.isoformat() if row.ended_at else None, "instructions": row.instructions}
 
 
 def build_router(sessions: Sessions, auth) -> APIRouter:
@@ -55,7 +59,7 @@ def build_router(sessions: Sessions, auth) -> APIRouter:
 
     @router.post("")
     async def start(body: StartRequest, p: Principal = Depends(write)) -> JSONResponse:
-        row, created = await sessions.start(p.subject, body.profile, body.conversation_id)
+        row, created = await sessions.start(p.subject, body.profile, body.conversation_id, body.instructions)
         return JSONResponse(describe(row), status_code=201 if created else 200)
 
     @router.post("/{session_id}/turns")

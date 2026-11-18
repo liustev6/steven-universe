@@ -54,6 +54,7 @@ project: the service and its own **PostgreSQL** (`python/services/agent-service/
 | C12 | **Profiles are a reviewed file:** `infra/services/agent-service/profiles.yaml`, installed by every deploy (the deployer's `files`). | Changing what an agent may do is a reviewed diff (G5). |
 | C13 | **Budgets are enforced at the gateway** (G14): turns per session, tokens per turn (counted from the model responses the gateway relays, never from what the sandbox reports), and the profile's wall time; past one, the model route refuses and the turn fails with a clear `error`. | The sandbox is assumed compromised; only the gateway's limits are real. |
 | C14 | **The kill switch:** `DELETE` a session; `POST /v1/admin/stop` (`chat:admin`) ends every session and refuses new ones until `…/start`; or stop the runner. The switch is a row in `flags`, so it stays on across restarts and deploys. | One call stops everything, without touching hosts. |
+| C15 | **A caller may add instructions, after the profile's** (2026-11-18): `POST /v1/sessions` takes `instructions` (at most 4,000 characters), accepted only by a profile with `caller_instructions: append` (else `400 instructions_not_allowed`). The agent's instructions are, in order: the profile's own (optional), the caller's, the carried-over turns (C9). Stored with the session (`sessions.instructions`); a live session keeps the ones it started with. Append only: no profile lets a caller replace its rules. | The profile is the reviewed policy, the same for every caller; the caller knows its own setting (where a panel is, its time zone, whom it serves), which shouldn't be in a shared file. Appending keeps the reviewed rules first, as OpenAI's Assistants API does with `additional_instructions`. It's safe to accept: what an agent may *do* (model, tools, budgets) is enforced at the gateway (C13), never by the prompt. |
 
 ## The sessions API (443, callers)
 Auth: an auth-service token, `aud=agent-service`. Scopes: `chat:write` (start, talk in and end
@@ -63,7 +64,7 @@ Code: `app/api/`.
 
 | Route | What |
 |---|---|
-| `POST /v1/sessions` `{profile, conversation_id?}` | `chat:write`: a session for a new conversation, or for one you own (C9). **`201`** a new session (a pod claimed); **`200`** the conversation's live session, already running (C6). Returns the session (below). |
+| `POST /v1/sessions` `{profile, conversation_id?, instructions?}` | `chat:write`: a session for a new conversation, or for one you own (C9); `instructions`: the caller's, if the profile takes them (C15). **`201`** a new session (a pod claimed); **`200`** the conversation's live session, already running (C6). Returns the session (below), with the `instructions` it started with. |
 | `POST /v1/sessions/{id}/turns` `{text}` | `chat:write`: one turn, **streamed** (below) until its `turn.completed`, or the session's end; the turn's id in `X-Turn-Id`. A turn may be sent while the session is `starting`: it waits for the runtime. |
 | `GET /v1/sessions/{id}/events?after=<seq>` | `chat:read`: everything after `seq` (or `Last-Event-ID`), then live, until the session ends (reconnect, G10) |
 | `GET /v1/sessions/{id}` | `chat:read`: `session_id`, `conversation_id`, `state` (`starting`, `ready`, `busy`, `ended`), `end_reason`, `turns_used`, `started_at`, `ready_at`, `ended_at` |
@@ -199,20 +200,15 @@ the sandboxes can reach (MA1).
 ## Profiles (`profiles.yaml`)
 ```yaml
 profiles:
-  steven-ai:                       # the evidence chat
+  pi:                              # Hey Pi, the panel at home (voice-path.md)
     template: chat                 # the runner's template (R14)
-    model: null                    # Codex's default for your plan
-    effort: medium
-    instructions: |
-      …
-    codex_instructions: true
-    tools: []                      # CP5 adds tools
-    limits: {wall_seconds: 3600, max_turns: 100, max_turn_tokens: 200000}
-    history: {carry_turns: 6}
-  voice:
-    template: chat
+    model: gpt-6-luna              # null: Codex's default for your plan
     effort: low
+    instructions: |                # optional: the profile's own rules
+      You are Hey Pi, … You answer by voice: one to three short sentences …
+    caller_instructions: append    # pi-server adds where the panel is (C15); default none
     codex_instructions: false      # 42% fewer tokens per call (agent-runtime.md Q3)
+    tools: [web_search]            # Codex's built-in, run at OpenAI (no sandbox network, G4)
     limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
     history: {carry_turns: 4}
   smoke:                           # deploy smoke tests: one short turn, as cheap as possible
@@ -223,8 +219,10 @@ profiles:
     history: {carry_turns: 0}
 ```
 What reaches the runtime (protocol A's `Profile` in the session file) is the subset it needs
-(model, effort, instructions with the carried-over turns appended (C9), `codex_instructions`, tools, wall
-time): `AgentProfile.runtime()` in `app/profiles.py`.
+(model, effort, instructions: the profile's, the caller's (C15), then the carried-over turns (C9), as one
+text; `codex_instructions`, tools, wall time): `AgentProfile.runtime()` in `app/profiles.py`. The profiles
+`steven-ai` (the evidence chat) and `voice` were removed on 2026-11-18, unused since `pi`; the tests have
+their own profiles (`tests/profiles.yaml`).
 
 ## History (PostgreSQL)
 **Tables** (Alembic migrations, reviewed in git; SQLAlchemy 2 with psycopg 3):

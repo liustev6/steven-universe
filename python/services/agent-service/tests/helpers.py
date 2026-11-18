@@ -8,7 +8,7 @@ from app.profiles import load_profiles
 from app.sessions.runner import NoSandbox
 from core.types import build_event
 
-PROFILES = load_profiles(Path(__file__).resolve().parents[4] / "infra/services/agent-service/profiles.yaml")
+PROFILES = load_profiles(Path(__file__).with_name("profiles.yaml"))          # the tests' own profiles
 ME, OTHER = "service:agent-cli", "service:smoke-test"
 
 

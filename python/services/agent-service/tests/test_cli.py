@@ -78,12 +78,12 @@ async def test_ask_starts_a_session_and_streams(capsys):
 
 
 async def test_last_continues_the_latest_conversation_of_that_profile(capsys):
-    fake = FakeAgentService([{"conversation_id": "c-live", "profile": "steven-ai"},
+    fake = FakeAgentService([{"conversation_id": "c-live", "profile": "pi"},
                              {"conversation_id": "c-voice", "profile": "voice"}])
     args = cli.parser().parse_args(["ask", "--last", "-p", "voice", "again"])
     await cli.ask(agent(fake), args)
     assert fake.requests[1] == ("POST", "/v1/sessions", {"profile": "voice", "conversation_id": "c-voice"})
-    args = cli.parser().parse_args(["ask", "--last", "again"])            # steven-ai: its live session
+    args = cli.parser().parse_args(["ask", "--last", "again"])            # pi (the default): its live session
     await cli.ask(agent(fake), args)
     assert "continuing session" in capsys.readouterr().err
 

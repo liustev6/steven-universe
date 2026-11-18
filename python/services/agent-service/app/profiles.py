@@ -4,7 +4,12 @@ A profile holds two kinds of settings:
 - what the **runtime** needs (model, effort, instructions, tools, wall time): sent to the sandbox in
   the session file as protocol A's `Profile`, built by `AgentProfile.runtime()`;
 - what only **agent-service** uses: the runner's `template`, the budgets the gateway enforces
-  (C13), and how much history a new session carries (C9). The sandbox never sees these.
+  (C13), how much history a new session carries (C9), and whether a caller may add instructions
+  (C15). The sandbox never sees these.
+
+The agent's instructions, in order: the profile's own rules, the caller's (C15), the carried-over
+turns (C9). The profile's come first and a caller can only add to them; what an agent may *do*
+(model, tools, budgets) is enforced at the gateway, never by the instructions.
 
 Any caller with `chat:write` may start any profile (C2): a profile's cost is bounded by its limits.
 """
@@ -13,6 +18,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -22,6 +28,7 @@ from core.types import Profile as RuntimeProfile
 from core.types import Tool
 
 NAME_PATTERN = r"^[a-z][a-z0-9-]{0,31}$"
+CALLER_INSTRUCTIONS_MAX = 4000                             # characters (C15)
 
 
 class Limits(BaseModel):
@@ -46,7 +53,8 @@ class AgentProfile(BaseModel):
     template: str = Field(pattern=NAME_PATTERN)            # the runner's template (sandbox-runner R14)
     model: str | None = None                               # None: Codex's default for your plan
     effort: str | None = None                              # checked against protocol A's values below
-    instructions: str = ""
+    instructions: str = ""                                 # the profile's own rules; optional
+    caller_instructions: Literal["none", "append"] = "none"   # may a caller add its own (C15)
     codex_instructions: bool = True                        # False: `instructions` replace Codex's own
     tools: list[Tool] = Field(default_factory=list)
     limits: Limits = Field(default_factory=Limits)
@@ -57,10 +65,12 @@ class AgentProfile(BaseModel):
         self.runtime("check")       # a profile the runtime would reject fails at load, not at a claim
         return self
 
-    def runtime(self, name: str, context: str = "") -> RuntimeProfile:
-        """Protocol A's Profile for the session file. `context` (the carried-over turns, C9) is
-        added after the instructions, so the runtime needs nothing new to use it."""
-        instructions = "\n\n".join(part for part in (self.instructions.strip(), context.strip()) if part)
+    def runtime(self, name: str, context: str = "", caller: str = "") -> RuntimeProfile:
+        """Protocol A's Profile for the session file: the profile's instructions, then the caller's
+        (`caller`, C15; checked by the caller of this), then `context` (the carried-over turns,
+        C9), as one text, so the runtime needs nothing new to use them."""
+        parts = (self.instructions.strip(), caller.strip(), context.strip())
+        instructions = "\n\n".join(part for part in parts if part)
         return RuntimeProfile(
             name=name, model=self.model, effort=self.effort, instructions=instructions,
             codex_instructions=self.codex_instructions, tools=self.tools,

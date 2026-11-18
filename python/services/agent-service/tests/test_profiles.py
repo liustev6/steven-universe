@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from app.profiles import load_profiles
+from tests.helpers import PROFILES
 
 REAL = Path(__file__).resolve().parents[4] / "infra/services/agent-service/profiles.yaml"
 
@@ -15,32 +16,39 @@ def write(tmp_path, text: str) -> Path:
 
 def test_the_real_file_loads():
     profiles = load_profiles(REAL)
-    assert {"steven-ai", "voice", "smoke"} <= profiles.keys()
+    assert {"pi", "smoke"} <= profiles.keys()
     assert profiles["smoke"].limits.max_turns == 2
     assert profiles["smoke"].history.carry_turns == 0
+    assert profiles["smoke"].caller_instructions == "none"
+    pi = profiles["pi"]
+    assert pi.caller_instructions == "append" and pi.tools == ["web_search"]   # pi-server adds where it is
+    assert "Seattle" not in pi.instructions                                   # ... so the profile doesn't say
 
 
 def test_runtime_profile_carries_only_what_the_sandbox_needs():
-    p = load_profiles(REAL)["voice"]
+    p = PROFILES["voice"]
     runtime = p.runtime("voice").model_dump()
     assert runtime["name"] == "voice" and runtime["effort"] == "low"
-    # No template, budgets or history: those stay with agent-service.
+    # No template, budgets, history or caller_instructions: those stay with agent-service.
     assert set(runtime) == {"name", "model", "effort", "instructions", "codex_instructions", "tools", "limits"}
     assert runtime["limits"] == {"wall_seconds": 1800}
 
 
-def test_context_follows_the_instructions():
-    p = load_profiles(REAL)["voice"]
-    text = p.runtime("voice", context="Earlier in this conversation:\nYou: hi\nAssistant: hello").instructions
-    assert text.startswith("You answer by voice.")
-    assert text.endswith("Assistant: hello")
-    assert p.runtime("voice").instructions == p.instructions.strip()
+def test_instructions_are_the_profiles_then_the_callers_then_the_context():
+    p = PROFILES["panel"]
+    text = p.runtime("panel", context="Earlier in this conversation:\nYou: hi\nAssistant: hello",
+                     caller="In Seattle.").instructions
+    assert text == "You are the panel's voice assistant.\n\nIn Seattle.\n\nEarlier in this conversation:\nYou: hi\nAssistant: hello"
+    assert p.runtime("panel").instructions == p.instructions.strip()
+    bare = load_profiles_text("profiles: {a: {template: chat, caller_instructions: append}}")["a"]
+    assert bare.instructions == "" and bare.runtime("a", caller="Only mine.").instructions == "Only mine."
 
 
 @pytest.mark.parametrize("body, problem", [
     ("profiles: {a: {template: chat, effort: loud}}", "effort"),          # the runtime would refuse it
     ("profiles: {a: {template: chat, tools: [rm_rf]}}", "tools"),
     ("profiles: {a: {template: chat, colour: red}}", "colour"),           # unknown keys are errors
+    ("profiles: {a: {template: chat, caller_instructions: replace}}", "caller_instructions"),  # append only
     ("profiles: {Bad_Name: {template: chat}}", "names"),
     ("profiles: {a: {template: chat, limits: {max_turns: 0}}}", "max_turns"),
     ("profiles: {}", "profiles"),
@@ -49,3 +57,9 @@ def test_context_follows_the_instructions():
 def test_bad_files_fail_at_load(tmp_path, body, problem):
     with pytest.raises(ValueError, match=problem):
         load_profiles(write(tmp_path, body))
+
+
+def load_profiles_text(text: str):
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        return load_profiles(write(Path(d), text))

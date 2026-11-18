@@ -10,7 +10,7 @@ The page talks only to this server (localhost). This server gets a token as spee
     that header on a WebSocket), passing messages both ways unchanged, and the service's close code;
     a handshake the service refuses (503 busy, 401…) reaches the page as an `error` message
   - forwards /v1/voices and /v1/status with the token
-  - runs the voice loop (/voice): speech → agent-service (profile voice) → speech, as pi-server will
+  - runs the voice loop (/voice): speech → agent-service (profile pi) → speech, as pi-server does
 It uses the service's own .venv (FastAPI, uvicorn, httpx, websockets, service-auth: requirements-dev.txt).
 Options: --service URL, --agent URL, --issuer URL, --client ID, --secret FILE, --port N.
 """
@@ -131,7 +131,7 @@ class AgentError(Exception):
 
 
 class Agent:
-    """One conversation with agent-service (profile voice), as speech-test-client: its live session."""
+    """One conversation with agent-service (profile pi), as speech-test-client: its live session."""
 
     def __init__(self, http: httpx.AsyncClient, profile: str, conversation_id: str | None):
         self.http, self.profile = http, profile
@@ -197,7 +197,7 @@ async def voice(ws: WebSocket):
             await send({"type": "error", "where": where, "message": message})
 
     http = httpx.AsyncClient(timeout=15)
-    agent = Agent(http, q.get("profile", "voice"), q.get("conversation_id") or None)
+    agent = Agent(http, q.get("profile", "pi"), q.get("conversation_id") or None)
     stt: websockets.ClientConnection | None = None
     tasks: set[asyncio.Task] = set()
     reply: asyncio.Task | None = None

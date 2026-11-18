@@ -1,5 +1,5 @@
 """The voice turn (docs/specs/voice-path.md): the Pi's mic → speech-service (speech to text) →
-agent-service (profile voice) → speech-service (text to speech) → the Pi's speaker.
+agent-service (profile pi) → speech-service (text to speech) → the Pi's speaker.
 
     audio.py      the mic and the speaker: arecord and aplay on ALSA (V2)
     wake.py       on the Pi: the wake word, and whether someone is speaking (V9)
@@ -17,7 +17,7 @@ def create(settings, ui):
     """The voice assistant from pi-server's settings, as client `pi-server` (its secret on the Pi)."""
     from service_auth import TokenClient
 
-    from app.voice.agent import AgentClient
+    from app.voice.agent import AgentClient, client_info
     from app.voice.assistant import VoiceAssistant, VoiceOptions
     from app.voice.audio import Mic, Speaker
     from app.voice.speech import SpeechClient
@@ -25,7 +25,8 @@ def create(settings, ui):
 
     tokens = TokenClient(settings.AUTH_ISSUER, settings.CLIENT_ID, settings.CLIENT_SECRET_FILE.read_text().strip())
     speech = SpeechClient(settings.SPEECH_URL, lambda: tokens.token("speech-service"))
-    agent = AgentClient(settings.AGENT_URL, lambda: tokens.token("agent-service"), settings.AGENT_PROFILE)
+    agent = AgentClient(settings.AGENT_URL, lambda: tokens.token("agent-service"), settings.AGENT_PROFILE,
+                        instructions=lambda: client_info(settings.LOCATION, settings.TIMEZONE))
     options = VoiceOptions(voice_en=settings.VOICE_EN, voice_zh=settings.VOICE_ZH, tts_language=settings.TTS_LANGUAGE,
                            stt_language=settings.STT_LANGUAGE, stt_context=settings.STT_CONTEXT, silence_ms=settings.SILENCE_MS,
                            window=settings.LISTEN_WINDOW_SECONDS)

@@ -88,7 +88,7 @@ ROUTES = [
 
 @pytest.mark.parametrize("method, path, scope, upstream", ROUTES)
 def test_each_route_needs_a_token_and_its_scope_then_relays(api, agent_service, tokens, method, path, scope, upstream):
-    body = {"text": "hi"} if path.endswith("/turns") and method == "POST" else ({"profile": "voice"} if method == "POST" and path.endswith("sessions") else None)
+    body = {"text": "hi"} if path.endswith("/turns") and method == "POST" else ({"profile": "smoke"} if method == "POST" and path.endswith("sessions") else None)
     assert api.request(method, path, json=body).status_code == 401
     other = "chat:read" if scope == "chat:write" else "chat:write"
     assert api.request(method, path, json=body, headers=caller(scopes=other)).status_code == 403

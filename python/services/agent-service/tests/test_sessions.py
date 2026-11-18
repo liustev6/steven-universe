@@ -13,7 +13,8 @@ from app.history.eventlog import EventLog
 from app.history.carry import HEADER
 from app.sessions.runner import NoSandbox
 from app.sessions import (
-    Busy, BudgetExceeded, Ended, NotFound, ProfileMismatch, Sessions, Stopped, UnknownProfile, capability_hash,
+    Busy, BudgetExceeded, Ended, InstructionsNotAllowed, NotFound, ProfileMismatch, Sessions, Stopped, UnknownProfile,
+    capability_hash,
 )
 from tests.helpers import ME, OTHER, PROFILES, FakeRunner, Runtime
 
@@ -29,7 +30,7 @@ def make(db, runner):
     return make_sessions
 
 
-async def ready_session(sessions, profile="steven-ai", conversation=None):
+async def ready_session(sessions, profile="chat", conversation=None):
     row, created = await sessions.start(ME, profile, conversation)
     rt = Runtime(row.id)
     await sessions.ingest(row.id, [rt.ready()])
@@ -82,7 +83,7 @@ async def test_ownership_and_profile_rules(make):
     with pytest.raises(NotFound):
         await sessions.get(row.id, OTHER)
     with pytest.raises(ProfileMismatch):
-        await sessions.start(ME, "steven-ai", row.conversation_id)
+        await sessions.start(ME, "chat", row.conversation_id)
     with pytest.raises(UnknownProfile):
         await sessions.start(ME, "nope")
     assert (await sessions.get(row.id, None)).id == row.id          # chat:admin sees every session
@@ -176,6 +177,43 @@ async def test_a_new_session_carries_the_last_turns(make, runner):
     assert instructions.rstrip().endswith("Assistant: answer 5")
 
 
+# ---- the caller's instructions (C15) ------------------------------------------------------------------
+HOME = "The panel is in Steven's home in Seattle; time zone America/Los_Angeles."
+
+
+async def test_the_callers_instructions_follow_the_profiles_and_are_kept(make, runner, db):
+    sessions = make()
+    row, _ = await sessions.start(ME, "panel", instructions=f"  {HOME}\n")
+    instructions = runner.claims[-1]["profile"]["instructions"]
+    assert instructions == f"You are the panel's voice assistant.\n\n{HOME}"     # the profile's first
+    assert (await state(db, row.id)).instructions == HOME                       # what it was told, stored
+
+
+async def test_the_callers_instructions_come_before_the_carried_turns(make, runner):
+    sessions = make()
+    row, _ = await sessions.start(ME, "panel", instructions=HOME)
+    rt = Runtime(row.id)
+    await sessions.ingest(row.id, [rt.ready()])
+    turn, _ = await sessions.turn(row.id, ME, "what's the weather")
+    await sessions.ingest(row.id, rt.answer(turn.id, text="Rain.", total=100))
+    await sessions.end(row.id, EndReason.IDLE)
+    await sessions.start(ME, "panel", row.conversation_id, instructions=HOME)
+    instructions = runner.claims[-1]["profile"]["instructions"]
+    assert instructions.index("You are the panel's") < instructions.index(HOME) < instructions.index(HEADER)
+    assert instructions.rstrip().endswith("Assistant: Rain.")
+
+
+async def test_a_profile_without_caller_instructions_refuses_them(make, runner, db):
+    sessions = make()
+    with pytest.raises(InstructionsNotAllowed):
+        await sessions.start(ME, "voice", instructions=HOME)
+    assert runner.claims == []                                                  # nothing claimed
+    async with db() as s:
+        assert (await s.execute(select(Conversation))).scalars().all() == []    # nor created
+    row, _ = await sessions.start(ME, "voice", instructions="   ")              # blank: none given
+    assert (await state(db, row.id)).instructions is None
+
+
 async def test_a_new_conversation_carries_nothing(make, runner):
     await make().start(ME, "voice")
     assert HEADER not in runner.claims[0]["profile"]["instructions"]
@@ -228,7 +266,7 @@ async def age(db, session_id, **columns_ago):
 
 @pytest.mark.parametrize("columns, reason", [
     ({"last_activity_at": 301}, EndReason.IDLE),
-    ({"started_at": 3601, "last_activity_at": 0}, EndReason.WALL_TIME),   # steven-ai's wall time: 3600 s
+    ({"started_at": 3601, "last_activity_at": 0}, EndReason.WALL_TIME),   # chat's wall time: 3600 s
 ])
 async def test_timers(make, db, columns, reason):
     sessions = make()
