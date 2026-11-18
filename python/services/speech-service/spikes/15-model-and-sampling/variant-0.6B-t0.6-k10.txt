@@ -1,0 +1,34 @@
+variant 0.6B-t0.6-k10: /models/Qwen3-TTS-12Hz-0.6B-CustomVoice SPEECH_TTS_TEMPERATURE=0.6 SPEECH_TTS_TOP_K=10
+2026-11-18 07:06:14,377 INFO uvicorn.error: Started server process [1]
+2026-11-18 07:06:14,377 INFO uvicorn.error: Waiting for application startup.
+2026-11-18 07:06:14,378 INFO uvicorn.error: Application startup complete.
+2026-11-18 07:06:14,378 INFO uvicorn.error: Uvicorn running on https://0.0.0.0:8443 (Press CTRL+C to quit)
+2026-11-18 07:06:19,805 INFO app.main: models loaded in 4.9 s (TTS Qwen3-TTS-12Hz-0.6B-CustomVoice; talker sampling over the model's: {'temperature': 0.6, 'top_k': 10}; instruction: None)
+healthy after 18 s; VRAM: 4776 MiB, 8151 MiB
+== per sentence and voice: duration median, worst / median, rate median (units per second of speech)
+  [ 1] ryan    median  1.88 s  worst  3.76 s (x2.00)  rate  2.2 u/s  longest pause 0.88 s
+  [ 1] serena  median  1.08 s  worst  1.44 s (x1.33)  rate  4.0 u/s  longest pause 0.00 s
+  [ 2] ryan    median  2.40 s  worst  2.56 s (x1.07)  rate  4.2 u/s  longest pause 0.00 s
+  [ 2] serena  median  1.72 s  worst  1.92 s (x1.12)  rate  5.0 u/s  longest pause 0.00 s
+  [ 3] ryan    median  3.00 s  worst  5.04 s (x1.68)  rate  4.6 u/s  longest pause 0.54 s
+  [ 3] serena  median  2.00 s  worst  2.24 s (x1.12)  rate  5.3 u/s  longest pause 0.00 s
+  [ 4] ryan    median  5.16 s  worst  5.92 s (x1.15)  rate  4.5 u/s  longest pause 1.04 s
+  [ 4] serena  median  4.28 s  worst  5.44 s (x1.27)  rate  4.7 u/s  longest pause 0.72 s
+  [ 5] ryan    median  6.12 s  worst  8.24 s (x1.35)  rate  4.6 u/s  longest pause 1.32 s
+  [ 5] serena  median  4.72 s  worst  5.12 s (x1.08)  rate  5.5 u/s  longest pause 0.56 s
+  [ 6] ryan    median  1.60 s  worst  1.84 s (x1.15)  rate  1.4 u/s  longest pause 0.00 s
+  [ 6] serena  median  1.20 s  worst  1.20 s (x1.00)  rate  1.6 u/s  longest pause 0.00 s
+  [ 7] ryan    median  2.20 s  worst 10.80 s (x4.91)  rate  2.7 u/s  longest pause 0.00 s
+  [ 7] serena  median  1.52 s  worst  1.60 s (x1.05)  rate  2.9 u/s  longest pause 0.00 s
+  [ 8] ryan    median  2.36 s  worst  2.48 s (x1.05)  rate  4.2 u/s  longest pause 0.00 s
+  [ 8] serena  median  2.04 s  worst  2.08 s (x1.02)  rate  4.1 u/s  longest pause 0.00 s
+  [ 9] ryan    median  6.32 s  worst  6.40 s (x1.01)  rate  2.9 u/s  longest pause 0.94 s
+  [ 9] serena  median  4.76 s  worst  4.88 s (x1.03)  rate  3.6 u/s  longest pause 0.52 s
+  [10] ryan    median  8.60 s  worst  9.76 s (x1.13)  rate  3.9 u/s  longest pause 1.28 s
+  [10] serena  median  7.40 s  worst  7.60 s (x1.03)  rate  4.2 u/s  longest pause 0.56 s
+  [11] ryan    median  4.32 s  worst  6.32 s (x1.46)  rate  4.4 u/s  longest pause 0.98 s
+  [11] serena  median  3.04 s  worst  3.12 s (x1.03)  rate  5.1 u/s  longest pause 0.60 s
+
+== speech rate, all clips: Chinese 4.7 chars/s (p10 3.5, p90 5.7); English 3.4 syllables/s (p10 1.6, p90 4.4)
+== first audio median 28 ms (p90 33); real-time factor (made in / audio) median 0.19
+== clips over 1.4x their sentence's median: 4 of 88

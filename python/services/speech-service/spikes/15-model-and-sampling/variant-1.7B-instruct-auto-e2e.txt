@@ -1,0 +1,8 @@
+1. warm after 0.1 s of waiting
+2. TTS: {'type': 'started', 'format': 'pcm_s16le', 'sample_rate': 24000, 'channels': 1}; first audio 33 ms, 4.6 s of speech in 1.6 s; 2 sentences (15360, 94080 samples); ends done
+3. STT: 4 partials (the last: stable 'Sure. Tomorrow looks cloudy in the morning with a little' of 'Sure. Tomorrow looks cloudy in the morning with a little rain in the afternoon.'); final 62 ms after the commit, reason commit: 'Sure. Tomorrow looks cloudy in the morning with a little rain in the afternoon.' (1.00 alike)
+4. 2 + 2 at once: TTS first audio 37 ms (done), 103 ms (done); STT finals 109 ms (1.00), 61 ms (1.00)
+   a third TTS session: {'type': 'queued', 'position': 1}; a fourth: 503, Retry-After 2
+5. POST /v1/audio/speech: 200, audio/wav, 2.5 s
+   status: {"ok": true, "warm": true, "models": {"tts": "Qwen3-TTS-12Hz-1.7B-CustomVoice", "stt": "Qwen3-ASR-0.6B"}, "gpu": {"name": "NVIDIA GeForce RTX 5060", "vram_used_gb": 6.8, "vram_total_gb": 7.56}, "tts": {"running": 0, "waiting": 0, "running_max": 2, "waiting_max": 1, "sessions": 95, "sentences": 149, "first_audio_ms": {"last": [94, 29, 60, 27, 28], "median": 28}}, "stt": {"running": 0, "waiting": 0, "running_max": 2, "waiting_max": 1, "sessions": 91, "finals": 92, "final_ms": {"last": [114, 148, 57, 57, 100], "median": 160}}, "uptime_seconds": 128}
+VRAM after 2 + 2: 6964 MiB, 8151 MiB

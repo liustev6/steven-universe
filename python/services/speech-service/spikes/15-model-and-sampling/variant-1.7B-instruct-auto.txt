@@ -1,0 +1,145 @@
+variant 1.7B-instruct-auto: /spike-models/Qwen3-TTS-12Hz-1.7B-CustomVoice SPEECH_TTS_INSTRUCT=Speak at a steady, natural pace, without long pauses. 用平稳自然的语速说话，不要拖长或停顿。
+2026-11-18 07:24:05,274 INFO uvicorn.error: Started server process [1]
+2026-11-18 07:24:05,274 INFO uvicorn.error: Waiting for application startup.
+2026-11-18 07:24:05,275 INFO uvicorn.error: Application startup complete.
+2026-11-18 07:24:05,275 INFO uvicorn.error: Uvicorn running on https://0.0.0.0:8443 (Press CTRL+C to quit)
+2026-11-18 07:24:12,006 INFO app.main: models loaded in 6.1 s (TTS Qwen3-TTS-12Hz-1.7B-CustomVoice; talker sampling over the model's: none; instruction: 'Speak at a steady, natural pace, without long pauses. 用平稳自然的语速说话，不要拖长或停顿。')
+healthy after 19 s; VRAM: 6682 MiB, 8151 MiB
+
+[1] 好的。  (2 units)
+  ryan    1   0.48 s  speech  0.36  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.04   5.6 u/s  | 好的。
+  ryan    2   0.64 s  speech  0.50  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.06   4.0 u/s  | 好的。
+  ryan    3   0.64 s  speech  0.46  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.10   4.3 u/s  | 好的。
+  ryan    4   0.64 s  speech  0.52  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.04   3.8 u/s  | 好的。
+  serena  1   0.56 s  speech  0.46  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.02   4.3 u/s  | 好的。
+  serena  2   0.56 s  speech  0.42  pauses 0.00 (longest 0.00)  lead 0.10 tail 0.04   4.8 u/s  | 好的。
+  serena  3   0.80 s  speech  0.64  pauses 0.00 (longest 0.00)  lead 0.10 tail 0.06   3.1 u/s  | 好的。
+  serena  4   1.12 s  speech  0.98  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.06   2.0 u/s  | 好的。
+
+[2] 今天是星期二。  (6 units)
+  ryan    1   3.28 s  speech  3.16  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.04   1.9 u/s  | 今天是星期二。
+  ryan    2   2.16 s  speech  2.02  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.06   3.0 u/s  | 今天是星期二。
+  ryan    3   1.76 s  speech  1.60  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.08   3.8 u/s  | 今天是星期二。
+  ryan    4   3.92 s  speech  3.80  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.04   1.6 u/s  | 今天是星期二。
+  serena  1   2.00 s  speech  1.90  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.02   3.2 u/s  | 今天是星期二。
+  serena  2   1.28 s  speech  1.12  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.08   5.4 u/s  | 今天是星期二。
+  serena  3   2.80 s  speech  2.64  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.08   2.3 u/s  | 今天是星期二。
+  serena  4   1.60 s  speech  1.44  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.08   4.2 u/s  | 今天是星期二。
+
+[3] 客厅的灯已经关了。  (8 units)
+  ryan    1   2.16 s  speech  2.04  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.04   3.9 u/s  | 客厅的灯已经关了。
+  ryan    2   2.40 s  speech  2.32  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.00   3.4 u/s  | 客厅的灯已经关了。
+  ryan    3   1.20 s  speech  1.06  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.06   7.5 u/s  | 客厅的灯已经关了。
+  ryan    4   2.24 s  speech  1.90  pauses 0.22 (longest 0.22)  lead 0.08 tail 0.04   4.2 u/s  | 客厅的灯已经关了。
+  serena  1   1.60 s  speech  1.48  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.04   5.4 u/s  | 客厅的灯已经关了。
+  serena  2   2.16 s  speech  2.04  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.04   3.9 u/s  | 客厅的灯已经关了。
+  serena  3   1.28 s  speech  1.16  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.04   6.9 u/s  | 客厅的灯已经关了。
+  serena  4   1.60 s  speech  1.42  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.10   5.6 u/s  | 客厅的灯已经关了。
+
+[4] 西雅图现在是晚上十点半，气温七度。  (15 units)
+  ryan    1   3.84 s  speech  3.72  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.04   4.0 u/s  | 西雅图现在是晚上十点半，气温七度。
+  ryan    2   3.20 s  speech  3.10  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.02   4.8 u/s  | 西雅图现在是晚上十点半，气温七度。
+  ryan    3   3.68 s  speech  3.54  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.06   4.2 u/s  | 西雅图现在是晚上十点半，气温七度。
+  ryan    4   4.32 s  speech  4.16  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.08   3.6 u/s  | 西雅图现在是晚上十点半，气温七度。
+  serena  1   3.68 s  speech  3.38  pauses 0.16 (longest 0.16)  lead 0.08 tail 0.06   4.4 u/s  | 西雅图现在是晚上十点半，气温七度。
+  serena  2   3.36 s  speech  3.26  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.02   4.6 u/s  | 西雅图现在是晚上十点半，气温七度。
+  serena  3   3.52 s  speech  3.26  pauses 0.16 (longest 0.16)  lead 0.08 tail 0.02   4.6 u/s  | 西雅图现在是晚上十点半，气温七度。
+  serena  4   2.96 s  speech  2.86  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.02   5.2 u/s  | 西雅图现在是晚上十点半，气温七度。
+
+[5] 明天上午多云，下午可能会下小雨，记得带伞。  (18 units)
+  ryan    1   6.16 s  speech  5.06  pauses 0.94 (longest 0.52)  lead 0.08 tail 0.08   3.6 u/s  | 明天上午多云，下午可能会下小雨，记得带伞。
+  ryan    2   8.64 s  speech  7.66  pauses 0.82 (longest 0.40)  lead 0.08 tail 0.08   2.3 u/s  | 明天上午多云，下午可能会下小雨，记得带伞。
+  ryan    3   5.20 s  speech  4.72  pauses 0.38 (longest 0.22)  lead 0.08 tail 0.02   3.8 u/s  | 明天上午多云，下午可能会下小雨，记得带伞。
+  ryan    4   5.92 s  speech  5.64  pauses 0.16 (longest 0.16)  lead 0.08 tail 0.04   3.2 u/s  | 明天上午多云，下午可能会下小雨，记得带伞。
+  serena  1   5.04 s  speech  4.44  pauses 0.46 (longest 0.46)  lead 0.08 tail 0.06   4.1 u/s  | 明天上午多云，下午可能会下小雨，记得带伞。
+  serena  2   4.08 s  speech  3.78  pauses 0.18 (longest 0.18)  lead 0.08 tail 0.04   4.8 u/s  | 明天上午多云，下午可能会下小雨，记得带伞。
+  serena  3   3.76 s  speech  3.64  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.04   4.9 u/s  | 明天上午多云，下午可能会下小雨，记得带伞。
+  serena  4   4.32 s  speech  4.00  pauses 0.16 (longest 0.16)  lead 0.10 tail 0.06   4.5 u/s  | 明天上午多云，下午可能会下小雨，记得带伞。
+
+[6] Sure.  (1 units)
+  ryan    1   0.72 s  speech  0.56  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.08   1.8 u/s  | Sure.
+  ryan    2   0.72 s  speech  0.58  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.06   1.7 u/s  | Sure.
+  ryan    3   0.64 s  speech  0.52  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.04   1.9 u/s  | Sir.
+  ryan    4   0.88 s  speech  0.72  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.08   1.4 u/s  | Sir.
+  serena  1   0.72 s  speech  0.58  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.06   1.7 u/s  | Sure.
+  serena  2   0.80 s  speech  0.68  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.04   1.5 u/s  | Sure.
+  serena  3   0.88 s  speech  0.70  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.10   1.4 u/s  | Sure.
+  serena  4   0.72 s  speech  0.62  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.02   1.6 u/s  | Sure.
+
+[7] It's Tuesday.  (3 units)
+  ryan    1   1.04 s  speech  0.94  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.02   3.2 u/s  | It's Tuesday.
+  ryan    2   1.28 s  speech  1.14  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.06   2.6 u/s  | It's Tuesday.
+  ryan    3   1.92 s  speech  1.32  pauses 0.48 (longest 0.48)  lead 0.08 tail 0.04   2.3 u/s  | It's Tuesday.
+  ryan    4   1.92 s  speech  1.58  pauses 0.24 (longest 0.24)  lead 0.08 tail 0.02   1.9 u/s  | It's Tuesday.
+  serena  1   1.04 s  speech  0.92  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.04   3.3 u/s  | It's Tuesday.
+  serena  2   1.20 s  speech  1.04  pauses 0.00 (longest 0.00)  lead 0.10 tail 0.06   2.9 u/s  | It's Tuesday.
+  serena  3   1.20 s  speech  1.04  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.08   2.9 u/s  | It's Tuesday.
+  serena  4   1.04 s  speech  0.94  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.02   3.2 u/s  | It's Tuesday.
+
+[8] The kitchen lights are off.  (6 units)
+  ryan    1   1.92 s  speech  1.80  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.04   3.3 u/s  | The kitchen lights are off.
+  ryan    2   1.60 s  speech  1.44  pauses 0.00 (longest 0.00)  lead 0.10 tail 0.06   4.2 u/s  | The kitchen lights are off.
+  ryan    3   3.36 s  speech  3.04  pauses 0.20 (longest 0.20)  lead 0.08 tail 0.04   2.0 u/s  | The kitchen lights are off.
+  ryan    4   2.00 s  speech  1.90  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.02   3.2 u/s  | The kitchen lights are off.
+  serena  1   1.68 s  speech  1.48  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.12   4.1 u/s  | The kitchen lights are off.
+  serena  2   1.44 s  speech  1.28  pauses 0.00 (longest 0.00)  lead 0.10 tail 0.06   4.7 u/s  | The kitchen lights are off.
+  serena  3   1.76 s  speech  1.56  pauses 0.00 (longest 0.00)  lead 0.10 tail 0.10   3.8 u/s  | The kitchen lights are off.
+  serena  4   1.52 s  speech  1.42  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.02   4.2 u/s  | The kitchen lights are off.
+
+[9] It's ten thirty at night in Seattle, and seven degrees.  (13 units)
+  ryan    1   4.88 s  speech  4.78  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.02   2.7 u/s  | It's ten thirty at night in Seattle, and seven degrees.
+  ryan    2   4.56 s  speech  4.26  pauses 0.16 (longest 0.16)  lead 0.10 tail 0.04   3.1 u/s  | It's ten thirty at night in Seattle, and seven degrees.
+  ryan    3   6.08 s  speech  5.02  pauses 0.92 (longest 0.32)  lead 0.08 tail 0.06   2.6 u/s  | It's ten thirty at night in Seattle, and seven degrees.
+  ryan    4   4.88 s  speech  4.56  pauses 0.16 (longest 0.16)  lead 0.08 tail 0.08   2.9 u/s  | It's ten thirty at night in Seattle, and seven degrees.
+  serena  1   3.84 s  speech  3.60  pauses 0.16 (longest 0.16)  lead 0.08 tail 0.00   3.6 u/s  | It's ten thirty at night in Seattle, and seven degrees.
+  serena  2   4.40 s  speech  4.08  pauses 0.18 (longest 0.18)  lead 0.10 tail 0.04   3.2 u/s  | It's ten thirty at night in Seattle, and seven degrees.
+  serena  3   4.32 s  speech  4.18  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.06   3.1 u/s  | It's ten thirty at night in Seattle, and seven degrees.
+  serena  4   4.16 s  speech  4.02  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.06   3.2 u/s  | It's ten thirty at night in Seattle, and seven degrees.
+
+[10] Tomorrow will be cloudy in the morning, with light rain in the afternoon, so take an umbrella.  (25 units)
+  ryan    1   8.00 s  speech  6.32  pauses 1.54 (longest 1.02)  lead 0.08 tail 0.06   4.0 u/s  | Tomorrow will be cloudy in the morning. Oh, with light rain in the afternoon, so take an umbrella.
+  ryan    2   6.96 s  speech  5.84  pauses 1.00 (longest 0.36)  lead 0.08 tail 0.04   4.3 u/s  | Tomorrow will be cloudy in the morning, with light rain in the afternoon. So, take an umbrella.
+  ryan    3   6.16 s  speech  5.82  pauses 0.18 (longest 0.18)  lead 0.08 tail 0.08   4.3 u/s  | Tomorrow will be cloudy in the morning, with light rain in the afternoon. So, take an umbrella.
+  ryan    4   6.72 s  speech  5.80  pauses 0.80 (longest 0.46)  lead 0.08 tail 0.04   4.3 u/s  | Tomorrow will be cloudy in the morning, with light rain in the afternoon. So, take an umbrella.
+  serena  1   6.48 s  speech  5.82  pauses 0.50 (longest 0.34)  lead 0.08 tail 0.08   4.3 u/s  | Tomorrow will be cloudy in the morning with light rain in the afternoon. So take an umbrella.
+  serena  2   6.64 s  speech  5.48  pauses 1.02 (longest 0.86)  lead 0.08 tail 0.06   4.6 u/s  | Tomorrow will be cloudy in the morning with light rain in the afternoon, so take an umbrella.
+  serena  3   6.40 s  speech  6.00  pauses 0.26 (longest 0.26)  lead 0.08 tail 0.06   4.2 u/s  | Tomorrow will be cloudy in the morning with light rain in the afternoon. So take an umbrella.
+  serena  4   6.32 s  speech  5.98  pauses 0.22 (longest 0.22)  lead 0.08 tail 0.04   4.2 u/s  | Tomorrow will be cloudy in the morning with light rain in the afternoon. So take an umbrella.
+
+[11] 好的，我把客厅的lights关了。  (10 units)
+  ryan    1   2.40 s  speech  2.18  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.14   4.6 u/s  | 好的，我把客厅的 lights 关了。
+  ryan    2   3.84 s  speech  2.78  pauses 0.92 (longest 0.92)  lead 0.08 tail 0.06   3.6 u/s  | 好的，我把客厅的 lights 关了。
+  ryan    3   2.96 s  speech  2.78  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.10   3.6 u/s  | 好的，我把客厅的 lights 关了。
+  ryan    4   2.56 s  speech  2.40  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.08   4.2 u/s  | 好的，我把客厅的 lights 关了。
+  serena  1   2.32 s  speech  2.20  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.04   4.5 u/s  | 好的，我把客厅的light关了。
+  serena  2   2.16 s  speech  2.02  pauses 0.00 (longest 0.00)  lead 0.10 tail 0.04   5.0 u/s  | 好的，我把客厅的 lights 关了。
+  serena  3   2.56 s  speech  2.26  pauses 0.16 (longest 0.16)  lead 0.08 tail 0.06   4.4 u/s  | 好的，我把客厅的light关了。
+  serena  4   2.40 s  speech  2.26  pauses 0.00 (longest 0.00)  lead 0.08 tail 0.06   4.4 u/s  | 好的，我把客厅的 lights 关了。
+
+== per sentence and voice: duration median, worst / median, rate median (units per second of speech)
+  [ 1] ryan    median  0.64 s  worst  0.64 s (x1.00)  rate  4.2 u/s  longest pause 0.00 s
+  [ 1] serena  median  0.68 s  worst  1.12 s (x1.65)  rate  3.7 u/s  longest pause 0.00 s
+  [ 2] ryan    median  2.72 s  worst  3.92 s (x1.44)  rate  2.4 u/s  longest pause 0.00 s
+  [ 2] serena  median  1.80 s  worst  2.80 s (x1.56)  rate  3.7 u/s  longest pause 0.00 s
+  [ 3] ryan    median  2.20 s  worst  2.40 s (x1.09)  rate  4.1 u/s  longest pause 0.22 s
+  [ 3] serena  median  1.60 s  worst  2.16 s (x1.35)  rate  5.5 u/s  longest pause 0.00 s
+  [ 4] ryan    median  3.76 s  worst  4.32 s (x1.15)  rate  4.1 u/s  longest pause 0.00 s
+  [ 4] serena  median  3.44 s  worst  3.68 s (x1.07)  rate  4.6 u/s  longest pause 0.16 s
+  [ 5] ryan    median  6.04 s  worst  8.64 s (x1.43)  rate  3.4 u/s  longest pause 0.52 s
+  [ 5] serena  median  4.20 s  worst  5.04 s (x1.20)  rate  4.6 u/s  longest pause 0.46 s
+  [ 6] ryan    median  0.72 s  worst  0.88 s (x1.22)  rate  1.8 u/s  longest pause 0.00 s
+  [ 6] serena  median  0.76 s  worst  0.88 s (x1.16)  rate  1.5 u/s  longest pause 0.00 s
+  [ 7] ryan    median  1.60 s  worst  1.92 s (x1.20)  rate  2.5 u/s  longest pause 0.48 s
+  [ 7] serena  median  1.12 s  worst  1.20 s (x1.07)  rate  3.0 u/s  longest pause 0.00 s
+  [ 8] ryan    median  1.96 s  worst  3.36 s (x1.71)  rate  3.2 u/s  longest pause 0.20 s
+  [ 8] serena  median  1.60 s  worst  1.76 s (x1.10)  rate  4.1 u/s  longest pause 0.00 s
+  [ 9] ryan    median  4.88 s  worst  6.08 s (x1.25)  rate  2.8 u/s  longest pause 0.32 s
+  [ 9] serena  median  4.24 s  worst  4.40 s (x1.04)  rate  3.2 u/s  longest pause 0.18 s
+  [10] ryan    median  6.84 s  worst  8.00 s (x1.17)  rate  4.3 u/s  longest pause 1.02 s
+  [10] serena  median  6.44 s  worst  6.64 s (x1.03)  rate  4.2 u/s  longest pause 0.86 s
+  [11] ryan    median  2.76 s  worst  3.84 s (x1.39)  rate  3.9 u/s  longest pause 0.92 s
+  [11] serena  median  2.36 s  worst  2.56 s (x1.08)  rate  4.5 u/s  longest pause 0.16 s
+
+== speech rate, all clips: Chinese 4.1 chars/s (p10 2.3, p90 5.4); English 3.2 syllables/s (p10 1.7, p90 4.3)
+== first audio median 33 ms (p90 39); real-time factor (made in / audio) median 0.25
+== clips over 1.4x their sentence's median: 5 of 88

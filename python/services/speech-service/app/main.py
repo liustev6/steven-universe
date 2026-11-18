@@ -42,11 +42,15 @@ def load(service: Service, settings: Settings) -> None:
     from app.work.tts_worker import TTSWorker
 
     t0 = time.monotonic()
-    tts = QwenTTSEngine(str(settings.TTS_MODEL), predictor="ours-fused", talker="ours-graph")
+    tts = QwenTTSEngine(str(settings.TTS_MODEL), predictor="ours-fused", talker="ours-graph",
+                        sampling={"temperature": settings.TTS_TEMPERATURE, "top_k": settings.TTS_TOP_K,
+                                  "top_p": settings.TTS_TOP_P, "repetition_penalty": settings.TTS_REPETITION_PENALTY},
+                        instruct=settings.TTS_INSTRUCT)
     tts.load()
     stt = QwenSTTEngine(str(settings.STT_MODEL), max_seconds=settings.STT_MAX_SECONDS)
     stt.load()
-    logger.info("models loaded in %.1f s", time.monotonic() - t0)
+    logger.info("models loaded in %.1f s (TTS %s; talker sampling over the model's: %s; instruction: %r)",
+                time.monotonic() - t0, settings.TTS_MODEL.name, tts.sampling or "none", tts.instruct)
 
     def decode(frames) -> np.ndarray:
         return tts._codec.decode([{"audio_codes": torch.stack(list(frames))}])[0][0]

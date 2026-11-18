@@ -33,5 +33,12 @@ class Settings(BaseSettings):
     MAX_TEXT_CHARS: int = 4096                 # one reply's text (T8, OpenAI's limit)
     TTS_FIRST_CLAUSE: bool = True              # a reply's first segment may end at a comma (sentences.py)
     TTS_NORMALIZE: bool = True                 # numbers, units and symbols as words first (work/normalize.py)
+    # The talker's sampling (each frame's first code: the timing, spikes/14), over the model's own
+    # (temperature 0.9, top-k 50, top-p 1.0, repetition penalty 1.05); unset keeps Qwen's.
+    TTS_TEMPERATURE: float | None = None
+    TTS_TOP_K: int | None = None
+    TTS_TOP_P: float | None = None
+    TTS_REPETITION_PENALTY: float | None = None
+    TTS_INSTRUCT: str | None = None            # a style instruction for every sentence (1.7B models only)
 
     STT_TICK_SECONDS: float = 0.1              # the STT's batch ticks this often (and at once on an end)

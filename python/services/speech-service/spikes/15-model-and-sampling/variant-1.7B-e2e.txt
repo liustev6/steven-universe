@@ -1,0 +1,20 @@
+
+==> 23:09:56  1.7B: 2 + 2 at once (e2e.py)
+1. warm after 0.1 s of waiting
+2. TTS: {'type': 'started', 'format': 'pcm_s16le', 'sample_rate': 24000, 'channels': 1}; first audio 31 ms, 4.5 s of speech in 1.6 s; 2 sentences (11520, 96000 samples); ends done
+Traceback (most recent call last):
+  File "/Users/stevenliu/Desktop/Github/Steven/steven-universe/python/services/speech-service/scripts/e2e.py", line 149, in <module>
+    asyncio.run(main())
+  File "/Users/stevenliu/.local/share/uv/python/cpython-3.12.11-macos-aarch64-none/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/Users/stevenliu/.local/share/uv/python/cpython-3.12.11-macos-aarch64-none/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/stevenliu/.local/share/uv/python/cpython-3.12.11-macos-aarch64-none/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/Users/stevenliu/Desktop/Github/Steven/steven-universe/python/services/speech-service/scripts/e2e.py", line 111, in main
+    import soundfile as sf
+ModuleNotFoundError: No module named 'soundfile'
+VRAM after 2 + 2: 7368 MiB, 8151 MiB

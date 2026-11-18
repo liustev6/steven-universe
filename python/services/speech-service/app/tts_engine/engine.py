@@ -46,6 +46,9 @@ from app.tts_engine.predictor import CodePredictor, GraphCodePredictor, StaticCo
 from app.tts_engine.talker import TalkerLoop
 
 # Each preset voice's native language (Qwen's README: speakers sound best in their own language).
+# Each voice's native language: what /v1/voices reports. Not the default for speaking: that is "Auto"
+# (Qwen's), since a voice reading another language with its own language set stretches and babbles more
+# (spikes/14: ryan on "好的。" with English set, median 2.76 s; with Auto, 1.48 s).
 NATIVE = {"vivian": "Chinese", "serena": "Chinese", "uncle_fu": "Chinese", "dylan": "Chinese",
           "eric": "Chinese", "ryan": "English", "aiden": "English", "ono_anna": "Japanese", "sohee": "Korean"}
 _DONE = object()
@@ -62,9 +65,19 @@ def max_frames(text: str) -> int:
 
 class QwenTTSEngine:
     def __init__(self, model_path: str, *, device: str = "cuda:0", chunks: int | tuple[int, ...] = (1, 1, 2, 4),
-                 context: int = 25, predictor: str = "qwen", talker: str = "qwen"):
+                 context: int = 25, predictor: str = "qwen", talker: str = "qwen",
+                 sampling: dict | None = None, instruct: str | None = None):
+        """`sampling`: the talker's settings over the model's own (temperature, top_k, top_p,
+        repetition_penalty: they decide each frame's first code, so the timing; spikes/14); None or
+        missing keys keep Qwen's. `instruct`: a style instruction for every sentence ("speak at a steady
+        pace"), for models that take one (1.7B; Qwen ignores it on the 0.6B)."""
         self.model_path, self.device, self.chunks, self.context = model_path, device, chunks, context
         self.predictor, self.talker = predictor, talker       # may change between sentences
+        self.sampling = {k: v for k, v in (sampling or {}).items() if v is not None}
+        unknown = set(self.sampling) - {"temperature", "top_k", "top_p", "repetition_penalty"}
+        if unknown:
+            raise ValueError(f"unknown sampling settings: {sorted(unknown)}")
+        self.instruct = instruct or None
         self.sample_rate = 24000
         self._tts = None
 
@@ -105,7 +118,7 @@ class QwenTTSEngine:
         import torch
 
         tts, got = self._tts, queue.Queue()
-        language = language or NATIVE.get(voice, "Auto")
+        language = language or "Auto"                       # as Qwen: the model reads it from the text
         tts._validate_languages([language])
         tts._validate_speakers([voice])
 
@@ -173,12 +186,15 @@ class QwenTTSEngine:
         import torch
 
         tts = self._tts
-        language = language or NATIVE.get(voice, "Auto")
+        language = language or "Auto"                       # as Qwen: the model reads it from the text
         tts._validate_languages([language])
         tts._validate_speakers([voice])
         input_ids = tts._tokenize_texts([tts._build_assistant_text(text)])
         kwargs = tts._merge_generate_kwargs(do_sample=sample, subtalker_dosample=sample,
-                                            max_new_tokens=max_frames(text))
+                                            max_new_tokens=max_frames(text), **self.sampling)
+        instruct_ids = [None]
+        if self.instruct and getattr(self._model, "tts_model_size", "") not in "0b6":   # as Qwen: not on the 0.6B
+            instruct_ids = [tts._tokenize_texts([tts._build_instruct_text(self.instruct)])[0]]
 
         class Captured(Exception):
             pass
@@ -189,7 +205,7 @@ class QwenTTSEngine:
         self._talker.generate = capture
         try:
             with torch.inference_mode():
-                self._model.generate(input_ids=input_ids, instruct_ids=[None], languages=[language],
+                self._model.generate(input_ids=input_ids, instruct_ids=instruct_ids, languages=[language],
                                      speakers=[voice], non_streaming_mode=True, **kwargs)
         except Captured as c:
             return c.args[0]
@@ -226,7 +242,7 @@ class QwenTTSEngine:
         import torch
 
         tts = self._tts
-        language = language or NATIVE.get(voice, "Auto")
+        language = language or "Auto"                       # as Qwen: the model reads it from the text
         input_ids = tts._tokenize_texts([tts._build_assistant_text(text)])
         with torch.inference_mode():
             codes, _ = self._model.generate(input_ids=input_ids, instruct_ids=[None], languages=[language],
