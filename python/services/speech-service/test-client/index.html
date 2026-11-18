@@ -32,6 +32,26 @@
 <h1>speech-service test client <span class="muted" id="conn"></span></h1>
 <div class="grid">
 
+  <section class="panel" style="grid-column: 1 / -1">
+    <h2>Voice: speech → agent → speech</h2>
+    <div class="row">
+      <button class="primary" id="vStart">Start a conversation</button>
+      <button id="vCommit" disabled title="end your turn now, without waiting for the silence">Done talking</button>
+      <button id="vStop" disabled title="stop the reply (and listen again)">Interrupt</button>
+      <label>silence <input type="number" id="vSilence" value="700" min="300" max="3000" step="100" style="width:72px"> ms</label>
+      <label><input type="checkbox" id="vKeep" checked> same conversation next time</label>
+      <span class="muted">voice and languages: from the panels below</span>
+    </div>
+    <div class="row"><b id="vState">off</b><span class="muted" id="vSession"></span></div>
+    <div class="transcript" id="vLive"><span class="muted">what you say, as it's heard</span></div>
+    <div class="metrics" style="margin-top:8px">
+      <span>from heard: first text <b id="vText">–</b></span><span>speech connected <b id="vConn">–</b></span>
+      <span>first audio <b id="vAudio">–</b></span><span>agent done <b id="vDone">–</b></span>
+      <span>agent's own first text <b id="vOwn">–</b></span>
+    </div>
+    <div class="log" id="vLog" style="height:220px"></div>
+  </section>
+
   <section class="panel">
     <h2>Text → speech</h2>
     <textarea id="ttsText">好的，我现在帮你把客厅的灯关掉。Sure. Tomorrow looks cloudy in the morning, with a little rain in the afternoon.</textarea>
@@ -236,7 +256,7 @@ function resampler(from) {                               // fallback: linear, wh
   };
 }
 
-async function startMic(ws) {
+async function openMic(onAudio) {                       // 16 kHz float frames to onAudio
   const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
   let mc, src;
   try { mc = new AudioContext({ sampleRate: 16000 }); src = mc.createMediaStreamSource(stream); }
@@ -244,10 +264,14 @@ async function startMic(ws) {
   await mc.audioWorklet.addModule(URL.createObjectURL(new Blob([TAP], { type: "application/javascript" })));
   const node = new AudioWorkletNode(mc, "tap"), mute = mc.createGain();
   mute.gain.value = 0; src.connect(node); node.connect(mute); mute.connect(mc.destination);
-  const send = sender(ws), down = mc.sampleRate === 16000 ? (x) => x : resampler(mc.sampleRate);
-  node.port.onmessage = (e) => send(down(e.data));
-  mic = { stream, mc };
-  $("micState").textContent = `listening (${mc.sampleRate} Hz${mc.sampleRate === 16000 ? "" : " → 16 kHz"})`;
+  const down = mc.sampleRate === 16000 ? (x) => x : resampler(mc.sampleRate);
+  node.port.onmessage = (e) => onAudio(down(e.data));
+  return { stream, mc };
+}
+
+async function startMic(ws) {
+  mic = await openMic(sender(ws));
+  $("micState").textContent = `listening (${mic.mc.sampleRate} Hz${mic.mc.sampleRate === 16000 ? "" : " → 16 kHz"})`;
   $("mic").textContent = "Stop (commit)"; $("mic").className = "live";
 }
 
@@ -288,6 +312,80 @@ $("hearBack").onclick = async () => {
     if (ws.readyState === WebSocket.OPEN) { committedAt = now(); ws.send(JSON.stringify({ type: "commit" })); }
   });
 };
+
+// ---- voice: speech → agent → speech -------------------------------------------------------------------
+// Half duplex: the mic is heard only while listening; after the reply has played, the next turn starts.
+let voiceWs = null, voiceMic = null, vState = "off", conversationId = null, vAgentLine = null;
+function vSet(state) { vState = state; $("vState").textContent = state; $("vCommit").disabled = state !== "listening"; $("vStop").disabled = state !== "thinking" && state !== "speaking"; }
+function vSay(who, text) { const d = $("vLog"); d.textContent += `${who}: ${text}\n`; d.scrollTop = d.scrollHeight; }
+function vPartial(text, stable) {
+  const a = document.createElement("span"), b = document.createElement("span");
+  a.className = "stable"; b.className = "tail"; a.textContent = stable; b.textContent = text.slice(stable.length);
+  $("vLive").replaceChildren(a, b);
+}
+function vListen() {
+  if (!voiceWs || voiceWs.readyState !== WebSocket.OPEN) return;
+  vSet("listening"); vAgentLine = null;
+  $("vLive").innerHTML = '<span class="muted">listening…</span>';
+  voiceWs.send(JSON.stringify({ type: "listen" }));
+}
+function vEnd() {
+  voiceWs?.close(); voiceWs = null;
+  if (voiceMic) { voiceMic.stream.getTracks().forEach((t) => t.stop()); voiceMic.mc.close(); voiceMic = null; }
+  stopPlayback(); vSet("off"); $("vStart").textContent = "Start a conversation"; $("vStart").className = "primary";
+}
+
+$("vStart").onclick = async () => {
+  if (voiceWs) return vEnd();
+  audio(); stopPlayback();
+  const q = new URLSearchParams({ voice: $("voice").value, silence_ms: $("vSilence").value });
+  if ($("sttLang").value) q.set("stt_language", $("sttLang").value);
+  if ($("ttsLang").value) q.set("tts_language", $("ttsLang").value);
+  if (conversationId && $("vKeep").checked) q.set("conversation_id", conversationId);
+  const ws = (voiceWs = new WebSocket(`${WS}/voice?${q}`));
+  ws.binaryType = "arraybuffer";
+  $("vStart").textContent = "End the conversation"; $("vStart").className = "live"; vSet("connecting");
+  ["vText", "vConn", "vAudio", "vDone", "vOwn"].forEach((id) => ($(id).textContent = "–"));
+  ws.onopen = async () => {
+    try {
+      const send = sender(ws);
+      voiceMic = await openMic((f32) => { if (vState === "listening") send(f32); });
+      vListen();
+    } catch (err) { vSay("error", `mic: ${err}`); vEnd(); }
+  };
+  ws.onmessage = (e) => {
+    if (typeof e.data !== "string") { if (vState === "thinking") vSet("speaking"); play(new Int16Array(e.data)); return; }
+    const m = JSON.parse(e.data);
+    if (m.type === "agent_session") {
+      conversationId = m.conversation_id;
+      $("vSession").textContent = `agent session ${m.session_id.slice(0, 8)} (${m.state}, ${m.took_ms} ms) · conversation ${m.conversation_id.slice(0, 8)}`;
+    } else if (m.from === "stt" && m.type === "partial") {
+      vPartial(m.text, m.stable || "");
+    } else if (m.from === "stt" && m.type === "final") {
+      if (m.text.trim()) { vSay("you", m.text); vSet("thinking"); ["vText", "vConn", "vAudio", "vDone", "vOwn"].forEach((id) => ($(id).textContent = "…")); }
+      $("vLive").innerHTML = ""; const f = document.createElement("span"); f.className = "final"; f.textContent = m.text || "(nothing heard)"; $("vLive").append(f);
+    } else if (m.from === "agent" && m.type === "message.delta") {
+      if (vAgentLine === null) { vAgentLine = ""; $("vLog").textContent += "agent: "; }
+      vAgentLine += m.text; $("vLog").textContent += m.text; $("vLog").scrollTop = $("vLog").scrollHeight;
+    } else if (m.type === "reply_done") {
+      const t = m.timings || {};
+      if (vAgentLine !== null) $("vLog").textContent += "\n";
+      if (m.heard) {
+        $("vText").textContent = t.first_text != null ? ms(t.first_text) : "–"; $("vConn").textContent = t.tts_connected != null ? ms(t.tts_connected) : "–";
+        $("vAudio").textContent = t.first_audio != null ? ms(t.first_audio) : "–"; $("vDone").textContent = t.agent_done != null ? ms(t.agent_done) : "–";
+        $("vOwn").textContent = t.agent_first_text_ms != null ? ms(t.agent_first_text_ms) : "–";
+        log("vLog", `   ${JSON.stringify(t)}`);
+      }
+      const left = ctx ? Math.max(0, playAt - ctx.currentTime) : 0;          // let the reply finish playing
+      setTimeout(vListen, left * 1000 + 200);
+    } else if (m.type === "error") {
+      vSay("error", `${m.where || m.from}: ${m.message || JSON.stringify(m)}`);
+    }
+  };
+  ws.onclose = () => { if (voiceWs === ws) vEnd(); };
+};
+$("vCommit").onclick = () => voiceWs?.send(JSON.stringify({ type: "commit" }));
+$("vStop").onclick = () => { stopPlayback(); voiceWs?.send(JSON.stringify({ type: "cancel" })); };
 </script>
 </body>
 </html>
