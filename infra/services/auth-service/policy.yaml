@@ -41,10 +41,10 @@ audiences:
   agent-service:
     scopes: [chat:read, chat:write, chat:admin, status:read]
 
-  # Speech, streamed from a model kept loaded on pve01's GPU (CT 108; docs/specs/speech-service.md).
-  # speech:create = synthesize; status:read = the lab's status page.
+  # Speech out and in, streamed from models kept loaded on pve01's GPU (CT 108; docs/specs/speech-service.md).
+  # speech:create = synthesize; speech:transcribe = recognize; status:read = the lab's status page.
   speech-service:
-    scopes: [speech:create, status:read]
+    scopes: [speech:create, speech:transcribe, status:read]
 
   # OpenBao: services log in with a token for this audience. What a login may read is OpenBao's
   # policy (generated from the manifests, infra/secrets-manager/tofu/), not a scope here.
@@ -83,7 +83,7 @@ clients:
         scopes: [status:read]
       agent-service:                     # the status page reads agent-service too (S rule)
         scopes: [status:read]
-      speech-service:                       # ... and speech-service (S rule)
+      speech-service:                    # ... and speech-service (S rule)
         scopes: [status:read]
       file-management:
         scopes: [files:read, files:list]
@@ -106,8 +106,8 @@ clients:
   # root-only. Its own folder, its own chats (directly, and through api-service's relay), and speech.
   smoke-test:
     grants:
-      speech-service:                       # its deploy's smoke test synthesizes a sentence
-        scopes: [speech:create]
+      speech-service:                    # its deploy's smoke test: a sentence spoken, a clip heard
+        scopes: [speech:create, speech:transcribe]
       api-service:
         scopes: [chat:read, chat:write]
       agent-service:
