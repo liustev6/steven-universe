@@ -65,4 +65,9 @@
   The standard fix is text normalization before the TTS (numbers, units, dates as words: Riva's TTS
   pipeline does it); a "say numbers in words" line in the `voice` profile as a cheap second guard.
 - **The agent dominates the wait:** heard → its first text ~2 s, against ~0.4 s for everything else
-  (the test client's e2e, 2026-11-17). The latency levers (4.15).
+  (the test client's e2e, 2026-11-17); on the Pi, 4.3 and 11.2 s (Codex's default model, `gpt-6.1-sol`).
+  **Hey Pi's own profile, `pi`** (2026-11-18): `gpt-6-luna` at effort `low`, the fastest of the plan's
+  models for short voice turns (agent-service's first-word time, 18 turns each: luna 1.15 s median, 90%
+  under 2.3 s; `gpt-6.1-terra` 1.38, `gpt-6-sol` 1.48, `gpt-6-astra` 2.73, `gpt-6.1-sol` 4.26). It told
+  the truth about having no tools (`gpt-5.6-luna` claimed to set a reminder). Caveats: one evening, simple
+  questions only. It also knows it's in Seattle, on Pacific time (the first turn answered by UTC).

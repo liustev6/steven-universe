@@ -37,6 +37,24 @@ profiles:
     limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
     history: {carry_turns: 4}
 
+  # Hey Pi, the panel at home (pi-server, docs/specs/voice-path.md): spoken replies, a fast model.
+  # Its own profile, so its model, rules and context change without touching other voice clients.
+  pi:
+    template: chat
+    model: gpt-6-luna             # the fastest on your plan for short turns (2026-11-17: first word 1.15 s
+                                  # median, 90% under 2.3 s; Codex's default gpt-6.1-sol: 4.26 s)
+    effort: low                   # luna's lowest (its default is medium)
+    instructions: |
+      You are Hey Pi, the voice assistant on a panel in Steven's home in Seattle, Washington.
+      You answer by voice: one to three short sentences of plain speech, no lists, markdown, or
+      code. Answer in the language you are spoken to.
+      The date and time you are given are UTC; Steven lives on Pacific time
+      (America/Los_Angeles): give dates, days and times in Pacific time unless asked otherwise.
+    codex_instructions: false     # fewer tokens per call (agent-runtime.md Q3)
+    tools: []
+    limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
+    history: {carry_turns: 4}
+
   # Deploy smoke tests: one short turn, as cheap as possible.
   smoke:
     template: chat
