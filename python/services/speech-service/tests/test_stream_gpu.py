@@ -1,4 +1,4 @@
-"""A reply as one streamed generation (T19; spikes/16) on the real model and GPU (marked `gpu`: run on
+"""A reply as one streamed generation (T19; spike 16) on the real model and GPU (marked `gpu`: run on
 CT 108, skipped elsewhere). Greedy, so runs repeat exactly.
 
 The properties the service rests on:
@@ -112,7 +112,7 @@ def test_it_is_qwens_streaming_mode(batch, engine, text, reply):
     differs = want.argmax(-1) != got.argmax(-1)
     near_tie = (top2[:, 0] - top2[:, 1]) <= 2 * bf16_steps(top2[:, 0])
     assert not (differs & ~near_tie).any()
-    assert differs.float().mean() < 0.02
+    assert differs.float().mean() < 0.04                             # the 1.7B: up to 2.8% (Chinese), all near-ties
 
 
 def test_it_ends_by_itself_and_speaks_every_piece(batch, engine):

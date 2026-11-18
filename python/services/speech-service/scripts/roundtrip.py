@@ -1,4 +1,5 @@
-"""Spike 13: mixed Chinese/English with numbers, spoken by the live service and heard back.
+"""Mixed Chinese/English with numbers, spoken by the live service and heard back (from spike 13: how
+text normalization was measured; docs/specs/speech-service-spike 13).
 
 Each sentence is spoken N times by each voice (sampling: each run differs), then transcribed back,
 so how the TTS read it shows up as text; the speech's length is a babble check (a sentence spoken
@@ -6,11 +7,9 @@ in 11 s where 5 would do). Through the test client (it holds the token):
 
     cd python/services/speech-service
     .venv/bin/python test-client/server.py &
-    .venv/bin/python spikes/13-text-normalization/roundtrip.py --runs 3 --out /tmp/tn > results-before.txt
-    .venv/bin/python spikes/13-text-normalization/roundtrip.py --normalize ... > results-after.txt
+    .venv/bin/python scripts/roundtrip.py --runs 3 --out /tmp/tn > roundtrip.txt
 
---normalize: each sentence through normalize.py first (what speech-service would do), and both
-the input and what was spoken are printed.
+The service normalizes each sentence itself (T14), so this measures what callers get.
 """
 
 from __future__ import annotations
@@ -41,7 +40,6 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--client", default="ws://localhost:8765")
 ap.add_argument("--voices", default="serena,ryan")
 ap.add_argument("--runs", type=int, default=3)
-ap.add_argument("--normalize", action="store_true")
 ap.add_argument("--out", default=None, help="a folder for the WAVs")
 args = ap.parse_args()
 
@@ -74,25 +72,20 @@ async def hear(pcm24: bytes) -> str:
 
 
 async def main():
-    normalize = None
-    if args.normalize:
-        sys.path.insert(0, str(Path(__file__).parent))
-        from normalize import normalize                                 # noqa: E402
     out = Path(args.out) if args.out else None
     if out:
         out.mkdir(parents=True, exist_ok=True)
     for n, sentence in enumerate(SENTENCES, 1):
-        spoken = normalize(sentence) if normalize else sentence
-        print(f"\n[{n}] {sentence}" + (f"\n    → {spoken}" if spoken != sentence else ""))
+        print(f"\n[{n}] {sentence}")
         for voice in args.voices.split(","):
             for run in range(1, args.runs + 1):
                 t = time.monotonic()
-                pcm = await speak(spoken, voice)
+                pcm = await speak(sentence, voice)
                 seconds = len(pcm) / 2 / 24000
                 heard = await hear(pcm)
                 print(f"  {voice:7} {run}  {seconds:4.1f} s  {heard}")
                 if out:
-                    with wave.open(str(out / f"{n:02d}-{voice}-{run}{'-tn' if normalize else ''}.wav"), "wb") as w:
+                    with wave.open(str(out / f"{n:02d}-{voice}-{run}.wav"), "wb") as w:
                         w.setnchannels(1), w.setsampwidth(2), w.setframerate(24000), w.writeframes(pcm)
                 sys.stdout.flush()
 

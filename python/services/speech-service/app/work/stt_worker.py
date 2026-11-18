@@ -1,8 +1,8 @@
-"""The STT's work thread (speech-service.md T13; spikes/12).
+"""The STT's work thread (speech-service.md T13; spike 12).
 
 One thread owns the STT's batch (`STTBatch`, stt_engine/batch.py); sessions talk to it through
 thread-safe calls. It ticks the batch every `tick` seconds, and **at once when an utterance ends**,
-so a final never waits for the next tick (spikes/12: up to 100 ms of a final's latency was waiting).
+so a final never waits for the next tick (spike 12: up to 100 ms of a final's latency was waiting).
 
     open(language, sink, context) → a handle   one utterance; `sink(kind, payload)` gets ("partial", Transcript)
                                       …, then ("final", Transcript), or ("error", message); ("limit",

@@ -12,7 +12,7 @@ How it streams, without changing Qwen's code:
 Qwen's own `generate_custom_voice` does the same work but decodes only once the sentence is complete.
 Cancelling: the hook raises `Cancelled` at the next frame, which stops generation in its thread.
 
-Two CUDA streams (spikes/09): generation runs on its own stream, the codec's decode on another of higher
+Two CUDA streams (spike 09): generation runs on its own stream, the codec's decode on another of higher
 priority, so the GPU runs them side by side and the decode goes first when both wait. Each frame crosses
 with a CUDA event, recorded on the generation stream when its codes are ready, waited on by the
 consumer's stream on the GPU: the CPU never waits for generation work queued after the frame. The end
@@ -48,7 +48,7 @@ from app.tts_engine.talker import TalkerLoop
 # Each preset voice's native language (Qwen's README: speakers sound best in their own language).
 # Each voice's native language: what /v1/voices reports. Not the default for speaking: that is "Auto"
 # (Qwen's), since a voice reading another language with its own language set stretches and babbles more
-# (spikes/14: ryan on "好的。" with English set, median 2.76 s; with Auto, 1.48 s).
+# (spike 14: ryan on "好的。" with English set, median 2.76 s; with Auto, 1.48 s).
 NATIVE = {"vivian": "Chinese", "serena": "Chinese", "uncle_fu": "Chinese", "dylan": "Chinese",
           "eric": "Chinese", "ryan": "English", "aiden": "English", "ono_anna": "Japanese", "sohee": "Korean"}
 _DONE = object()
@@ -68,7 +68,7 @@ class QwenTTSEngine:
                  context: int = 25, predictor: str = "qwen", talker: str = "qwen",
                  sampling: dict | None = None, instruct: str | None = None):
         """`sampling`: the talker's settings over the model's own (temperature, top_k, top_p,
-        repetition_penalty: they decide each frame's first code, so the timing; spikes/14); None or
+        repetition_penalty: they decide each frame's first code, so the timing; spike 14); None or
         missing keys keep Qwen's. `instruct`: a style instruction for every sentence ("speak at a steady
         pace"), for models that take one (1.7B; Qwen ignores it on the 0.6B)."""
         self.model_path, self.device, self.chunks, self.context = model_path, device, chunks, context
@@ -216,7 +216,7 @@ class QwenTTSEngine:
         raise RuntimeError("Qwen's generate never called the talker")
 
     def stream_prompt(self, text: str, voice: str, language: str | None = None, *, sample: bool = True) -> dict:
-        """A reply's prompt in Qwen's streaming mode (spikes/16): the prompt holds `text`'s first token,
+        """A reply's prompt in Qwen's streaming mode (spike 16): the prompt holds `text`'s first token,
         `trailing_text_hidden` the rest, one per step to come; more text comes with `text_hidden`, the
         end with `end_hidden` (TTSBatch.feed, .finish). Qwen ends the trailing text with the end mark;
         here it's left off until the reply is complete."""

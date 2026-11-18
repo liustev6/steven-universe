@@ -1,4 +1,5 @@
-"""Spike 14: how evenly does the TTS speak? Short replies, each spoken N times by each voice through
+"""How evenly does the TTS speak? (spikes 14-15: how the model, its instruction and the voices were
+chosen; docs/specs/speech-service-spikes.) Short replies, each spoken N times by each voice through
 the live service (the test client holds the token); each clip measured from its audio:
 
     duration        the whole clip
@@ -9,7 +10,7 @@ the live service (the test client holds the token); each clip measured from its 
 
     cd python/services/speech-service
     .venv/bin/python test-client/server.py &
-    .venv/bin/python spikes/14-speaking-rate/rate.py --runs 6 > spikes/14-speaking-rate/baseline.txt
+    .venv/bin/python scripts/evenness.py --runs 4 --voices ryan,dylan > evenness.txt
 """
 
 from __future__ import annotations

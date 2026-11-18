@@ -1,8 +1,15 @@
-# speech-service spikes
-Measurements that shaped the engine, kept with their code and raw output so they can be rerun and
-compared. Each folder has a `README.md`: the question, how it ran, the results, what was decided.
-All ran on CT 108's RTX 5060 (8 GB), PyTorch 2.15.0 (CUDA 13.2), `qwen-tts` 0.1.1 (transformers 4.57.3),
-the model Qwen3-TTS-12Hz-0.6B-CustomVoice at revision `85e237c`.
+# speech-service spikes: the metrics
+The measurements that shaped speech-service ([speech-service.md](../speech-service.md), its decisions and
+an appendix summarizing each). Each folder keeps its write-up (`README.md`: the question, how it ran, the
+results, what was decided) and, from spike 13 on, its raw output (`.txt`, `.log`). **The spikes' code was
+removed once each was decided** (2026-11-18), so the service's dependencies can move on; it's in git:
+`git log --diff-filter=D -- python/services/speech-service/spikes`. The measuring tools still in use are in
+`python/services/speech-service/scripts/`: `evenness.py` (from 14), `roundtrip.py` (13), `trace_reply.py`
+(16), `gpu_window.sh`.
+
+All ran on CT 108's RTX 5060 (8 GB), PyTorch 2.15.0 (CUDA 13.2), `qwen-tts` 0.1.1 (transformers 4.57.3).
+The TTS model: Qwen3-TTS-12Hz-0.6B-CustomVoice (`85e237c`) through spike 14; spike 15 compared the 1.7B
+(`0c0e305`), live since 2026-11-18; spike 16 on the 1.7B.
 
 | # | Date | Question | Answer |
 |---|---|---|---|
@@ -17,16 +24,10 @@ the model Qwen3-TTS-12Hz-0.6B-CustomVoice at revision `85e237c`.
 | [09](09-streams/) | 2026-11-17 | Why don't first audio and margin follow the faster frames? | Decode and generation shared one CUDA stream, and the end check's `int()` waited for all of it. Two streams + events: first audio 42 → 20 ms, margin 47 → 66 ms |
 | [10](10-stt/) | 2026-11-17 | Speech-to-text on the GPU beside the TTS: does Qwen3-ASR-0.6B load, how good, does either slow the other? | Loads (transformers 4.57.6; the TTS's codes unchanged). Error 3.9/4.2/12.5% en/zh/mix (Whisper turbo: 24.7% mixed); streaming 58 ms after the speaker stops. Both: 4.7 of 8 GB; realistic barge-in costs neither anything |
 | [11](11-batching/) | 2026-11-17 | What does a batch of 2 cost, piece by piece? | TTS generation ×1.07-1.08 (batch it); the codec's decode ×1.89 (compute-bound, 86% re-decoding context: a stateful decode instead, later); STT passes ×1.64 but unaligned (in turn). 2 + 2 ≈ 32-41% of the GPU |
+| [12](12-two-plus-two/) | 2026-11-17 | 2 TTS + 2 STT at once, in real time? | Yes, with one work thread per model: no gaps, TTS first audio 27-49 ms, margins ≥ 37 ms, STT finals 63-130 ms, every utterance heard right; 4 + 4 too (margins down to 20 ms). One thread for both would let an STT pass stall the TTS |
 | [13](13-text-normalization/) | 2026-11-17 | Numbers and symbols read wrong ("5,959", phone numbers, mixed zh/en): does text normalization fix it? | Yes: 27 → 43 of 48 runs heard right with wetext (`auto` per sentence, ~1-2 ms); code-switching ("London" in Chinese) was never the problem. What's left is the sampling's babble |
 | [14](14-speaking-rate/) | 2026-11-17 | Why do some short sentences take so long? | Mostly the voice: ryan (Hey Pi's) stretched, paused up to 1.5 s and babbled on short sentences (worst 3.6x its median, 6 of 66 babbled); serena never past 1.16x. Every sentence carries ~0.5 s of silence at each end. The codec's chunks don't change timing |
 | [15](15-model-and-sampling/) | 2026-11-18 | Does lower temperature, or the 1.7B model, fix it? Does the 1.7B fit with 2 + 2? Is it our engine? | The 1.7B with a steady-pace instruction: short sentences at natural length, no runaways, 0 of 88 babbled; fits (6.96 of 8.15 GB under 2 + 2), first audio 33 ms, RTF 0.25. Lower temperature doesn't fix it; Qwen's own path stretches as often (the model, not our engine). Decided: the 1.7B |
 | [16](16-streaming-text/) | 2026-11-18 | One continuous generation per reply, the text fed as it comes (Qwen's streaming mode)? | Yes: today's sentence joins are 0.08-0.18 s whatever the punctuation (what sounds wrong); in one generation the model places its own pauses, speaks the reply as one passage, and read it most faithfully (0.99-1.00). Next: the engine, a row per reply |
 
-**The tools that stay** (in `scripts/`, reused at each step): `bench.py` (each predictor: ms per frame,
-first audio, RTF) and `chunks.py` (each chunk schedule: first audio, RTF, stalls, margin, SNR, WAVs).
-GPU tests and spikes run in the spike's image on CT 108:
-
-    docker run --rm --gpus all -v /opt/speech-dev:/src -w /src -v /var/lib/tts-spike/models:/models:ro \
-      -e TTS_MODEL=/models/Qwen3-TTS-12Hz-0.6B-CustomVoice tts-spike-official python scripts/chunks.py
-
-**WAVs** stay on CT 108, not in git: `/opt/tts-spike/out` (01) and `/opt/speech-dev/out/chunks` (03).
+**WAVs** weren't kept in git (listened to at the time).

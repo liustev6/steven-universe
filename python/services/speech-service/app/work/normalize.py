@@ -1,4 +1,4 @@
-"""Text normalization before the TTS (spikes/13): numbers, units, dates and symbols rewritten as the
+"""Text normalization before the TTS (spike 13): numbers, units, dates and symbols rewritten as the
 words a speaker would say, so the model reads words instead of guessing at "5,959", "138-0013-8000",
 "-5.5°C" or "2026年" (it read them right 56% of the time; 90% after this).
 
@@ -8,7 +8,7 @@ words a speaker would say, so the model reads words instead of guessing at "5,95
 wetext (WeTextProcessing's grammars compiled to FSTs, Apache-2.0), one grammar per sentence, picked by
 its script (wetext's own rule: kana → Japanese, hangul → Korean, any Chinese → Chinese, else English).
 Words it doesn't know ("London", "iPhone") are left alone: the model speaks mixed Chinese and English
-well (spikes/13). A language without a grammar in the image (base-image keeps zh, en, ja, ko), or any
+well (spike 13). A language without a grammar in the image (base-image keeps zh, en, ja, ko), or any
 failure, passes the sentence through unchanged: normalization never stops a sentence being spoken.
 Runs in the TTS's work thread, as each sentence's prompt is made (~1-2 ms); `warm()` at start-up loads
 the grammars (16-90 ms each, the first time).

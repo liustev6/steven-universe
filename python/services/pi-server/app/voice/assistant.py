@@ -70,7 +70,7 @@ def main_language(text: str, heard: str = "") -> str:
 @dataclass
 class VoiceOptions:
     voice_en: str = "ryan"             # English replies
-    voice_zh: str = "dylan"            # Chinese replies (spikes/14-15: steadiest on Chinese, natural pace)
+    voice_zh: str = "dylan"            # Chinese replies (spikes 14-15: steadiest on Chinese, natural pace)
     tts_language: Optional[str] = None
     stt_language: Optional[str] = None
     stt_context: str = ""              # who speaks to Hey Pi (their languages): every context starts with it

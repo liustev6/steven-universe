@@ -1,4 +1,4 @@
-"""Spike 16, a real reply traced through the streaming engine (T19), step by step.
+"""A real reply traced through the streaming engine (T19), step by step (from spike 16).
 
 A reply arrives as an agent streams it (small deltas at the agent's pace), the session's splitter
 cuts it into pieces, each piece is normalized and fed to the reply's row as its tokens; the batch
@@ -6,7 +6,7 @@ steps in real time. Logged: each delta, each piece handed over (and its tokens),
 or the row waiting for text), the end mark, the end. The frames are decoded and kept as a WAV.
 Runs in the service image with the GPU (the live service stopped), the dev code at /src:
 
-    python spikes/16-streaming-text/trace.py /models/Qwen3-TTS-12Hz-1.7B-CustomVoice dylan
+    python scripts/trace_reply.py /models/Qwen3-TTS-12Hz-1.7B-CustomVoice dylan /out/trace.wav
 """
 
 import sys
@@ -22,6 +22,7 @@ from app.work.reply_text import QwenReplyText, joined
 from app.work.sentences import Sentences
 
 MODEL, VOICE = sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "dylan"
+WAV = sys.argv[3] if len(sys.argv) > 3 else "/tmp/trace.wav"
 INSTRUCT = "Speak at a steady, natural pace, without long pauses. 用平稳自然的语速说话，不要拖长或停顿。"
 REPLY = "好的，我帮你查了一下：明天Seattle会下小雨，最高气温12度，最低7度。记得带umbrella，出门前也可以先看看Google Maps上的traffic。"
 DELTA_CHARS, DELTA_MS = 4, 60          # the agent: ~4 characters every 60 ms (~65 characters a second)
@@ -111,7 +112,7 @@ print(f"\nfirst frame at {first_frame:.0f} ms; {len(frames)} frames generated in
 with torch.inference_mode():
     audio = engine._codec.decode([{"audio_codes": torch.stack(frames)}])[0][0]
 audio = np.asarray(audio, dtype=np.float32)
-with wave.open("/out/trace.wav", "wb") as f:
+with wave.open(WAV, "wb") as f:
     f.setnchannels(1), f.setsampwidth(2), f.setframerate(24000)
     f.writeframes((np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes())
-print("saved /out/trace.wav")
+print(f"saved {WAV}")

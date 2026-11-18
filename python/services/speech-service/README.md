@@ -1,6 +1,6 @@
 # speech-service
-Speech out and in, streamed, from two models kept loaded on pve01's GPU (CT 108): Qwen3-TTS-0.6B
-(text to speech) and Qwen3-ASR-0.6B (speech to text), in one process. Spec: [speech-service.md](../../../docs/specs/speech-service.md).
+Speech out and in, streamed, from two models kept loaded on pve01's GPU (CT 108): Qwen3-TTS-1.7B
+(text to speech; the 0.6B before 2026-11-18) and Qwen3-ASR-0.6B (speech to text), in one process. Spec: [speech-service.md](../../../docs/specs/speech-service.md).
 
 | Path | What |
 |---|---|
@@ -14,7 +14,8 @@ Speech out and in, streamed, from two models kept loaded on pve01's GPU (CT 108)
 | `Dockerfile` | the service image: speech-base (pinned by digest) + our code, COPY only |
 | `scripts/` | `smoke_test.py` (a sentence spoken, then heard back), `cert-hook.sh`, `bench.py`, `chunks.py`, `e2e.py` |
 | `test-client/` | a local page that talks to the live service and plays it, as `speech-test-client` (its server forwards the WebSockets with the token) |
-| `spikes/` | every measurement behind the design, with its code and raw output |
+| `scripts/` | the deploy's smoke test and cert hook; e2e, evenness, roundtrip, trace_reply (measuring the live or dev service); gpu_window.sh (GPU work in a maintenance window) |
+| (metrics) | every spike's write-up and raw results: `docs/specs/speech-service-spikes/` |
 
 ## Configuration
 `infra/services/speech-service/config.env` → `/etc/speech-service/config.env` (settings: `app/config.py`,

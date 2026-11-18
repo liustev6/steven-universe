@@ -21,13 +21,13 @@ Two loops, the same math (every module is Qwen's, called directly):
   same 15 passes, so each pass's shapes are fixed (pass k: k+2 positions), which is what lets a CUDA
   graph record it (step 4). And no mask: unlike Hugging Face's fixed cache (attention over all 16 slots,
   the unused ones masked), attention reads only the written positions, so PyTorch picks the same kernel
-  as the growing cache, and the same rounding (spikes/02). Nothing to clear between frames: every
+  as the growing cache, and the same rounding (spike 02). Nothing to clear between frames: every
   position is written before it's read.
 
 - `GraphCodePredictor` (step 4): `StaticCodePredictor`'s 15 passes recorded once as a **CUDA graph** and
   replayed every frame: one launch instead of ~1,500 (5 layers × ~18 kernels × 15 passes, plus the
   sampling), with no Python in between. How, in `_capture`.
-- Fused (A, after spikes/04): the same, with our own Triton kernels (kernels.py) in place of PyTorch's
+- Fused (A, after spike 04): the same, with our own Triton kernels (kernels.py) in place of PyTorch's
   chains of small ones: the RMSNorm (8 kernels → 1), the rotary embedding with the cache write (14 → 1).
 
 The sampling is ours too: Hugging Face's order (temperature, then top-k, then top-p, then a draw), in

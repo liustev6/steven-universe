@@ -7,7 +7,7 @@
 # hashes (model.safetensors, speech_tokenizer/model.safetensors) match Hugging Face's own. A new
 # revision: lock it from a copy you've tested, commit, deploy.
 models:
-  # The TTS the service speaks with (config.env SPEECH_TTS_MODEL; spikes/15, 2026-11-18). Weights' hashes
+  # The TTS the service speaks with (config.env SPEECH_TTS_MODEL; spike 15, 2026-11-18). Weights' hashes
   # match Hugging Face's own.
   Qwen3-TTS-12Hz-1.7B-CustomVoice:
     repo: Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice

@@ -1,4 +1,4 @@
-"""The STT's batch: several utterances sharing passes (speech-service.md T13, 4.5e step 3; spikes/11:
+"""The STT's batch: several utterances sharing passes (speech-service.md T13, 4.5e step 3; spike 11:
 a pass over 2 utterances costs ×1.64 one, over 4 ×2.24).
 
 Each slot is one utterance in progress (a `StreamingTranscription`, transcription.py: its audio, its

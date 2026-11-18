@@ -10,7 +10,7 @@
 The cache: per layer, keys and values for `capacity` positions, (batch, kv_heads, capacity, head_dim),
 allocated once. A call writes positions start…start+n-1 and attends over 0…start+n-1: a fixed slice, so
 no mask, so PyTorch's attention picks the same kernel as Hugging Face's growing cache, and the same
-rounding (spikes/02). The rotary angles come from a table, `cos`/`sin` (capacity, head_dim), computed
+rounding (spike 02). The rotary angles come from a table, `cos`/`sin` (capacity, head_dim), computed
 once by the model's own rotary module.
 
 `fused`: our Triton kernels (kernels.py) for the RMSNorms and for the rotary with the cache write.

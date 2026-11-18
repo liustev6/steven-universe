@@ -1,5 +1,5 @@
 # speech-base's packages, exactly (infra/images/speech-base.yaml): the set every speech-service test passed
-# with (spikes/10's image, pip freeze, 2026-11-18), less what it doesn't need (gradio: Qwen's demo; pandas,
+# with (spike 10's image, pip freeze, 2026-11-18), less what it doesn't need (gradio: Qwen's demo; pandas,
 # pyarrow, jiwer, opencc: spike tools; torchvision; test and notebook tools). Installed with --no-deps:
 # nothing here is re-resolved. torch and the nvidia-* CUDA libraries come from PyTorch's CUDA 13.2 index.
 accelerate==1.12.0

@@ -1,8 +1,8 @@
 """The TTS's batch: several replies generated together, joining and leaving between steps
-(continuous batching; speech-service.md T13, 4.5e; spikes/11: a batch of 2 costs ×1.07 one).
+(continuous batching; speech-service.md T13, 4.5e; spike 11: a batch of 2 costs ×1.07 one).
 
 Each **slot** is one generation in progress (a whole reply, fed its text as it's written: Qwen's
-streaming mode, spikes/16; or one sentence, its text all in the prompt), a row of every batched tensor:
+streaming mode, spike 16; or one sentence, its text all in the prompt), a row of every batched tensor:
 
     the cache            its own row of every layer's keys and values (positions 0…its length)
     its position         in GPU memory, one per row: our kernels read their row's (kernels.py)
@@ -22,7 +22,7 @@ streaming mode, spikes/16; or one sentence, its text all in the prompt), a row o
 step (one graph at `slots` rows), at its current position, but nothing of it is kept: no frame out,
 its position, code, hidden state and seen codes as they were, its cache row's write at that
 position overwritten when it runs for real. So the model sees exactly the inputs it would with the
-whole text known (spikes/16): one text token per frame, the end mark, then pads.
+whole text known (spike 16): one text token per frame, the end mark, then pads.
 
 Every step runs all `slots` rows: a free row computes nothing useful (zeros, at position 0 of its own
 row) and costs little (×1.07 a row: the weights are read once for all). So one graph per piece, at
@@ -156,7 +156,7 @@ class TTSBatch:
 
         `on_frames(frames)`: called as soon as the frames exist, before the talker computes the next
         codes 1, so their audio can start decoding meanwhile (as TalkerLoop hands each frame over right
-        after the predictor; spikes/11: first audio 38 → ~20 ms). Record a CUDA event there."""
+        after the predictor; spike 11: first audio 38 → ~20 ms). Record a CUDA event there."""
         import torch
 
         busy = [b for b, s in enumerate(self.state) if s is not None]

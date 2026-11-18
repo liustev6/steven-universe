@@ -1,4 +1,4 @@
-"""Text normalization before the TTS (app/work/normalize.py; spikes/13): what each language's numbers
+"""Text normalization before the TTS (app/work/normalize.py; spike 13): what each language's numbers
 become, what's left alone, and that it never stops a sentence."""
 
 import pytest

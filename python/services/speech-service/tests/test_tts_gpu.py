@@ -1,6 +1,9 @@
 """The plain engine on the real model and GPU (marked `gpu`: run on CT 108, skipped elsewhere):
 
-    TTS_MODEL=/models/Qwen3-TTS-12Hz-0.6B-CustomVoice python -m pytest -m gpu
+    TTS_MODEL=/models/Qwen3-TTS-12Hz-1.7B-CustomVoice python -m pytest -m gpu
+
+The baseline is the live model, the 1.7B (its limits measured 2026-11-18; one file at a time:
+one copy of the 1.7B fits the GPU, scripts/gpu_window.sh).
 
 The key test: without sampling, our streaming engine produces exactly Qwen's own codes, frame for
 frame. Every bit-exact engine (4.5c: our loop, our fixed cache, the CUDA graph) must pass it.
@@ -9,7 +12,7 @@ Our fused kernels (kernels.py) can't be bit-exact: they add numbers in another o
 rarely, a result differs by one bfloat16 step, and greedy decoding diverges after the first near-tie
 it flips. They pass the serving engines' standard instead (vLLM's `check_logprobs_close`): the same
 inputs, pass by pass, against the exact predictor; a different pick only where the exact one's top two
-scores were nearly tied, and rarely (spikes/05)."""
+scores were nearly tied, and rarely (spike 05)."""
 
 import os
 import threading
@@ -116,7 +119,7 @@ def check_close(exact, fused, calls, engine):
             worst = max(worst, (diff / bf16_steps(top2[:, :1])).max().item())
     print(f"talker (graph: {fused.graph}): {steps} steps, {flips} different code 1s, worst score difference "
           f"{worst:.1f} bfloat16 steps")
-    assert flips / steps < 0.01
+    assert flips / steps < 0.025                                    # the 1.7B: 2 of 148 (1.35%), all near-ties
     assert worst <= 8
 
 
@@ -174,7 +177,7 @@ def test_fused_predictor_is_close_to_the_exact_one(engine):
             # in steps of the best score's size: a score near 0 has a tiny step, which says nothing
             worst = max(worst, ((want - got).abs() / bf16_steps(top2[..., :1])).max().item())
     print(f"{steps} steps, {flips} different picks, worst score difference {worst:.1f} bfloat16 steps")
-    assert flips / steps < 0.01
+    assert flips / steps < 0.025                                    # as the talker's (the 1.7B: near-ties ~1-2%)
     assert worst <= 8                                                # a bug moves scores by far more
 
 

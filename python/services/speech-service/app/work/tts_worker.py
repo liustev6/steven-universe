@@ -1,8 +1,8 @@
-"""The TTS's work thread (speech-service.md T13, T19; the pattern measured in spikes/12).
+"""The TTS's work thread (speech-service.md T13, T19; the pattern measured in spike 12).
 
 One thread owns the TTS's batch (`TTSBatch`, tts_engine/batch.py); the sessions only talk to it
 through the methods below, which are thread-safe. **A job is one reply, spoken as one generation fed
-its text as it's written** (Qwen's streaming mode, spikes/16): no reset of the voice between sentences,
+its text as it's written** (Qwen's streaming mode, spike 16): no reset of the voice between sentences,
 the model placing its own pauses. Per slot, a decode thread turns that slot's frames into audio (the
 codec's chunked decode on the high-priority stream) and hands it to the reply's `sink`.
 
@@ -51,7 +51,7 @@ GENERATION_FRAMES = 1100                 # a generation's text, in expected fram
 
 
 def expected_frames(text: str) -> float:
-    """Frames a text is expected to take at a natural pace (spikes/14: Chinese ~4.7 characters a second,
+    """Frames a text is expected to take at a natural pace (spike 14: Chinese ~4.7 characters a second,
     English ~14 characters a second; 12.5 frames a second)."""
     cjk = len(CJK.findall(text))
     return cjk * 2.7 + (len(text) - cjk) * 0.9

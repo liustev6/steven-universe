@@ -1,4 +1,4 @@
-"""Streaming speech-to-text, the logic (speech-service.md T12, 4.5d; spikes/10). Pure code: the model's
+"""Streaming speech-to-text, the logic (speech-service.md T12, 4.5d; spike 10). Pure code: the model's
 one decode pass is passed in, so this is tested without a GPU.
 
 Qwen3-ASR streams by re-deciding, not by appending (its own `streaming_transcribe`):

@@ -25,7 +25,7 @@ def test_every_line_is_an_exact_pin_once():
 def test_the_model_stack_is_the_tested_one():
     p = pins()
     assert p["torch"] == "2.15.0+cu132" and p["triton"] == "3.9.0"
-    assert p["transformers"] == "4.57.6"                  # qwen-asr's pin (qwen-tts pins 4.57.3: spikes/10)
+    assert p["transformers"] == "4.57.6"                  # qwen-asr's pin (qwen-tts pins 4.57.3: spike 10)
     assert p["qwen-tts"] == "0.1.1" and p["qwen-asr"] == "0.0.6"
     assert any(k.startswith("nvidia-cudnn") for k in p) and "nvidia-cublas" in p
 
@@ -45,7 +45,7 @@ def test_service_auths_dependencies_are_in():
 
 
 def test_text_normalization_is_in():
-    """wetext and its dependencies (spikes/13: numbers and symbols as words before the TTS)."""
+    """wetext and its dependencies (spike 13: numbers and symbols as words before the TTS)."""
     p = pins()
     assert p["wetext"] == "0.2.1" and p["kaldifst"] == "1.9.0"
     for name in ("contractions", "textsearch", "anyascii", "pyahocorasick", "click"):

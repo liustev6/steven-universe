@@ -3,7 +3,7 @@ you write what one *program* does with a block of data; the GPU runs many progra
 turns each into the warps, loads and registers CUDA would make you write by hand.
 
 Why fuse: PyTorch runs Qwen's RMSNorm as 8 kernels, each reading its input from GPU memory and writing
-its output back (spikes/04: 4,665 kernels a frame in the predictor, ~1 µs each however little they do).
+its output back (spike 04: 4,665 kernels a frame in the predictor, ~1 µs each however little they do).
 One fused kernel reads the row once, does everything in registers, writes once.
 
 Rounding: every kernel here rounds where PyTorch's separate operations round, so it can match them

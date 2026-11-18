@@ -1,4 +1,4 @@
-"""A reply's text as Qwen's talker reads it, piece by piece (tts_worker.ReplyText; spikes/16): each
+"""A reply's text as Qwen's talker reads it, piece by piece (tts_worker.ReplyText; spike 16): each
 piece normalized (T14: numbers and symbols as words), joined to what came before as continuous text
 (a space between words, none around Chinese, Japanese or Korean), then tokenized and embedded by the
 engine (QwenTTSEngine.stream_prompt, .text_hidden, .end_hidden)."""

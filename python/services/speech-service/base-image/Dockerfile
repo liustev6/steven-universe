@@ -13,7 +13,7 @@ ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PYTHONDONTWRITEBYTECODE=1
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev \
  && rm -rf /var/lib/apt/lists/*
 COPY requirements.lock /tmp/requirements.lock
-# wetext (text normalization before the TTS, spikes/13) ships grammars for 20 languages (294 MB): keep
+# wetext (text normalization before the TTS, spike 13) ships grammars for 20 languages (294 MB): keep
 # the ones speech-service's voices speak (Chinese, English, Japanese, Korean) and the shared processors;
 # other languages pass through unnormalized (app/work/normalize.py).
 RUN python -m venv /venv \
