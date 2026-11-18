@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>speech-service test client</title>
+<style>
+  :root { --bg: #fafaf9; --panel: #fff; --text: #1c1917; --muted: #78716c; --line: #e7e5e4; --accent: #2563eb; --bad: #dc2626; --good: #16a34a; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1c1917; --panel: #292524; --text: #f5f5f4; --muted: #a8a29e; --line: #44403c; --accent: #60a5fa; --bad: #f87171; --good: #4ade80; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
+  h1 { font-size: 18px; margin: 0 0 12px; } h2 { font-size: 15px; margin: 0 0 10px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; max-width: 1200px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  textarea { width: 100%; min-height: 84px; font: inherit; padding: 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  select, input[type=number] { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.live { background: var(--bad); border-color: var(--bad); color: #fff; }
+  button:disabled { opacity: .45; cursor: default; }
+  .metrics { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
+  .metrics b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .transcript { min-height: 64px; padding: 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); font-size: 16px; }
+  .stable { font-weight: 600; } .tail { color: var(--muted); font-style: italic; }
+  .final { color: var(--good); }
+  .log { height: 170px; overflow: auto; font: 12px/1.4 ui-monospace, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; white-space: pre-wrap; }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<h1>speech-service test client <span class="muted" id="conn"></span></h1>
+<div class="grid">
+
+  <section class="panel">
+    <h2>Text → speech</h2>
+    <textarea id="ttsText">好的，我现在帮你把客厅的灯关掉。Sure. Tomorrow looks cloudy in the morning, with a little rain in the afternoon.</textarea>
+    <div class="row">
+      <label>voice <select id="voice"></select></label>
+      <label>language <select id="ttsLang"><option value="">the voice's own</option><option>English</option><option>Chinese</option></select></label>
+    </div>
+    <div class="row">
+      <button class="primary" id="speak">Speak</button>
+      <button id="speakStream" title="the text sent word by word, as an agent writes it">Speak, streamed in</button>
+      <button id="ttsCancel" disabled>Cancel</button>
+      <button id="hearBack" disabled title="the last reply's audio into speech-to-text, in real time">Hear it back →</button>
+    </div>
+    <div class="metrics">
+      <span>first audio <b id="ttsFirst">–</b></span><span>audio <b id="ttsLen">–</b></span>
+      <span>made in <b id="ttsTook">–</b></span><span>ended <b id="ttsEnd">–</b></span>
+    </div>
+    <div class="log" id="ttsLog"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Speech → text</h2>
+    <div class="row">
+      <label>language <select id="sttLang"><option value="">detect</option><option>English</option><option>Chinese</option></select></label>
+      <label><input type="checkbox" id="turns"> server turn detection</label>
+      <label>silence <input type="number" id="silence" value="700" min="300" max="3000" step="100" style="width:72px"> ms</label>
+    </div>
+    <div class="row">
+      <button class="primary" id="mic">Start talking</button>
+      <button id="sttCancel" disabled>Cancel</button>
+      <span class="muted" id="micState"></span>
+    </div>
+    <div class="transcript" id="transcript"><span class="muted">partials appear here: <span class="stable">stable</span> <span class="tail">may still change</span></span></div>
+    <div class="metrics" style="margin-top:8px">
+      <span>partials <b id="sttPartials">–</b></span><span>final after stop <b id="sttLatency">–</b></span>
+      <span>reason <b id="sttReason">–</b></span><span>language <b id="sttLanguage">–</b></span>
+    </div>
+    <div class="log" id="sttLog"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Service</h2>
+    <div class="row"><button id="refresh">Refresh status</button><span class="muted" id="statusAt"></span></div>
+    <div class="log" id="status" style="height:300px"></div>
+  </section>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let WS = "";
+const now = () => performance.now();
+const ms = (t) => `${Math.round(t)} ms`;
+function log(el, line) { const d = $(el); d.textContent += line + "\n"; d.scrollTop = d.scrollHeight; }
+
+// ---- setup ------------------------------------------------------------------------------------------
+(async () => {
+  WS = (await (await fetch("/config")).json()).ws;
+  $("conn").textContent = `· ${WS}`;
+  const v = await (await fetch("/v1/voices")).json();
+  for (const { name, language } of v.voices || []) $("voice").add(new Option(`${name} (${language})`, name, name === "ryan", name === "ryan"));
+  refreshStatus();
+})();
+
+async function refreshStatus() {
+  const s = await (await fetch("/v1/status")).json();
+  const t = s.tts || {}, x = s.stt || {}, g = s.gpu || {};
+  $("status").textContent =
+    `warm: ${s.warm}   uptime: ${s.uptime_seconds}s   GPU: ${g.name || "?"}  VRAM ${g.vram_used_gb}/${g.vram_total_gb} GB\n\n` +
+    `TTS  running ${t.running}/${t.running_max}  waiting ${t.waiting}/${t.waiting_max}  sessions ${t.sessions}  sentences ${t.sentences}\n` +
+    `     first audio: median ${t.first_audio_ms?.median ?? "–"} ms, last ${JSON.stringify(t.first_audio_ms?.last ?? [])}\n\n` +
+    `STT  running ${x.running}/${x.running_max}  waiting ${x.waiting}/${x.waiting_max}  sessions ${x.sessions}  finals ${x.finals}\n` +
+    `     final after the end: median ${x.final_ms?.median ?? "–"} ms, last ${JSON.stringify(x.final_ms?.last ?? [])}\n\n` +
+    JSON.stringify(s, null, 2);
+  $("statusAt").textContent = new Date().toLocaleTimeString();
+}
+$("refresh").onclick = refreshStatus;
+
+// ---- text → speech ----------------------------------------------------------------------------------
+let ctx = null, playAt = 0, playing = [], ttsWs = null, lastReply = [];
+function audio() { ctx ??= new AudioContext(); ctx.resume(); return ctx; }
+
+function play(int16) {
+  const c = audio(), f = new Float32Array(int16.length);
+  for (let i = 0; i < int16.length; i++) f[i] = int16[i] / 32768;
+  const buf = c.createBuffer(1, f.length, 24000);
+  buf.copyToChannel(f, 0);
+  const src = c.createBufferSource();
+  src.buffer = buf; src.connect(c.destination);
+  const t = Math.max(c.currentTime + 0.02, playAt);       // right after the last chunk: gapless
+  src.start(t); playAt = t + buf.duration;
+  playing.push(src); src.onended = () => (playing = playing.filter((s) => s !== src));
+}
+
+function stopPlayback() { playing.forEach((s) => { try { s.stop(); } catch {} }); playing = []; playAt = 0; }
+
+function speak(streamed) {
+  stopPlayback(); audio();
+  $("ttsLog").textContent = ""; ["ttsFirst", "ttsLen", "ttsTook", "ttsEnd"].forEach((id) => ($(id).textContent = "…"));
+  const lang = $("ttsLang").value, text = $("ttsText").value;
+  const url = `${WS}/v1/realtime/speech?voice=${encodeURIComponent($("voice").value)}` + (lang ? `&language=${encodeURIComponent(lang)}` : "");
+  const ws = (ttsWs = new WebSocket(url));
+  ws.binaryType = "arraybuffer";
+  let sentAt = null, first = null, samples = 0, chunks = [];
+  $("speak").disabled = $("speakStream").disabled = true; $("ttsCancel").disabled = false; $("hearBack").disabled = true;
+  ws.onmessage = async (e) => {
+    if (typeof e.data !== "string") {
+      const pcm = new Int16Array(e.data);
+      if (first === null) { first = now() - sentAt; $("ttsFirst").textContent = ms(first); }
+      samples += pcm.length; chunks.push(pcm); play(pcm);
+      $("ttsLen").textContent = `${(samples / 24000).toFixed(1)} s`;
+      return;
+    }
+    const m = JSON.parse(e.data);
+    log("ttsLog", `${String(Math.round(now() - (sentAt ?? now()))).padStart(5)} ms  ${e.data}`);
+    if (m.type === "started") {
+      sentAt = now();
+      if (!streamed) { ws.send(JSON.stringify({ type: "text", text })); ws.send(JSON.stringify({ type: "end" })); return; }
+      for (const piece of text.match(/\S+\s*|[　-鿿＀-￯]/g) || []) {   // words, or CJK characters
+        if (ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({ type: "text", text: piece }));
+        await new Promise((r) => setTimeout(r, 60));
+      }
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "end" }));
+    }
+    if (m.type === "done") $("ttsTook").textContent = ms(now() - sentAt);
+  };
+  ws.onclose = (e) => {
+    $("ttsEnd").textContent = `${e.code}${e.reason ? " " + e.reason : ""}`;
+    log("ttsLog", `closed: ${e.code} ${e.reason}`);
+    $("speak").disabled = $("speakStream").disabled = false; $("ttsCancel").disabled = true;
+    if (chunks.length) { lastReply = chunks; $("hearBack").disabled = false; }
+    ttsWs = null;
+  };
+}
+$("speak").onclick = () => speak(false);
+$("speakStream").onclick = () => speak(true);
+$("ttsCancel").onclick = () => { stopPlayback(); ttsWs?.send(JSON.stringify({ type: "cancel" })); };
+
+// ---- speech → text ----------------------------------------------------------------------------------
+let sttWs = null, mic = null, committedAt = null, partials = 0;
+const TAP = `class Tap extends AudioWorkletProcessor {
+  process(inputs) { const ch = inputs[0][0]; if (ch) this.port.postMessage(ch.slice(0)); return true; }
+}
+registerProcessor("tap", Tap);`;
+
+function render(text, stable, final) {
+  const t = $("transcript");
+  t.innerHTML = "";
+  if (final) { const s = document.createElement("span"); s.className = "final"; s.textContent = text; t.append(s); return; }
+  const a = document.createElement("span"), b = document.createElement("span");
+  a.className = "stable"; b.className = "tail";
+  a.textContent = stable; b.textContent = text.slice(stable.length);
+  t.append(a, b);
+}
+
+function openStt(onStarted) {
+  const q = new URLSearchParams();
+  if ($("sttLang").value) q.set("language", $("sttLang").value);
+  if ($("turns").checked) { q.set("turn_detection", "server"); q.set("silence_ms", $("silence").value); }
+  $("sttLog").textContent = ""; partials = 0; committedAt = null;
+  ["sttPartials", "sttLatency", "sttReason", "sttLanguage"].forEach((id) => ($(id).textContent = "…"));
+  render("", "", false);
+  const ws = (sttWs = new WebSocket(`${WS}/v1/realtime/transcription?${q}`));
+  const opened = now();
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    log("sttLog", `${String(Math.round(now() - opened)).padStart(6)} ms  ${e.data}`);
+    if (m.type === "started") onStarted(ws);
+    if (m.type === "partial") { partials++; $("sttPartials").textContent = partials; render(m.text, m.stable, false); $("sttLanguage").textContent = m.language || "–"; }
+    if (m.type === "final") {
+      render(m.text, m.text, true);
+      $("sttReason").textContent = m.reason; $("sttLanguage").textContent = m.language || "–";
+      $("sttLatency").textContent = committedAt ? ms(now() - committedAt) : `(${m.reason})`;
+      stopMic();
+    }
+  };
+  ws.onclose = (e) => { log("sttLog", `closed: ${e.code} ${e.reason}`); stopMic(); sttWs = null; $("sttCancel").disabled = true; $("mic").disabled = false; };
+  $("sttCancel").disabled = false;
+  return ws;
+}
+
+function sender(ws) {                                   // 16 kHz float → 16-bit frames of 100 ms
+  let pending = [];
+  return (f32) => {
+    for (let i = 0; i < f32.length; i++) pending.push(Math.max(-1, Math.min(1, f32[i])) * 32767);
+    while (pending.length >= 1600 && ws.readyState === WebSocket.OPEN) {
+      ws.send(Int16Array.from(pending.slice(0, 1600)).buffer);
+      pending = pending.slice(1600);
+    }
+  };
+}
+
+function resampler(from) {                               // fallback: linear, when the context isn't 16 kHz
+  const ratio = from / 16000; let carry = new Float32Array(0), pos = 0;
+  return (input) => {
+    const data = new Float32Array(carry.length + input.length); data.set(carry); data.set(input, carry.length);
+    const out = [];
+    for (; pos + 1 < data.length; pos += ratio) { const i = Math.floor(pos), f = pos - i; out.push(data[i] * (1 - f) + data[i + 1] * f); }
+    const keep = Math.floor(pos); carry = data.slice(keep); pos -= keep;
+    return Float32Array.from(out);
+  };
+}
+
+async function startMic(ws) {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  let mc, src;
+  try { mc = new AudioContext({ sampleRate: 16000 }); src = mc.createMediaStreamSource(stream); }
+  catch { mc = new AudioContext(); src = mc.createMediaStreamSource(stream); }
+  await mc.audioWorklet.addModule(URL.createObjectURL(new Blob([TAP], { type: "application/javascript" })));
+  const node = new AudioWorkletNode(mc, "tap"), mute = mc.createGain();
+  mute.gain.value = 0; src.connect(node); node.connect(mute); mute.connect(mc.destination);
+  const send = sender(ws), down = mc.sampleRate === 16000 ? (x) => x : resampler(mc.sampleRate);
+  node.port.onmessage = (e) => send(down(e.data));
+  mic = { stream, mc };
+  $("micState").textContent = `listening (${mc.sampleRate} Hz${mc.sampleRate === 16000 ? "" : " → 16 kHz"})`;
+  $("mic").textContent = "Stop (commit)"; $("mic").className = "live";
+}
+
+function stopMic() {
+  if (!mic) return;
+  mic.stream.getTracks().forEach((t) => t.stop()); mic.mc.close(); mic = null;
+  $("micState").textContent = ""; $("mic").textContent = "Start talking"; $("mic").className = "primary";
+}
+
+$("mic").onclick = async () => {
+  if (mic) {                                              // stop: the end of speech
+    committedAt = now(); stopMic();
+    sttWs?.send(JSON.stringify({ type: "commit" }));
+    $("mic").disabled = true;
+    return;
+  }
+  openStt((ws) => startMic(ws).catch((err) => { log("sttLog", `mic: ${err}`); ws.close(); }));
+};
+$("sttCancel").onclick = () => { stopMic(); sttWs?.send(JSON.stringify({ type: "cancel" })); };
+
+// The last reply's audio into speech-to-text, in real time (no mic): a round trip.
+$("hearBack").onclick = async () => {
+  const total = lastReply.reduce((n, c) => n + c.length, 0), f = new Float32Array(total);
+  let o = 0; for (const c of lastReply) for (let i = 0; i < c.length; i++) f[o++] = c[i] / 32768;
+  const off = new OfflineAudioContext(1, Math.ceil(total * 16000 / 24000), 16000);
+  const buf = off.createBuffer(1, total, 24000); buf.copyToChannel(f, 0);
+  const s = off.createBufferSource(); s.buffer = buf; s.connect(off.destination); s.start();
+  const pcm16k = (await off.startRendering()).getChannelData(0);
+  $("mic").disabled = true;
+  openStt(async (ws) => {
+    const send = sender(ws), start = now();
+    for (let i = 0; i < pcm16k.length; i += 1600) {
+      await new Promise((r) => setTimeout(r, Math.max(0, start + (i / 16) - now())));
+      if (ws.readyState !== WebSocket.OPEN) return;
+      send(pcm16k.subarray(i, i + 1600));
+    }
+    await new Promise((r) => setTimeout(r, Math.max(0, start + pcm16k.length / 16 - now())));
+    if (ws.readyState === WebSocket.OPEN) { committedAt = now(); ws.send(JSON.stringify({ type: "commit" })); }
+  });
+};
+</script>
+</body>
+</html>
