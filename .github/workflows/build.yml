@@ -91,16 +91,22 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
-      # Large images (infra/images/*.yaml `large: true`, e.g. speech-base, ~7 GB): the runner's ~14 GB of
-      # free disk isn't enough to build one. Its image carries toolchains no build here uses (the Android
-      # SDK, .NET, Haskell, CodeQL's bundles: ~30 GB); the VM is thrown away after the job.
+      # Large images (infra/images/*.yaml `large: true`, e.g. speech-base, ~7 GB, ~15 GB to build): if the
+      # runner has under 30 GB free, delete toolchains no build here uses (the Android SDK, .NET, Haskell,
+      # CodeQL's bundles: ~25 GB, ~90 s); the VM is thrown away after the job. (2026-11-18: ubuntu-24.04
+      # had 86 GB free, so this skips; GitHub documents 14 GB, and runners have been smaller.)
       - name: Free disk space
         if: matrix.large
         run: |
           df -h /
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
-          sudo docker image prune -af >/dev/null
-          df -h /
+          avail="$(df --output=avail -BG / | tail -1 | tr -dc 0-9)"
+          if [ "$avail" -lt 30 ]; then
+            sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+            sudo docker image prune -af >/dev/null
+            df -h /
+          else
+            echo "${avail} GB free: enough, nothing removed"
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           ref: ${{ inputs.ref || github.sha }}
