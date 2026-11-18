@@ -26,12 +26,12 @@ def create(settings, ui):
     tokens = TokenClient(settings.AUTH_ISSUER, settings.CLIENT_ID, settings.CLIENT_SECRET_FILE.read_text().strip())
     speech = SpeechClient(settings.SPEECH_URL, lambda: tokens.token("speech-service"))
     agent = AgentClient(settings.AGENT_URL, lambda: tokens.token("agent-service"), settings.AGENT_PROFILE)
-    options = VoiceOptions(voice=settings.VOICE_NAME, tts_language=settings.TTS_LANGUAGE,
+    options = VoiceOptions(voice_en=settings.VOICE_EN, voice_zh=settings.VOICE_ZH, tts_language=settings.TTS_LANGUAGE,
                            stt_language=settings.STT_LANGUAGE, silence_ms=settings.SILENCE_MS,
                            window=settings.LISTEN_WINDOW_SECONDS)
     wake = WakeWord(settings.WAKE_WORD)
-    logger.info("voice: wake word %r, speech %s, agent %s (profile %s), mic %s, speaker %s", wake.name,
-                settings.SPEECH_URL, settings.AGENT_URL, settings.AGENT_PROFILE, settings.MIC_DEVICE,
+    logger.info("voice: wake word %r, voices %s (English) and %s (Chinese), speech %s, agent %s (profile %s), mic %s, speaker %s", wake.name,
+                settings.VOICE_EN, settings.VOICE_ZH, settings.SPEECH_URL, settings.AGENT_URL, settings.AGENT_PROFILE, settings.MIC_DEVICE,
                 settings.SPEAKER_DEVICE)
     return VoiceAssistant(speech, agent, Mic(settings.MIC_DEVICE), lambda: Speaker(settings.SPEAKER_DEVICE),
                           ui, options, wake=wake, voice=Voice())

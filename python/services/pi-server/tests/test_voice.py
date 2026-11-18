@@ -9,7 +9,7 @@ import json
 import httpx
 
 from app.voice.agent import AgentClient
-from app.voice.assistant import State, VoiceAssistant, VoiceOptions
+from app.voice.assistant import State, VoiceAssistant, VoiceOptions, main_language
 from app.voice.speech import Heard, SpeechError
 
 WAKE, SPEECH, QUIET = b"W" * 3200, b"S" * 3200, b"\0" * 3200
@@ -69,7 +69,7 @@ class Speech:
 
     def __init__(self, heard=("what's the weather",), fail=None, speak_error=None):
         self.heard, self.fail, self.speak_error = list(heard), fail, speak_error
-        self.utterances, self.spoken = [], []
+        self.utterances, self.spoken, self.voices = [], [], []
 
     async def transcribe(self, frames, *, commit, silence_ms, language=None, on_partial=None):
         if self.fail:
@@ -86,6 +86,7 @@ class Speech:
         return Heard(self.heard.pop(0) if self.heard else "", "English", "silence")
 
     async def speak(self, texts, *, voice, language, on_audio):
+        self.voices.append(voice)
         async for text in texts:
             if self.speak_error:
                 raise self.speak_error
@@ -367,4 +368,26 @@ def test_the_speech_is_read_at_once_while_the_speaker_plays_on_its_own():
         released.set()
         await r.settle()
         assert r.va.state is State.WAITING
+    run(go())
+
+
+def test_the_reply_speaks_in_the_turns_main_language():
+    assert main_language("今天天气怎么样？") == "Chinese"
+    assert main_language("What's the weather?") == "English"
+    assert main_language("我昨天用iPhone给Steven发了一条message。") == "Chinese"    # mostly Chinese
+    assert main_language("turn off the 客厅 lights please") == "English"           # mostly English
+    assert main_language("好 ok", heard="Chinese") == "Chinese"                     # a tie: what was heard
+    assert main_language("好 ok") == "English"
+    o = VoiceOptions()
+    assert (o.voice_for("关灯"), o.voice_for("Turn off the lights")) == ("dylan", "ryan")
+
+
+def test_spoken_and_typed_turns_pick_the_voice():
+    async def go():
+        r = Rig(speech=Speech(heard=["今天星期几？"]))
+        await r.frames(WAKE, QUIET, QUIET, QUIET, SPEECH, QUIET)
+        await r.settle()
+        await r.va.say("What time is it?")
+        await r.settle()
+        assert r.speech.voices == ["dylan", "ryan"]
     run(go())

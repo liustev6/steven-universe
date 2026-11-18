@@ -27,6 +27,7 @@ import contextlib
 import enum
 import itertools
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import AsyncIterator, Callable, Optional, Protocol
@@ -51,13 +52,33 @@ class UI(Protocol):
     async def awake(self) -> None: ...
 
 
+CHINESE = re.compile(r"[\u4e00-\u9fff]")
+ENGLISH_WORD = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
+
+
+def main_language(text: str, heard: str = "") -> str:
+    """The language most of `text` is in: Chinese characters against English words (a character and a
+    word are each about one spoken unit). A tie goes to what speech-to-text heard, else English."""
+    zh, en = len(CHINESE.findall(text)), len(ENGLISH_WORD.findall(text))
+    if zh != en:
+        return "Chinese" if zh > en else "English"
+    return "Chinese" if heard.lower().startswith("chinese") else "English"
+
+
 @dataclass
 class VoiceOptions:
-    voice: str = "dylan"
+    voice_en: str = "ryan"             # English replies
+    voice_zh: str = "dylan"            # Chinese replies (spikes/14-15: steadiest on Chinese, natural pace)
     tts_language: Optional[str] = None
     stt_language: Optional[str] = None
     silence_ms: int = 700
     window: float = 5.0                # the session waits this long for someone to speak
+
+    def voice_for(self, text: str, heard: str = "") -> str:
+        """A reply's voice: its turn's main language's (mixed Chinese and English: whichever most of it
+        is). From what was said, since the agent answers in that language: chosen before the reply
+        arrives, so no delay."""
+        return self.voice_zh if main_language(text, heard) == "Chinese" else self.voice_en
 
 
 class State(enum.Enum):
@@ -186,9 +207,9 @@ class VoiceAssistant:
         if not heard.text.strip():
             await self._wait(holdoff=0)
             return
-        await self._replying(turn_id, heard.text, heard_at)
+        await self._replying(turn_id, heard.text, heard_at, self.options.voice_for(heard.text, heard.language))
 
-    async def _replying(self, turn_id: str, text: str, heard_at: float) -> None:
+    async def _replying(self, turn_id: str, text: str, heard_at: float, voice: str) -> None:
         self.state = State.REPLYING
         try:
             if self._claim is not None:                  # the session claimed at the wake word: ready by now
@@ -196,7 +217,7 @@ class VoiceAssistant:
                 if not self._claim.cancelled() and self._claim.exception():
                     logger.warning("claiming the agent session: %s (the turn tries again)", self._claim.exception())
                 self._claim = None
-            await self._reply(turn_id, text, heard_at)
+            await self._reply(turn_id, text, heard_at, voice)
         except asyncio.CancelledError:
             raise
         except Exception as e:                           # V8: this turn ends, the session goes on
@@ -224,7 +245,7 @@ class VoiceAssistant:
         else:
             await self._stop_turn()
         self.state = State.REPLYING                      # now, so no voice starts a turn meanwhile
-        self._turn = asyncio.create_task(self._replying(self.turn_id, text, self.clock()))
+        self._turn = asyncio.create_task(self._replying(self.turn_id, text, self.clock(), self.options.voice_for(text)))
 
     async def cancel(self) -> None:
         await self.close("cancelled")
@@ -236,7 +257,7 @@ class VoiceAssistant:
             await asyncio.wait([turn])
 
     # ---- the reply ---------------------------------------------------------------------------------
-    async def _reply(self, turn_id: str, text: str, heard_at: float) -> None:
+    async def _reply(self, turn_id: str, text: str, heard_at: float, voice: str) -> None:
         """The agent's reply, spoken while it's written."""
         timings: dict[str, int] = {}
 
@@ -267,7 +288,7 @@ class VoiceAssistant:
                 await speaker.write(pcm)
 
         speaking = asyncio.create_task(self.speech.speak(
-            text_in(), voice=self.options.voice, language=self.options.tts_language, on_audio=received))
+            text_in(), voice=voice, language=self.options.tts_language, on_audio=received))
         player = asyncio.create_task(play())
         agent_done = False
 
@@ -306,7 +327,7 @@ class VoiceAssistant:
             await player
             await speaker.drain()
             mark("played")
-            logger.info("turn %s: timings (ms from heard) %s", turn_id, timings)
+            logger.info("turn %s (%s): timings (ms from heard) %s", turn_id, voice, timings)
         except BaseException:
             writing.cancel()
             speaking.cancel()
