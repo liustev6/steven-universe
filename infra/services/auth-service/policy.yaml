@@ -101,9 +101,14 @@ clients:
           # what anonymous visitors may do, and nothing more
           - {type: file_access, actions: [read, list], locations: ["public/"]}
 
-  # Hey Pi's backend (BFF); the Flutter UI only talks to it.
+  # Hey Pi's backend (BFF); the Flutter UI only talks to it. It runs the voice turn
+  # (docs/specs/voice-path.md V1): speech in and out, the agent (profile voice) in between.
   pi-server:
     grants:
+      speech-service:
+        scopes: [speech:create, speech:transcribe]
+      agent-service:
+        scopes: [chat:read, chat:write]
       api-service:
         scopes: [files:read, files:write, files:delete, files:list]
       file-management:
