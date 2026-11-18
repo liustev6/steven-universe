@@ -46,11 +46,22 @@ class QwenSTTEngine:
     def languages(self) -> list[str]:
         return list(self._asr.get_supported_languages())
 
-    def session(self, language: str | None = None) -> StreamingTranscription:
+    def session(self, language: str | None = None, *, decode="own") -> StreamingTranscription:
+        """One utterance. `decode=None`: no decode of its own (a batch runs its passes: batch.py)."""
         prompt, forced = self._prompt(language), self._language(language)
-        return StreamingTranscription(lambda audio, prefix: self._decode(audio, prompt + prefix, prefix),
-                                      self._processor.tokenizer, lambda raw: self._parse_raw(raw, user_language=forced),
-                                      max_seconds=self.max_seconds)
+        own = (lambda audio, prefix: self.decode_batch([audio], [prompt + prefix], [prefix])[0]) if decode else None
+        return StreamingTranscription(own, self._processor.tokenizer,
+                                      lambda raw: self._parse_raw(raw, user_language=forced), max_seconds=self.max_seconds)
+
+    def prompt(self, language: str | None = None) -> str:
+        """Qwen's prompt; with a language, it asks for that language's text only."""
+        return self._prompt(language)
+
+    def batch(self, slots: int = 2, **kw):
+        """Several utterances sharing passes (batch.py)."""
+        from app.stt_engine.batch import STTBatch
+
+        return STTBatch(self, slots=slots, **kw)
 
     def transcribe(self, audio: np.ndarray, language: str | None = None) -> Transcript:
         session = self.session(language)
@@ -58,15 +69,19 @@ class QwenSTTEngine:
         return session.finish()
 
     # ---- one pass ----------------------------------------------------------------------------------
-    def _decode(self, audio: np.ndarray, prompt: str, prefix: str) -> str:
+    def decode_batch(self, audios: list, prompts: list[str], prefixes: list[str]) -> list[str]:
+        """One pass over one or more utterances: each row's audio and prompt (+ its prefix) → its raw
+        text (prefix + what the model wrote). Padded into one batch: the processor pads the prompts on
+        the left, so every row's text continues its own prompt."""
         import torch
 
         p, m = self._processor, self._model
         with torch.inference_mode(), torch.cuda.stream(self._stream):
-            inputs = p(text=[prompt], audio=[audio], return_tensors="pt", padding=True).to(m.device).to(m.dtype)
+            inputs = p(text=prompts, audio=list(audios), return_tensors="pt", padding=True).to(m.device).to(m.dtype)
             ids = m.generate(**inputs, max_new_tokens=self.max_new_tokens)
             new = ids.sequences[:, inputs["input_ids"].shape[1]:]
-            return prefix + p.batch_decode(new, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+            texts = p.batch_decode(new, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+        return [prefix + text for prefix, text in zip(prefixes, texts)]
 
     def _language(self, language: str | None) -> str | None:
         if not language:

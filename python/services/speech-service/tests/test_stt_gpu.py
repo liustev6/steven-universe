@@ -112,3 +112,52 @@ def test_a_long_utterance_keeps_up(tts, stt):
     final = s.finish()
     assert worst < 1.0, f"a pass took {worst * 1000:.0f} ms"
     assert "warmest day" in final.text.lower(), final.text
+
+
+# ---- the batch (batch.py) --------------------------------------------------------------------------
+def test_a_batched_pass_gives_each_row_its_own_text(tts, stt):
+    """Two utterances of different lengths and languages in one padded pass: each row's text is the
+    text it gets alone (the prompts are padded on the left, so each row continues its own)."""
+    a, b = say(tts, *ENGLISH), say(tts, *CHINESE)
+    prompt = stt.prompt()
+    alone = [stt.decode_batch([x], [prompt], [""])[0] for x in (a, b)]
+    together = stt.decode_batch([a, b], [prompt, prompt], ["", ""])
+    assert together == alone
+
+
+def stream_through(batch, clips, starts):
+    """Each clip into its own slot, 100 ms at a time, clip i starting at `starts[i]` seconds; a tick
+    after every 100 ms; each slot ended when its audio is done. The finals, in clip order."""
+    slots, finals, step = {}, {}, 1600
+    total = max(s * 16000 + len(c) for s, c in zip(starts, clips))
+    for at in range(0, int(total) + step, step):
+        for i, (s, clip) in enumerate(zip(starts, clips)):
+            offset = at - int(s * 16000)
+            if offset == 0:
+                slots[i] = batch.join()
+            if i in slots and 0 <= offset < len(clip):
+                batch.add(slots[i], clip[offset:offset + step])
+                if offset + step >= len(clip):
+                    batch.end(slots[i])
+        for slot, t in batch.tick().items():
+            if t.final:
+                finals[next(i for i, x in slots.items() if x == slot)] = t.text
+                slots = {i: x for i, x in slots.items() if x != slot}
+    return [finals[i] for i in range(len(clips))]
+
+
+def test_two_streams_share_passes_and_are_heard_right(tts, stt):
+    clips = [say(tts, *ENGLISH), say(tts, *CHINESE)]
+    batch = stt.batch(slots=2)
+    finals = stream_through(batch, clips, starts=[0, 0.6])
+    assert same(finals[0], ENGLISH[1]) > 0.9 and same(finals[1], CHINESE[1]) > 0.9, finals
+    separate = sum(len(c) // 16000 + 1 for c in clips)              # about one pass a second each
+    assert batch.passes < separate
+
+
+def test_four_streams(tts, stt):
+    sentences = [ENGLISH, CHINESE, LONGER[0], LONGER[1]]
+    clips = [say(tts, *s) for s in sentences]
+    finals = stream_through(stt.batch(slots=4), clips, starts=[0, 0.3, 0.7, 1.2])
+    for (voice, text), heard in zip(sentences, finals):
+        assert same(heard, text) > 0.9, (text, heard)

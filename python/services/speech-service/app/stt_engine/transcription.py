@@ -17,6 +17,9 @@ it grows, keeping the cost per second flat (spike 10's risk 1, option a):
 
 If audio arrives faster than passes (a burst, or the GPU busy), one pass covers it all: passes never
 queue up behind each other.
+
+A session decodes by itself (`feed`, `finish`), or a batch drives it (batch.py: `add` audio, ask
+whether it's `due`, take its `pending` pass, `apply` the result), so several sessions share a pass.
 """
 
 from __future__ import annotations
@@ -64,31 +67,51 @@ class StreamingTranscription:
         self.audio = np.zeros(0, dtype=np.float32)
         self.raw, self.passes = "", 0
         self.decoded_upto = 0                         # samples covered by the last pass
-        self.next_pass_at = int(pass_interval(0) * SAMPLE_RATE)
+        self.next_pass_at = int(pass_interval(0) * SAMPLE_RATE)   # samples at which the next pass is due
 
+    # ---- deciding by itself ------------------------------------------------------------------------
     def feed(self, pcm: np.ndarray) -> Transcript | None:
+        self.add(pcm)
+        if not self.due():
+            return None
+        return self.apply(self._decode(*self.pending()), final=False)
+
+    def finish(self) -> Transcript:
+        """The final text: one more pass if audio arrived since the last (else the last pass's text)."""
+        if self.needs_final_pass():
+            return self.apply(self._decode(*self.pending()), final=True)
+        language, text = self._parse(self.raw)
+        return Transcript(language, text, final=True)
+
+    # ---- the steps a batch drives ------------------------------------------------------------------
+    def add(self, pcm: np.ndarray) -> None:
+        """More audio (16 kHz mono, float32 or int16); TooLong past the limit."""
         pcm = np.asarray(pcm).reshape(-1)
         pcm = pcm.astype(np.float32) / 32768.0 if pcm.dtype == np.int16 else pcm.astype(np.float32, copy=False)
         if len(self.audio) + len(pcm) > self.max_samples:
             raise TooLong(f"over {self.max_samples / SAMPLE_RATE:.0f} s")
         self.audio = np.concatenate([self.audio, pcm])
-        if len(self.audio) < self.next_pass_at:
-            return None
-        transcript = self._pass(final=False)
-        heard = len(self.audio) / SAMPLE_RATE
-        self.next_pass_at = len(self.audio) + int(pass_interval(heard) * SAMPLE_RATE)
-        return transcript
 
-    def finish(self) -> Transcript:
-        """The final text: one more pass if audio arrived since the last (else the last pass's text)."""
-        if self.passes == 0 or len(self.audio) > self.decoded_upto:
-            return self._pass(final=True)
-        language, text = self._parse(self.raw)
-        return Transcript(language, text, final=True)
+    def due(self) -> bool:
+        """Enough new audio for the next pass (its interval has passed)."""
+        return len(self.audio) >= self.next_pass_at
 
-    def _pass(self, *, final: bool) -> Transcript:
-        prefix = settled_prefix(self.raw, self.passes, self._tokenizer)
-        self.raw = self._decode(self.audio, prefix)
+    def nearly_due(self, fraction: float = 0.5) -> bool:
+        """At least `fraction` of the interval's audio is in: worth joining a pass that runs anyway."""
+        interval = self.next_pass_at - self.decoded_upto
+        return len(self.audio) - self.decoded_upto >= fraction * interval
+
+    def needs_final_pass(self) -> bool:
+        return self.passes == 0 or len(self.audio) > self.decoded_upto
+
+    def pending(self) -> tuple[np.ndarray, str]:
+        """The next pass's input: all the audio so far, and the settled text as its prefix."""
+        return self.audio, settled_prefix(self.raw, self.passes, self._tokenizer)
+
+    def apply(self, raw: str, *, final: bool) -> Transcript:
+        """A pass's result (the raw text: prefix + what the model wrote); schedules the next pass."""
+        self.raw = raw
         self.passes, self.decoded_upto = self.passes + 1, len(self.audio)
-        language, text = self._parse(self.raw)
+        self.next_pass_at = len(self.audio) + int(pass_interval(len(self.audio) / SAMPLE_RATE) * SAMPLE_RATE)
+        language, text = self._parse(raw)
         return Transcript(language, text, final=final)
