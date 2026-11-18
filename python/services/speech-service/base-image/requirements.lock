@@ -5,6 +5,7 @@
 accelerate==1.12.0
 annotated-doc==0.0.6
 annotated-types==0.8.0
+anyascii==0.3.3
 anyio==4.16.0
 av==19.0.2
 build==1.6.1
@@ -13,6 +14,7 @@ cffi==2.1.1
 charset-normalizer==3.5.2
 click==8.3.3
 cloudpickle==3.1.2
+contractions==0.1.73
 cryptography==50.0.2
 cuda-bindings==13.4.4
 cuda-pathfinder==1.8.4
@@ -37,6 +39,7 @@ importlib_metadata==10.1.0
 ipython_pygments_lexers==1.1.1
 Jinja2==3.1.6
 joblib==1.6.0
+kaldifst==1.9.0
 lazy-loader==0.6
 librosa==1.0.1
 llvmlite==0.50.0
@@ -76,6 +79,7 @@ platformdirs==4.14.5
 pooch==1.9.0
 protobuf==7.36.2
 psutil==7.2.2
+pyahocorasick==2.3.1
 pycparser==3.12
 pydantic-settings==2.16.2
 pydantic==2.14.3
@@ -111,6 +115,7 @@ soynlp==0.0.493
 spin==0.18
 starlette==1.10.0
 sympy==1.14.0
+textsearch==0.0.24
 threadpoolctl==3.8.0
 tokenizers==0.22.2
 torch==2.15.0+cu132
@@ -129,5 +134,6 @@ uvicorn==0.54.0
 uvloop==0.23.0
 watchfiles==1.3.0
 websockets==17.4
+wetext==0.2.1
 wheel==0.48.0
 zipp==4.1.2

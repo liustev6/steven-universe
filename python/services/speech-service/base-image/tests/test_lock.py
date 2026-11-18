@@ -42,3 +42,11 @@ def test_service_auths_dependencies_are_in():
     p = pins()
     for name in ("pyjwt", "cryptography", "httpx", "fastapi"):
         assert name in p, name
+
+
+def test_text_normalization_is_in():
+    """wetext and its dependencies (spikes/13: numbers and symbols as words before the TTS)."""
+    p = pins()
+    assert p["wetext"] == "0.2.1" and p["kaldifst"] == "1.9.0"
+    for name in ("contractions", "textsearch", "anyascii", "pyahocorasick", "click"):
+        assert name in p, name
