@@ -5,12 +5,12 @@
 #   scripts/run_deploy.sh --run        ...then switch the Pi screen to the app
 #   scripts/run_deploy.sh --skip-build copy the existing build only
 #
-# PI_HOST picks the SSH host (default: the `panel` alias in ~/.ssh/config).
+# PI_HOST picks the SSH host (default: the `pi` alias in ~/.ssh/config).
 # On the Pi: app in ~/hey-pi/app, start script + icon in ~/hey-pi, launcher on
 # the desktop and in the app menu. Nothing is set to start at boot.
 set -euo pipefail
 
-PI_HOST="${PI_HOST:-panel}"
+PI_HOST="${PI_HOST:-pi}"
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_DIR="$APP_DIR/build/flutter-pi/pi5-64"
 

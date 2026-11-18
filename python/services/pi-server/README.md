@@ -74,6 +74,6 @@ installs the `pi-server` systemd service (starts at boot, restarts on failure,
 localhost only) and checks `/health`.
 
 ```sh
-ssh panel 'curl -s localhost:8765/health'
-ssh panel 'journalctl -u pi-server -f'
+ssh pi 'curl -s localhost:8765/health'
+ssh pi 'journalctl -u pi-server -f'
 ```

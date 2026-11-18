@@ -98,7 +98,7 @@ Onboard a service (permissions in git first, then the credential):
 # 1. add the client + grants to policy.yaml, deploy it, then:
 ssh auth-host auth-service-admin check-policy
 # 2. create the secret and pipe it into the service host:
-scripts/add-client.sh pi-server panel /etc/pi-server/credentials/client_secret liustev6
+scripts/add-client.sh pi-server pi /etc/pi-server/credentials/client_secret liustev6
 # 3. on the service: SERVICE_AUTH_ISSUER, SERVICE_AUTH_CLIENT_ID, SERVICE_AUTH_CLIENT_SECRET_FILE
 #    (the secret file mounted read-only into its container), restart, then check list-clients
 ```

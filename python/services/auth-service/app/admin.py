@@ -3,7 +3,7 @@
 Runs on the auth-service host, against the files in CONFIG_DIR. There is no
 admin API on the network: whoever has a shell on this host is the admin.
 
-    auth-service-admin add-client hey-pi --stdout | ssh panel 'sudo install -D -m 600 ... /dev/stdin <path>'
+    auth-service-admin add-client hey-pi --stdout | ssh pi 'sudo install -D -m 600 ... /dev/stdin <path>'
 """
 
 from __future__ import annotations

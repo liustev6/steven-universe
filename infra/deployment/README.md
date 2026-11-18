@@ -59,7 +59,7 @@ These copy your working copy to the host and read the service's `.env` (copy
 | `gpu-server.sh` | `python/services/gpu-server` (+ `python/workers/gpu-server`) | the GPU VM (Docker, built on the VM) |
 | `stevenai-service.sh` | `python/services/stevenai-service` | its LXC (Docker) |
 | `web-gateway.sh` | `python/services/web-gateway` | its LXC (Docker) |
-| `pi-server.sh` | `python/services/pi-server` | the Pi (systemd; `PI_HOST`, default `panel`) |
+| `pi-server.sh` | `python/services/pi-server` | the Pi (systemd; `PI_HOST`, default `pi`) |
 
 The Flutter panel app deploys with `dart/apps/hey-pi/scripts/run_deploy.sh`. The problems of the
 older scripts and the path to retire them are in [docs/specs/deployer.md](../../docs/specs/deployer.md).

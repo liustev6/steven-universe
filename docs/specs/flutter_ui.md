@@ -49,7 +49,7 @@ Enclosure: `models/3d-print/home-control-frame/`.
 
 ## Hardware / display
 - Raspberry Pi 5, Raspberry Pi OS 64-bit (Bookworm). The current Pi runs the **desktop** image
-  (hostname `raspberrypi`, user `liustev6`, SSH alias `panel`); the desktop (`lightdm`) must be
+  (hostname `raspberrypi`, user `liustev6`, SSH alias `pi`); the desktop (`lightdm`) must be
   stopped while flutter-pi runs. All flutter-pi runtime libraries ship with the desktop image.
 - Screen: **1024×600 px over HDMI** (HDMI-A-2, native mode 1024×600), landscape, active area
   **152.4 × 83.3 mm**. Touch only, no keyboard/mouse.
@@ -488,7 +488,7 @@ scripts/run_deploy.sh --run      # ...and switch the Pi screen to the app
 Under the hood:
 ```sh
 flutterpi_tool build --arch=arm64 --cpu=pi5 --release   # → build/flutter-pi/pi5-64/
-ssh panel 'sudo systemctl stop hey-pi'
+ssh pi 'sudo systemctl stop hey-pi'
 rsync -a --delete build/flutter-pi/pi5-64/ panel:hey-pi/app/
 rsync deploy/{start-hey-pi.sh,hey-pi.svg,hey-pi.desktop} panel:hey-pi/   # + install launcher
 ```
@@ -496,7 +496,7 @@ rsync deploy/{start-hey-pi.sh,hey-pi.svg,hey-pi.desktop} panel:hey-pi/   # + ins
   `build/flutter_assets/`. It contains the `flutter-pi` binary, `libflutter_engine.so`, `app.so`
   and assets. The script globs for the single target directory rather than hard-coding it.
 - `--cpu=pi5` uses the Pi 5–tuned engine (available in the git build of flutterpi_tool).
-- `PI_HOST` comes from the environment, default `panel` (the `~/.ssh/config` alias).
+- `PI_HOST` comes from the environment, default `pi` (the `~/.ssh/config` alias).
 - `sudo` over ssh relies on passwordless sudo (Pi OS default for the first user).
 
 ## systemd unit (`deploy/hey-pi.service`), later, for boot-to-app

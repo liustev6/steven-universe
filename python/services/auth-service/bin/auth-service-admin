@@ -5,7 +5,7 @@
 # and hardening as the service, no network, config dir mounted read-write as uid 10001, so the
 # mode-600 files it writes are readable by the service. Run it on the auth-service host:
 #   auth-service-admin list-clients
-#   auth-service-admin add-client pi-server --stdout | ssh panel '...'   (see scripts/add-client.sh)
+#   auth-service-admin add-client pi-server --stdout | ssh pi '...'   (see scripts/add-client.sh)
 # -T: no TTY, so `--stdout` output can be piped and the CLI's TTY guard works.
 #
 # Which image: during a deploy, deploy-target.sh exports IMAGE_TAG (the new image, so the policy

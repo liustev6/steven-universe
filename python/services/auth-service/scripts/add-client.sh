@@ -3,7 +3,7 @@
 # straight into a file on the service's host. Run on the Mac.
 #
 #   scripts/add-client.sh <client_id> <service_host> <secret_path> <owner> [--rotate]
-#   scripts/add-client.sh pi-server panel /etc/pi-server/credentials/client_secret liustev6
+#   scripts/add-client.sh pi-server pi /etc/pi-server/credentials/client_secret liustev6
 #
 # The secret only passes through the pipe: it is never shown, stored on this Mac,
 # or written to shell history. The target file is replaced only if a secret

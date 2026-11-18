@@ -4,13 +4,13 @@
 #
 #   infra/deployment/pi-server.sh   (from the repo root, or any directory)
 #
-# PI_HOST picks the SSH host (default: the `panel` alias in ~/.ssh/config).
+# PI_HOST picks the SSH host (default: the `pi` alias in ~/.ssh/config).
 # On the Pi: code in ~/pi-server, Python venv in ~/pi-server/.venv, settings
 # in ~/.local/share/pi-server, service `pi-server` (starts at boot, restarts
 # on failure, listens on 127.0.0.1:8765 only).
 set -euo pipefail
 
-PI_HOST="${PI_HOST:-panel}"
+PI_HOST="${PI_HOST:-pi}"
 SERVICE_DIR="$(cd "$(dirname "$0")/../../python/services/pi-server" && pwd)"
 
 step() { printf '\n==> %s\n' "$*"; }
