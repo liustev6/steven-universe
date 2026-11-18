@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=../deploy.schema.json
+# speech-service: speech out (Qwen3-TTS) and in (Qwen3-ASR), streamed, on pve01's GPU (CT 108).
+# Read by OpenTofu (infra/secrets-manager/tofu/services.tf) and by the deploy (infra/deployment/).
+# Spec: docs/specs/speech-service.md.
+service: speech-service
+host: speech-host
+pipeline: false                        # by hand until its first deploy is proven (as every service)
+wave: 1
+code: python/services/speech-service
+libs: [service-auth]                   # in the image (its Dockerfile copies it; CI checks)
+compose: python/services/speech-service/compose.yaml
+config: infra/services/speech-service/config.env       # -> /etc/speech-service/config.env
+url: https://speech.lan.liustev6.ca
+health: https://speech.lan.liustev6.ca/health
+health_wait: 300                       # loads and warms both models (~15 s; the first start on a host also compiles the kernels)
+smoke_test:
+  script: python/services/speech-service/scripts/smoke_test.py
+  secret: /root/.secrets/smoke-test-client   # delivered from kv/shared/smoke_test_client_secret
+hooks:
+  pre_start: infra/services/speech-service/hooks/pre-start.sh   # the models' weights, pinned and checked
+certificate:
+  name: speech.lan.liustev6.ca
+  hook: python/services/speech-service/scripts/cert-hook.sh   # -> /usr/local/sbin/speech-service-cert-hook
+
+# Managed secrets: values in OpenBao at kv/<from>, written to <to> (mode 600) on every deploy.
+# speech-service has no identity of its own (it calls no service): only the deploy's needs.
+secrets:
+  - from: shared/smoke_test_client_secret
+    to: /root/.secrets/smoke-test-client
+    owner: "0:0"
+  - from: shared/cloudflare_dns_token
+    to: /root/.secrets/cloudflare.ini
+    owner: "0:0"
+    format: "dns_cloudflare_api_token = {value}\n"   # certbot's credentials file

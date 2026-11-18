@@ -2,4 +2,5 @@
 -r requirements.txt
 -e ../../libs/service-auth[fastapi]   # token checks (ServiceAuth)
 numpy==2.5.5
+PyYAML==6.0.3                         # app.models (the weights' lock)
 pytest==9.2.0

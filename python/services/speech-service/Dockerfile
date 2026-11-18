@@ -19,13 +19,15 @@ LABEL org.opencontainers.image.title="speech-service" \
       org.opencontainers.image.revision="${REVISION}"
 # HOME and Triton's kernel cache on the tmpfs (the root filesystem is read-only): kernels compile at
 # the warm-up, before the service is healthy.
-ENV PYTHONPATH=/app:/libs \
+ENV PYTHONPATH=/app:/libs/service-auth \
     PYTHONUNBUFFERED=1 \
     HOME=/tmp \
     TRITON_CACHE_DIR=/tmp/triton \
     TRITON_DEFAULT_FP_FUSION=1
 
-COPY libs/service-auth/service_auth /libs/service_auth
+# The whole library folder (CI matches `COPY libs/<name>` to the manifest's libs); the .dockerignore
+# sends only its package.
+COPY libs/service-auth /libs/service-auth
 WORKDIR /app
 COPY services/speech-service/app ./app
 

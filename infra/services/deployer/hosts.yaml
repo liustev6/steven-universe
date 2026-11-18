@@ -26,3 +26,7 @@ hosts:
     address: 192.168.50.229
     user: root
     host_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIOgwjMrkWIgTfhyhmE6wNnoegI6p11VFGIycfpbTwEI"
+  speech-host:                         # CT 108: runs speech-service, with the GPU (CP4)
+    address: 192.168.50.34
+    user: root
+    host_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP+XYWYCm2A4u8zS697n1GEuu8HjpHp9ymQ5qalsEoE6"

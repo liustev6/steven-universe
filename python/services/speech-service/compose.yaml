@@ -1,0 +1,40 @@
+# speech-service on CT 108, with the GPU. Spec: docs/specs/speech-service.md.
+# Deployed by infra/deployment/deploy.sh speech-service (later the pipeline).
+#
+# Host layout:
+#   /etc/speech-service/config.env            from infra/services/speech-service/, by every deploy
+#   /etc/speech-service/tls/cert.pem, key.pem speech.lan.liustev6.ca (scripts/cert-hook.sh)
+#   /var/lib/speech-service/models/           both models' weights, pinned and checked (the pre-start hook)
+name: speech-service
+
+services:
+  speech-service:
+    image: ghcr.io/liustev6/steven-universe/speech-service:${IMAGE_TAG:-local}   # IMAGE_TAG: set by deploy-target.sh (deployer spec D1a)
+    build:
+      context: ../..                    # python/, so libs/service-auth is included
+      dockerfile: services/speech-service/Dockerfile
+      args:
+        REVISION: ${REVISION:-unknown}
+    restart: unless-stopped
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # exec: Triton compiles a small launcher into /tmp/triton and loads it (Docker's tmpfs is noexec
+    # by default). 2 GB: Triton's cache and Python's temporary files, far less in practice.
+    tmpfs: ["/tmp:exec,size=2g"]
+    ports: ["443:8443"]
+    # SIGTERM: uvicorn stops accepting, open sessions get 5 s, then the work threads stop.
+    stop_grace_period: 20s
+    env_file: /etc/speech-service/config.env
+    volumes:
+      - /etc/speech-service/tls:/etc/speech-service/tls:ro
+      - /var/lib/speech-service/models:/models:ro
+    # The GPU, through the NVIDIA container toolkit (CT 108: lxc-gpu-passthrough-setup.md, part 2).
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, count: all, capabilities: [gpu]}]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}

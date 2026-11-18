@@ -49,6 +49,7 @@ smoke = m.get("smoke_test") or {}
 cert = m.get("certificate") or {}
 out("M_SERVICE", m["service"]); out("M_COMPOSE", m["compose"]); out("M_CODE", m.get("code"))
 out("M_CONFIG", m.get("config")); out("M_URL", m.get("url")); out("M_HEALTH", m["health"])
+out("M_HEALTH_WAIT", int(m.get("health_wait") or 60))
 out("M_SMOKE_SCRIPT", smoke.get("script")); out("M_SMOKE_SECRET", smoke.get("secret"))
 out("M_CERT_NAME", cert.get("name")); out("M_CERT_HOOK", cert.get("hook"))
 out("M_PRE_START", (m.get("hooks") or {}).get("pre_start"))
@@ -242,16 +243,16 @@ fi
 step "Starting container"
 quiet docker compose up -d --no-build --pull never "$SERVICE"
 CID="$(docker compose ps -q "$SERVICE")"
-info "waiting for the health check (up to 60 s)..."
+info "waiting for the health check (up to $M_HEALTH_WAIT s)..."
 STATUS=starting
-for i in $(seq 1 30); do
+for i in $(seq 1 $(( M_HEALTH_WAIT / 2 ))); do
     STATUS="$(docker inspect -f '{{.State.Health.Status}}' "$CID")"
     [ "$STATUS" = healthy ] && break
     sleep 2
 done
 if [ "$STATUS" != healthy ]; then
     docker compose logs --tail 40 "$SERVICE" >&2
-    die "Container is '$STATUS' after 60 s (logs above)."
+    die "Container is '$STATUS' after $M_HEALTH_WAIT s (logs above)."
 fi
 ok "healthy after $(( i * 2 )) s"
 

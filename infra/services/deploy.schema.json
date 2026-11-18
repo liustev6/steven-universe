@@ -20,6 +20,7 @@
     "policy": {"type": "string", "description": "auth-service only: the permissions file."},
     "url": {"type": "string", "format": "uri"},
     "health": {"type": "string", "format": "uri", "description": "Checked by name over TLS after the container is healthy."},
+    "health_wait": {"type": "integer", "minimum": 10, "maximum": 1800, "default": 60, "description": "Seconds the deploy waits for the container's health check. Longer for a service that loads models at start (speech-service)."},
     "smoke_test": {
       "type": "object", "additionalProperties": false, "required": ["script"],
       "properties": {
