@@ -16,6 +16,7 @@ the model Qwen3-TTS-12Hz-0.6B-CustomVoice at revision `85e237c`.
 | [08](08-talker-graph/) | 2026-11-17 | A decode-attention kernel (length from GPU memory) and the talker's graph | Kernel right (bfloat16 rounding); fused talker 11.5 ms a frame (RTF 0.18); the graph ~nothing more: GPU-bound (busy 90%) |
 | [09](09-streams/) | 2026-11-17 | Why don't first audio and margin follow the faster frames? | Decode and generation shared one CUDA stream, and the end check's `int()` waited for all of it. Two streams + events: first audio 42 → 20 ms, margin 47 → 66 ms |
 | [10](10-stt/) | 2026-11-17 | Speech-to-text on the GPU beside the TTS: does Qwen3-ASR-0.6B load, how good, does either slow the other? | Loads (transformers 4.57.6; the TTS's codes unchanged). Error 3.9/4.2/12.5% en/zh/mix (Whisper turbo: 24.7% mixed); streaming 58 ms after the speaker stops. Both: 4.7 of 8 GB; realistic barge-in costs neither anything |
+| [11](11-batching/) | 2026-11-17 | What does a batch of 2 cost, piece by piece? | TTS generation ×1.07-1.08 (batch it); the codec's decode ×1.89 (compute-bound, 86% re-decoding context: a stateful decode instead, later); STT passes ×1.64 but unaligned (in turn). 2 + 2 ≈ 32-41% of the GPU |
 
 **The tools that stay** (in `scripts/`, reused at each step): `bench.py` (each predictor: ms per frame,
 first audio, RTF) and `chunks.py` (each chunk schedule: first audio, RTF, stalls, margin, SNR, WAVs).
