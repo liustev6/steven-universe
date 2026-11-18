@@ -8,7 +8,8 @@ built-in `hey_jarvis` that pi-server runs today (`app/voice/wake.py`, `PI_SERVER
 | `train.py`, `config.yaml` | **the trainer, on our own hardware** (this Mac first): microWakeWord's notebook as one resumable script, its settings in git |
 | `train_hey_pi.ipynb` | the same as a Colab notebook (T4); a fallback: it hung at its installs on 2026-11-18 |
 | `segment.py` | a recording session on the Pi → one clip per "Hey Pi" |
-| `tts_samples.py` | positives from speech-service's 9 voices, and near-miss negatives, through the live service |
+| `tts_samples.py`, `phrases/` | samples from speech-service's 9 voices, through the live service: a phrase set's positives, near misses or everyday speech |
+| `config-xiao-pai.yaml`, `spikes/` | 小派小派, a Chinese wake word: spike 01 (our TTS alone) and its results |
 | `data/` (not in git) | the clips: `positives/me`, `positives/tts`, `negatives/tts`; voice recordings are personal and stay local |
 
 ## Steps
@@ -21,7 +22,9 @@ built-in `hey_jarvis` that pi-server runs today (`app/voice/wake.py`, `PI_SERVER
 
 2. **speech-service's voices and the near misses** (the test client running):
 
-       ../../services/speech-service/.venv/bin/python tts_samples.py data/positives/tts data/negatives/tts --runs 5
+       PY=../../services/speech-service/.venv/bin/python
+       $PY tts_samples.py phrases/hey_pi.yaml positive data/positives/tts --runs 5
+       $PY tts_samples.py phrases/hey_pi.yaml near_miss data/negatives/tts --runs 5
 
 3. **Train** (on a Mac, Apple silicon; ~7 GB of downloads into `work/`, fetched once):
 

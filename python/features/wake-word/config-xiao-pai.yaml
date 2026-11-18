@@ -1,0 +1,21 @@
+# Training 小派小派 (train.py; spike 01, docs/specs/wake-word-spikes): our TTS's voices only, no Piper (its
+# voices are English), no recordings yet. Data: DATA=data/xiao_pai (tts_samples.py, phrases/xiao_pai.yaml).
+run: xiao_pai                    # work/runs/xiao_pai: its own features and model, "Hey Pi"'s kept
+word: 小派小派
+wake_word: 小派小派               # the manifest's name
+model_name: xiao_pai
+languages: [zh]
+piper_samples: 0
+own_voice_copies: 5              # data/xiao_pai/positives/me, when there are recordings
+probability_cutoff: 0.95
+
+augmentation:                    # as "Hey Pi" (config.yaml): the notebook's
+  probabilities: {SevenBandParametricEQ: 0.1, TanhDistortion: 0.1, PitchShift: 0.1, BandStopFilter: 0.1,
+                  AddColorNoise: 0.1, AddBackgroundNoise: 0.75, Gain: 1.0, RIR: 0.5}
+  background_min_snr_db: -5
+  background_max_snr_db: 10
+
+training:
+  steps: 10000
+  negative_class_weight: 20
+  near_miss_weight: 5.0          # data/xiao_pai/negatives/*: the near misses and everyday Chinese speech

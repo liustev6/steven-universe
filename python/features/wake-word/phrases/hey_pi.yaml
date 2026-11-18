@@ -1,0 +1,4 @@
+# "Hey Pi" (tts_samples.py): what our TTS says for the positives, and the near misses (what sounds close).
+positive: ["Hey Pi.", "Hey Pi!", "Hey Pi?", "Hey, Pi.", "嘿，Pi。", "Hey Pie."]
+near_miss: ["Hey.", "Pie.", "Happy.", "Hey buddy.", "Hey guys.", "Bye.", "Hi.", "Hey, hi.", "Okay.",
+            "Apple pie.", "Hey pal.", "Hey Bai.", "嗨。", "拜拜。", "派。", "嘿。", "好的。", "嗨，你好。"]

@@ -4,6 +4,10 @@ a rerun resumes, and the downloads (~6 GB) are fetched once into the cache.
 
     python train.py config.yaml        (in the trainer image: /work the cache, /data our clips, /out the model)
 
+A config with `run: NAME` keeps that run's positives, features and trained model in /work/runs/NAME (the
+downloads stay shared), so a second wake word doesn't overwrite the first; `piper_samples: 0` trains on our
+own clips only (Piper's voices are English: a Chinese word has none).
+
 Steps, as microWakeWord's notebook (kahrendt/microWakeWord, notebooks/basic_training_notebook.ipynb):
   1. Piper samples of the word (Piper's ONNX LibriTTS voice through piper-tts: 904 speakers)
   2. augmentation audio: MIT room impulse responses, an AudioSet part, the Free Music Archive (xs)
@@ -31,6 +35,7 @@ import yaml
 
 CONFIG = yaml.safe_load(open(sys.argv[1] if len(sys.argv) > 1 else "config.yaml"))
 WORK, DATA, OUT = Path(os.environ.get("WORK", "/work")), Path(os.environ.get("DATA", "/data")), Path(os.environ.get("OUT", "/out"))
+RUN = WORK / "runs" / CONFIG["run"] if CONFIG.get("run") else WORK       # this run's own files
 T0 = time.monotonic()
 
 
@@ -54,7 +59,7 @@ def fetch(url: str, path: Path) -> None:
 PIPER_PHRASES = ["hey pie", "hey pi", "Hey Pie!", "Hey, Pi.", "hey pie?"]
 
 
-def piper_samples() -> Path:
+def piper_samples() -> Path | None:
     """The word said by Piper's LibriTTS voice (its ONNX model: 904 speakers; weights only, nothing in the file
     runs), each sample a random speaker, speed and variation, as piper-sample-generator varies them; 16 kHz, the
     silence trimmed to 150 ms at each end."""
@@ -65,6 +70,8 @@ def piper_samples() -> Path:
     import scipy.io.wavfile
     from piper import PiperVoice, SynthesisConfig
 
+    if not CONFIG.get("piper_samples"):
+        return None
     out = WORK / "piper" / CONFIG["word"].replace(" ", "_")
     have = len(list(out.glob("*.wav")))
     if have >= CONFIG["piper_samples"]:
@@ -160,7 +167,7 @@ def features(name: str, clips_dir: Path, aug) -> Path:
 
     import hashlib
 
-    out = WORK / "features" / name
+    out = RUN / "features" / name
     names = sorted(p.name for p in clips_dir.glob("*.wav"))
     fingerprint = hashlib.sha256("\n".join(names).encode()).hexdigest()
     if (out / "testing").exists() and (out / ".clips").exists() and (out / ".clips").read_text() == fingerprint:
@@ -221,17 +228,17 @@ def train(positive: Path, near: Path | None, negatives: Path) -> None:
     feats.append({"features_dir": str(negatives / "dinner_party_eval"), "sampling_weight": 0.0, "penalty_weight": 1.0,
                   "truth": False, "truncation_strategy": "split", "type": "mmap"})
     params = {
-        "window_step_ms": 10, "train_dir": str(WORK / "trained"), "features": feats,
+        "window_step_ms": 10, "train_dir": str(RUN / "trained"), "features": feats,
         "training_steps": [t["steps"]], "positive_class_weight": [1], "negative_class_weight": [t["negative_class_weight"]],
         "learning_rates": [0.001], "batch_size": 128,
         "time_mask_max_size": [0], "time_mask_count": [0], "freq_mask_max_size": [0], "freq_mask_count": [0],
         "eval_step_interval": 500, "clip_duration_ms": 1500,
         "target_minimization": 0.9, "minimization_metric": None, "maximization_metric": "average_viable_recall",
     }
-    with open(WORK / "training_parameters.yaml", "w") as f:
+    with open(RUN / "training_parameters.yaml", "w") as f:
         yaml.dump(params, f)
     step(f"6. training: {t['steps']} steps")
-    run(sys.executable, "-m", "microwakeword.model_train_eval", f"--training_config={WORK / 'training_parameters.yaml'}",
+    run(sys.executable, "-m", "microwakeword.model_train_eval", f"--training_config={RUN / 'training_parameters.yaml'}",
         "--train", "1", "--restore_checkpoint", "1", "--test_tf_nonstreaming", "0", "--test_tflite_nonstreaming", "0",
         "--test_tflite_nonstreaming_quantized", "0", "--test_tflite_streaming", "0",
         "--test_tflite_streaming_quantized", "1", "--use_weights", "best_weights",
@@ -244,10 +251,10 @@ def model() -> None:
     step("7. the model and its manifest")
     name = CONFIG["model_name"]
     OUT.mkdir(parents=True, exist_ok=True)
-    shutil.copy(WORK / "trained/tflite_stream_state_internal_quant/stream_state_internal_quant.tflite", OUT / f"{name}.tflite")
+    shutil.copy(RUN / "trained/tflite_stream_state_internal_quant/stream_state_internal_quant.tflite", OUT / f"{name}.tflite")
     manifest = {"type": "micro", "wake_word": CONFIG["wake_word"], "author": "steven-universe (python/features/wake-word)",
                 "website": "https://github.com/kahrendt/microWakeWord", "model": f"{name}.tflite",
-                "trained_languages": ["en"], "version": 2,
+                "trained_languages": CONFIG.get("languages", ["en"]), "version": 2,
                 "micro": {"probability_cutoff": CONFIG["probability_cutoff"], "feature_step_size": 10,
                           "sliding_window_size": 5, "tensor_arena_size": 30000, "minimum_esphome_version": "2024.7.0"}}
     (OUT / f"{name}.json").write_text(json.dumps(manifest, indent=2))
@@ -259,12 +266,15 @@ if __name__ == "__main__":
     augmentation_audio()
     aug = augmenter()
     ours = sorted(p for p in (DATA / "positives").iterdir() if p.is_dir())
-    positives = gather(WORK / "positives", [(piper, 1)] + [(p, CONFIG["own_voice_copies"] if p.name == "me" else 1) for p in ours])
-    print(f"   positives: {len(list(positives.glob('*.wav')))} clips ({', '.join(p.name for p in ours)} + Piper)")
+    RUN.mkdir(parents=True, exist_ok=True)
+    positives = gather(RUN / "positives", ([(piper, 1)] if piper else [])
+                       + [(p, CONFIG["own_voice_copies"] if p.name == "me" else 1) for p in ours])
+    print(f"   positives: {len(list(positives.glob('*.wav')))} clips ({', '.join(p.name for p in ours)}"
+          f"{' + Piper' if piper else ''})")
     positive = features("positive", positives, aug)
     near = None
     if (DATA / "negatives").exists():
-        near_dir = gather(WORK / "near_misses", [(p, 1) for p in sorted((DATA / "negatives").iterdir()) if p.is_dir()])
+        near_dir = gather(RUN / "near_misses", [(p, 1) for p in sorted((DATA / "negatives").iterdir()) if p.is_dir()])
         near = features("near_miss", near_dir, aug)
     negatives = negative_datasets()
     train(positive, near, negatives)

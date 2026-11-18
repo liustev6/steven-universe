@@ -1,0 +1,24 @@
+
+RECALL: held-out voices saying 小派小派 (128 clips), share woken, by cutoff
+                                  0.80    0.90    0.95    0.97    0.99
+  clean                            56%     51%     46%     45%     41%
+  10 dB                            54%     48%     43%     41%     30%
+  5 dB                             48%     41%     37%     33%     29%
+    clean, serena                  74%     73%     68%     67%     65%
+    clean, uncle_fu                37%     27%     23%     21%     16%
+
+NEAR MISSES: held-out voices (132 clips), share that wakes it
+                                  0.80    0.90    0.95    0.97    0.99
+  all                               2%      2%      2%      2%      1%
+    小爱小爱。                          33%     33%     33%     17%      0%
+    小派。                            17%     17%     17%     17%     17%
+    小派是谁？                           0%      0%      0%      0%      0%
+    小度小度。                           0%      0%      0%      0%      0%
+    小胖小胖。                           0%      0%      0%      0%      0%
+    小牌。                             0%      0%      0%      0%      0%
+
+FALSE WAKES PER HOUR, as one continuous stream
+                                  0.80    0.90    0.95    0.97    0.99
+  Chinese speech (held-out) (7 min)     0.0     0.0     0.0     0.0     0.0
+  your 'Hey Pi' recordings (4 min)     0.0     0.0     0.0     0.0     0.0
+  AudioSet sounds (200 clips) (35 min)     1.7     1.7     0.0     0.0     0.0
