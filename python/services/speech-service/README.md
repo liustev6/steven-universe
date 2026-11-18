@@ -32,7 +32,8 @@ install -m 755 /opt/steven-universe/python/services/speech-service/scripts/cert-
 certbot certonly --dns-cloudflare --dns-cloudflare-credentials /root/.secrets/cloudflare.ini \
   -d speech.lan.liustev6.ca --deploy-hook /usr/local/sbin/speech-service-cert-hook
 ```
-and deploy again. A new base image: change `base-image/requirements.lock` or its Dockerfile, push
+and deploy again. **Nothing else may hold the GPU** (a dev service, a spike): one copy of both
+models fills most of its 8 GB, and a start beside another fails out of memory. A new base image: change `base-image/requirements.lock` or its Dockerfile, push
 (CI publishes `speech-base`), then pin its digest in `Dockerfile`'s `BASE` and push again.
 
 ## Tests

@@ -47,7 +47,7 @@ containers from 100, VMs from 200.
 | 105 | deployer | `onboot=1` | 2, `up=10` | Docker enabled; container `restart: unless-stopped` | yes |
 | 106 | api-service | `onboot=1` | 3, `up=10` | Docker enabled; container `restart: unless-stopped` | yes |
 | 107 | agent-service | `onboot=1` | 3, `up=10` | Docker enabled; agent-service and its PostgreSQL, both `restart: unless-stopped` ([control-plane.md](agent-service/control-plane.md)) | yes |
-| 108 | speech-service | `onboot=1` | 2, `up=10` | Docker enabled; the GPU through `dev0`–`dev3` ([lxc-gpu-passthrough-setup.md](../lxc-gpu-passthrough-setup.md)); speech-service arrives in CP4 ([speech-service.md](speech-service.md)) | yes |
+| 108 | speech-service | `onboot=1` | 2, `up=10` | Docker enabled; the GPU through `dev0`–`dev3` ([lxc-gpu-passthrough-setup.md](../lxc-gpu-passthrough-setup.md)); speech-service: Docker starts it; healthy ~15 s later (both models loaded and warmed; [speech-service.md](speech-service.md)). Nothing else may hold the GPU: one copy of the models fills it | yes |
 | **VM 200** | sandbox-worker | `onboot=1` | 4, `up=30` | Docker enabled, gVisor (`runsc`) registered; sandbox-runner, container `restart: unless-stopped` ([sandbox-worker-setup.md](../sandbox-worker-setup.md)) | yes |
 
 **pve01's firewall** (`pve-firewall`, enabled since 2026-11-13) starts with the host; its policies are
