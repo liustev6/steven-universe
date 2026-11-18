@@ -1,0 +1,6 @@
+# Build context is python/; send only what the image needs.
+**
+!libs/service-auth/service_auth/**
+!services/speech-service/app/**
+**/__pycache__
+**/*.pyc
