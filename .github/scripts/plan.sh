@@ -121,6 +121,7 @@ for f in infra/images/*.yaml; do
   [ -e "$f" ] || continue
   name="$(yq -r .image "$f")"; code="$(yq -r .code "$f")"
   context="$(yq -r .context "$f")"; dockerfile="$(yq -r .dockerfile "$f")"
+  large="$(yq -r '.large // false' "$f")"     # true: the build job frees disk first and skips the layer cache
   [ "$(basename "$f" .yaml)" = "$name" ] || { echo "::error file=$f::image must equal the file name"; exit 1; }
   [ -f "$dockerfile" ] || { echo "::error file=$f::no Dockerfile at $dockerfile"; exit 1; }
   declared="$(libs "$f" "$dockerfile")" || exit 1
@@ -133,7 +134,7 @@ for f in infra/images/*.yaml; do
   fi
   echo "$name (image): build ${image_sha:0:7} (last change to: ${inputs% })"
   entries="$(jq -c --arg s "$name" --arg c "$code" --arg i "$image_sha" --arg x "$context" --arg f "$dockerfile" \
-    '. + [{service: $s, code: $c, image_sha: $i, context: $x, dockerfile: $f}]' <<<"$entries")"
+    --argjson l "$large" '. + [{service: $s, code: $c, image_sha: $i, context: $x, dockerfile: $f, large: $l}]' <<<"$entries")"
 done
 
 {

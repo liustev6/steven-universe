@@ -1,0 +1,11 @@
+# speech-service's base image: its model stack (PyTorch 2.15 + CUDA 13.2 libraries, Triton, transformers,
+# qwen-tts, qwen-asr, the web stack), ~7 GB (docs/specs/speech-service.md). Not a service: CI builds it
+# like a service image (tests, then GHCR, named by the last commit touching `code`), only when its lock
+# or Dockerfile changes. speech-service's Dockerfile names it pinned by digest, bumped by hand after a
+# new base is published.
+image: speech-base
+code: python/services/speech-service/base-image
+context: python/services/speech-service/base-image
+dockerfile: python/services/speech-service/base-image/Dockerfile
+libs: []
+large: true                 # the build frees the runner's disk first and skips the layer cache

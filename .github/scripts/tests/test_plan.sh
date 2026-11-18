@@ -94,13 +94,15 @@ expect_contains "libs that don't match the Dockerfile fail the plan" "$o$(cat "$
 git checkout -q "$C6"
 mkdir -p infra/images python/libs/img && echo v1 >python/libs/img/x.py
 printf 'FROM scratch\nCOPY x.py /x\n' >python/libs/img/Dockerfile
-printf 'image: img\ncode: python/libs/img\ncontext: python/libs/img\ndockerfile: python/libs/img/Dockerfile\n' >infra/images/img.yaml
+printf 'image: img\ncode: python/libs/img\ncontext: python/libs/img\ndockerfile: python/libs/img/Dockerfile\nlarge: true\n' >infra/images/img.yaml
 printf 'images: [img]\n' >>infra/services/a/deploy.yaml
 C9="$(commit "an image, used by a")"
 echo v2 >python/libs/img/x.py; C10="$(commit "the image changes")"
 o="$(run "$C10" push "$C9" "")"
 expect_eq "an image's change: builds it, deploys the service that runs it, and only that one" \
   "$(builds "$o")/$(svcs wave1 "$o")/$(svcs wave2 "$o")" "img/a/"
+expect_eq "an image marked large carries it to the build (disk freed, no layer cache)" \
+  "$(sed -n 's/^matrix=//p' <<<"$o" | jq -r '.include[] | select(.service == "img") | .large')" "true"
 
 # Config files: the compose must use their hash, or a new file never restarts the container.
 printf 'files: [infra/services/a/extra.yaml]\n' >>infra/services/a/deploy.yaml

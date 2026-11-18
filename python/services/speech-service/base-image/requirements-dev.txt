@@ -1,0 +1,2 @@
+# CI's test step for speech-base (infra/images/speech-base.yaml): the lock's shape.
+pytest==9.2.0
