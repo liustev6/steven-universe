@@ -1,7 +1,7 @@
 # 05: a fused RMSNorm in Triton (4.5c, fusion A, 2026-11-17)
 **Question:** spikes/04 found the predictor launching 4,665 kernels a frame, about half of them small
 pieces of RMSNorm (Qwen's runs as 8 kernels: to float32, square, mean, add, rsqrt, multiply, to
-bfloat16, × weight). One kernel per row (`app/engine/kernels.py`): how much faster, and how exact?
+bfloat16, × weight). One kernel per row (`app/tts_engine/kernels.py`): how much faster, and how exact?
 
 **How:**
 - `tests/test_kernels.py`: the kernel vs Qwen's RMSNorm on random inputs (5 shapes × 200).

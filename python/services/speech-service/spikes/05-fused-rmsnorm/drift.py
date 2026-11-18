@@ -9,9 +9,9 @@
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import torch
-from app.engine import kernels
-from app.engine.predictor import StaticCodePredictor
-from app.engine.tts import QwenTTSEngine
+from app.tts_engine import kernels
+from app.tts_engine.predictor import StaticCodePredictor
+from app.tts_engine.engine import QwenTTSEngine
 
 e = QwenTTSEngine(os.environ["TTS_MODEL"], predictor="ours-static"); e.load()
 cp = e._talker.code_predictor

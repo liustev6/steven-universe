@@ -25,7 +25,7 @@ from collections.abc import Callable
 
 import numpy as np
 
-from app.engine.base import TooLong, Transcript
+from app.stt_engine.base import TooLong, Transcript
 
 SAMPLE_RATE = 16000
 

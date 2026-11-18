@@ -37,7 +37,7 @@ utterances of 3 and 8 s (synthetic), one padded batch vs one after the other.
                                                                                           total   ~32-41%
 
 ## Step 2: the TTS's batch, as streams (`streams.py`, 2026-11-17)
-`app/engine/batch.py` (`TTSBatch`): slots join (their prompt's prefill on their own cache row,
+`app/tts_engine/batch.py` (`TTSBatch`): slots join (their prompt's prefill on their own cache row,
 between steps) and leave; each step runs every row at its own position (our kernels read a position per
 row); one graph per piece at `slots` rows. Tests (`tests/test_batch_gpu.py`): a row's frames are
 **bit-identical** whatever the other rows do (2 slots, and 4 joining at steps 0, 2, 4, 6); each row

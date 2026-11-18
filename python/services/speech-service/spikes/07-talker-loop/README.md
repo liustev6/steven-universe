@@ -1,7 +1,7 @@
 # 07: our own talker loop (4.5c stage 2, step 2, 2026-11-17)
 **Question:** the talker (28 layers, code 1 of each frame) still ran inside Hugging Face's `generate`, on
-its growing cache. Our own loop (`app/engine/talker.py`) over Qwen's modules, on our fixed cache
-(`app/engine/layers.py`, shared with the predictor), with Qwen's generation rules as GPU tensor operations:
+its growing cache. Our own loop (`app/tts_engine/talker.py`) over Qwen's modules, on our fixed cache
+(`app/tts_engine/layers.py`, shared with the predictor), with Qwen's generation rules as GPU tensor operations:
 does it give Qwen's exact codes, and what does it save?
 
 **What it does:** Qwen's own code still builds the prompt; at its `self.talker.generate(...)` the engine

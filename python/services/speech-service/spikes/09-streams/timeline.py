@@ -7,7 +7,7 @@ on the shared stream before it).
 import os, statistics, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import torch
-from app.engine.tts import QwenTTSEngine
+from app.tts_engine.engine import QwenTTSEngine
 
 e = QwenTTSEngine(os.environ["TTS_MODEL"], predictor="ours-fused", talker="ours-graph"); e.load(); e.warm_up()
 text, voice = "Sure. Tomorrow looks cloudy in the morning, with a little rain in the afternoon.", "aiden"

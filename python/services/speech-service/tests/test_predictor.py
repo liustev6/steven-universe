@@ -4,7 +4,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from app.engine.predictor import pick  # noqa: E402
+from app.tts_engine.predictor import pick  # noqa: E402
 
 LOGITS = torch.tensor([[0.0, 3.0, 1.0, 2.0, -1.0]])
 

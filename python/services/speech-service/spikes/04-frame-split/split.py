@@ -16,7 +16,7 @@ If the CPU takes longer than the GPU to get through a part, the GPU waits on the
 import os, statistics, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import torch
-from app.engine.tts import QwenTTSEngine
+from app.tts_engine.engine import QwenTTSEngine
 
 e = QwenTTSEngine(os.environ["TTS_MODEL"], predictor="ours-graph"); e.load(); e.warm_up()
 talker, cp = e._talker, e._talker.code_predictor

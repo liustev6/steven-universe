@@ -40,10 +40,10 @@ from collections.abc import Iterator
 
 import numpy as np
 
-from app.engine.base import Cancelled, Voice
-from app.engine.chunker import ChunkDecoder
-from app.engine.predictor import CodePredictor, GraphCodePredictor, StaticCodePredictor
-from app.engine.talker import TalkerLoop
+from app.tts_engine.base import Cancelled, Voice
+from app.tts_engine.chunker import ChunkDecoder
+from app.tts_engine.predictor import CodePredictor, GraphCodePredictor, StaticCodePredictor
+from app.tts_engine.talker import TalkerLoop
 
 # Each preset voice's native language (Qwen's README: speakers sound best in their own language).
 NATIVE = {"vivian": "Chinese", "serena": "Chinese", "uncle_fu": "Chinese", "dylan": "Chinese",
@@ -199,7 +199,7 @@ class QwenTTSEngine:
 
     def batch(self, slots: int = 2, *, capacity: int = 2048):
         """A batch of `slots` sentences generated together (batch.py): fused kernels, CUDA graphs."""
-        from app.engine.batch import TTSBatch
+        from app.tts_engine.batch import TTSBatch
 
         return TTSBatch(self._talker, slots=slots, capacity=capacity)
 

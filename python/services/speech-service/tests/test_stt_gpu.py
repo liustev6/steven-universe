@@ -27,7 +27,7 @@ LONGER = [("aiden", "Sure. Tomorrow looks cloudy in the morning, with a little r
 
 @pytest.fixture(scope="module")
 def tts():
-    from app.engine.tts import QwenTTSEngine
+    from app.tts_engine.engine import QwenTTSEngine
 
     e = QwenTTSEngine(os.environ["TTS_MODEL"], predictor="ours-fused", talker="ours-graph")
     e.load()
@@ -37,7 +37,7 @@ def tts():
 
 @pytest.fixture(scope="module")
 def stt():
-    from app.engine.stt import QwenSTTEngine
+    from app.stt_engine.engine import QwenSTTEngine
 
     e = QwenSTTEngine(os.environ["STT_MODEL"])
     e.load()

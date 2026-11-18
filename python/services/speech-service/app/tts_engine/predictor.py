@@ -121,7 +121,7 @@ class StaticCodePredictor:
     def _setup(self, x) -> SimpleNamespace:
         """The fixed buffers, once per batch size: each layer's keys and values for 16 positions, and
         the rotary angles (cos, sin) for positions 0-15 (layers.py)."""
-        from app.engine.layers import new_cache, rotary_table
+        from app.tts_engine.layers import new_cache, rotary_table
 
         if self._buffers is not None and self._buffers.batch == x.shape[0]:
             return self._buffers
@@ -134,7 +134,7 @@ class StaticCodePredictor:
 
     def _layers(self, h, start: int, n: int, b: SimpleNamespace):
         """The 5 decoder layers on positions start…start+n-1 (layers.py), with this predictor's cache."""
-        from app.engine.layers import decoder_layers
+        from app.tts_engine.layers import decoder_layers
 
         model = self.cp.model
         return decoder_layers(model.layers, model.norm, h, start, n, b.keys, b.values, b.cos, b.sin,

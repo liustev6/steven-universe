@@ -1,6 +1,6 @@
 # 02: our own code-predictor loop (4.5c stage 1, step 2, 2026-11-17)
 **Question:** the code predictor makes 15 of each frame's 16 codes, through Hugging Face's `generate`.
-Does our own loop over the same modules (`app/engine/predictor.py`) give Qwen's exact codes, and what
+Does our own loop over the same modules (`app/tts_engine/predictor.py`) give Qwen's exact codes, and what
 does skipping `generate` save? And can it use a fixed 16-slot cache (what a CUDA graph needs)?
 
 **How:**

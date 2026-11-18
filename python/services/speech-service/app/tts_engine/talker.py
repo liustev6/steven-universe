@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.engine.predictor import pick
+from app.tts_engine.predictor import pick
 
 
 class TalkerLoop:
@@ -132,7 +132,7 @@ class TalkerLoop:
     def _capture(self, x, b: SimpleNamespace) -> None:
         import torch
 
-        from app.engine.layers import decoder_layers
+        from app.tts_engine.layers import decoder_layers
 
         model, b.x = self.talker.model, x.clone()
 
@@ -157,7 +157,7 @@ class TalkerLoop:
     def _setup(self, x) -> SimpleNamespace:
         import torch
 
-        from app.engine.layers import new_cache, rotary_table
+        from app.tts_engine.layers import new_cache, rotary_table
 
         if self._buffers is not None:
             return self._buffers
@@ -173,7 +173,7 @@ class TalkerLoop:
         """The 28 layers. Fused, one position: the position goes through GPU memory (our rotary/cache
         and decode-attention kernels read it), the shape every frame is the same, so step 4's graph
         can replay it at any position."""
-        from app.engine.layers import decoder_layers
+        from app.tts_engine.layers import decoder_layers
 
         model, position = self.talker.model, None
         if self.fused and n == 1:

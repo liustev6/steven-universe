@@ -5,8 +5,8 @@ as `i` for its 1,920 samples, and `tail` padding samples follow the last frame (
 import numpy as np
 import pytest
 
-from app.engine.chunker import SAMPLES_PER_FRAME as SPF
-from app.engine.chunker import ChunkDecoder
+from app.tts_engine.chunker import SAMPLES_PER_FRAME as SPF
+from app.tts_engine.chunker import ChunkDecoder
 
 
 def fake_decode(tail=0, calls=None):

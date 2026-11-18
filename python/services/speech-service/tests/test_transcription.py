@@ -5,9 +5,9 @@ cut between them leaves a broken character (U+FFFD), as a real tokenizer's would
 import numpy as np
 import pytest
 
-from app.engine.base import TooLong
-from app.engine.transcription import SAMPLE_RATE as SR
-from app.engine.transcription import StreamingTranscription, pass_interval, settled_prefix
+from app.stt_engine.base import TooLong
+from app.stt_engine.transcription import SAMPLE_RATE as SR
+from app.stt_engine.transcription import StreamingTranscription, pass_interval, settled_prefix
 
 
 class Tokenizer:

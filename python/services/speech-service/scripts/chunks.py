@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np  # noqa: E402
 
-from app.engine.tts import QwenTTSEngine  # noqa: E402
+from app.tts_engine.engine import QwenTTSEngine  # noqa: E402
 
 SENTENCES = [("ryan", "Hi, how can I help you today?"),
              ("vivian", "好的，我现在帮你把客厅的灯关掉。"),

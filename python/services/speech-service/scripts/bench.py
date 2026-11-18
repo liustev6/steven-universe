@@ -15,7 +15,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app.engine.tts import PREDICTORS, QwenTTSEngine  # noqa: E402
+from app.tts_engine.engine import PREDICTORS, QwenTTSEngine  # noqa: E402
 
 SENTENCES = [("ryan", "The kitchen lights are on, and the door is locked."),
              ("vivian", "好的，我现在帮你把客厅的灯关掉。"),

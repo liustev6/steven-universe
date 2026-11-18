@@ -24,7 +24,7 @@ decode. Worse, the stream's thread checks each frame for the end code with `int(
 the CPU that waits for **everything** queued on that stream before it, including the next frame's
 generation.
 
-## The fix: two streams and events (app/engine/tts.py)
+## The fix: two streams and events (app/tts_engine/engine.py)
 - Generation runs on its own stream (`torch.cuda.stream(self._generation)` in the generation thread);
   the codec's decode on another, `priority=-1` (higher: its work goes first when both wait).
 - Each frame crosses with an event: the generation thread records it right after the frame's codes;

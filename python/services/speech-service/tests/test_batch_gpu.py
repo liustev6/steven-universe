@@ -20,7 +20,7 @@ D = ("serena", "今天西雅图多云，最高气温十二度。")
 
 @pytest.fixture(scope="module")
 def engine():
-    from app.engine.tts import QwenTTSEngine
+    from app.tts_engine.engine import QwenTTSEngine
 
     e = QwenTTSEngine(os.environ["TTS_MODEL"], predictor="ours-fused", talker="ours-graph")
     e.load()
@@ -61,7 +61,7 @@ def test_a_row_does_not_depend_on_the_others(batch, engine):
 def test_each_row_is_close_to_qwens_exact_path(batch, engine):
     """The exact talker (our loop, unfused) fed each row's frames: code 1's scores, step by step, by
     the near-tie standard (the batch's matrix multiplies at 2 rows may round differently)."""
-    from app.engine.talker import TalkerLoop
+    from app.tts_engine.talker import TalkerLoop
     from tests.test_tts_gpu import bf16_steps
 
     exact = TalkerLoop(engine._talker)
@@ -89,7 +89,7 @@ def test_each_row_is_close_to_qwens_exact_path(batch, engine):
 
 
 def test_sentences_end_and_the_limit_holds(batch, engine):
-    from app.engine.tts import max_frames
+    from app.tts_engine.engine import max_frames
 
     a, = run(batch, [(0, A)], engine)
     assert 25 < len(a) < 80                                            # ~3 s of speech, ended by itself
@@ -98,7 +98,7 @@ def test_sentences_end_and_the_limit_holds(batch, engine):
 
 
 def test_full_then_free(batch, engine):
-    from app.engine.batch import Full
+    from app.tts_engine.batch import Full
 
     p = engine.prompt(A[1], A[0], sample=False)
     s1, s2 = batch.join(p), batch.join(p)

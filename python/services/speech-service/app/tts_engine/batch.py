@@ -28,7 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
-from app.engine.predictor import GraphCodePredictor, pick
+from app.tts_engine.predictor import GraphCodePredictor, pick
 
 
 @dataclass
@@ -50,7 +50,7 @@ class TTSBatch:
     def __init__(self, talker, *, slots: int = 2, capacity: int = 2048):
         import torch
 
-        from app.engine.layers import new_cache, rotary_table
+        from app.tts_engine.layers import new_cache, rotary_table
 
         self.talker, self.slots, self.capacity = talker, slots, capacity
         model, config = talker.model, talker.config
@@ -80,7 +80,7 @@ class TTSBatch:
         gets each step's code-1 scores after the rules (tests compare against the single sentence)."""
         import torch
 
-        from app.engine.layers import decoder_layers
+        from app.tts_engine.layers import decoder_layers
 
         free = self.free()
         if not free:
@@ -200,7 +200,7 @@ class TTSBatch:
         (as TalkerLoop's, at `slots` rows)."""
         import torch
 
-        from app.engine.layers import decoder_layers
+        from app.tts_engine.layers import decoder_layers
 
         if self._graph is None:
             g = SimpleNamespace(x=x.clone())

@@ -3,7 +3,7 @@
 the rotary embedding and the cache write (q and k: multiply by cos, `rotate_half` = negate + concatenate,
 multiply by sin, add; then two copies into the cache). One kernel: faster, and can it be bit-exact?
 
-**How:** `_rope_and_cache` in `app/engine/kernels.py`: one program per (position, head) row; q rotated
+**How:** `_rope_and_cache` in `app/tts_engine/kernels.py`: one program per (position, head) row; q rotated
 into attention's layout, k rotated and v copied straight into the fixed cache.
 `tests/test_kernels.py::test_rope_and_cache_is_bit_exact` (`torch.equal` against Qwen's formula);
 `scripts/bench.py`, `spikes/04-frame-split/kernels.py ours-static fused`, `scripts/chunks.py`,

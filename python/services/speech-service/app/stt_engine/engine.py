@@ -1,7 +1,7 @@
 """The speech-to-text engine: Qwen3-ASR-0.6B, streamed (speech-service.md T12, 4.5d; spikes/10).
 
 Qwen's model and processor (`qwen-asr`, Apache-2.0), on the transformers backend; the streaming is
-ours (transcription.py: Qwen's method, our schedule), as the TTS's loop is (tts.py). Qwen's own
+ours (transcription.py: Qwen's method, our schedule), as the TTS's loop is (app/tts_engine/talker.py). Qwen's own
 streaming needs vLLM; this doesn't.
 
 One decode pass = the processor turns the audio and the prompt (+ the text so far) into the model's
@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from app.engine.base import Transcript
-from app.engine.transcription import SAMPLE_RATE, StreamingTranscription
+from app.stt_engine.base import Transcript
+from app.stt_engine.transcription import SAMPLE_RATE, StreamingTranscription
 
 
 class QwenSTTEngine:

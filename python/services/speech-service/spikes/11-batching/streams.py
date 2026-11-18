@@ -13,8 +13,8 @@ first; 4 arriving 0.5 s apart (slots=4). Each 3 times.
 import os, queue, statistics, sys, threading, time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import numpy as np, torch
-from app.engine.chunker import ChunkDecoder
-from app.engine.tts import QwenTTSEngine
+from app.tts_engine.chunker import ChunkDecoder
+from app.tts_engine.engine import QwenTTSEngine
 
 SENTENCES = [("aiden", "Sure. Tomorrow looks cloudy in the morning, with a little rain in the afternoon."),
              ("vivian", "好的，我现在帮你把客厅的灯关掉，然后把卧室的空调调到二十四度。"),

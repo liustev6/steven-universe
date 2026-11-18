@@ -9,7 +9,7 @@ first run saves them, a run on the other version compares. Both versions are pat
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import torch, transformers
-from app.engine.tts import QwenTTSEngine
+from app.tts_engine.engine import QwenTTSEngine
 
 SENTENCES = [("ryan", "Hi, how can I help you today?"), ("vivian", "好的，我现在帮你把客厅的灯关掉。"),
              ("aiden", "Sure. Tomorrow looks cloudy in the morning, with a little rain in the afternoon."),

@@ -30,7 +30,7 @@ SENTENCES = [("ryan", "Hi, how can I help you today?"),
 
 @pytest.fixture(scope="module")
 def engine():
-    from app.engine.tts import QwenTTSEngine
+    from app.tts_engine.engine import QwenTTSEngine
 
     e = QwenTTSEngine(os.environ["TTS_MODEL"])
     e.load()
@@ -75,7 +75,7 @@ def test_our_talker_gives_qwens_codes(engine, talker, predictor, voice, text):
 def test_fused_talker_is_close_to_the_exact_one(engine):
     """Qwen's prompts for the test sentences; the exact talker's frames (greedy); the fused talker fed
     the same frames: code 1's scores, step by step, by the near-tie standard."""
-    from app.engine.talker import TalkerLoop
+    from app.tts_engine.talker import TalkerLoop
 
     calls, real = [], engine._talkers["ours"]
 
@@ -127,7 +127,7 @@ def test_our_talker_samples_and_stops(engine, talker, predictor):
     seconds = len(np.concatenate(list(engine.stream("Sure. Tomorrow looks cloudy in the morning.", "ryan")))) / 24000
     assert 1.5 < seconds < 6, seconds
     n = sum(1 for _ in engine.frames("Warming up.", "ryan", sample=False))      # and the limit holds
-    from app.engine.tts import max_frames
+    from app.tts_engine.engine import max_frames
     assert n <= max_frames("Warming up.")
 
 
@@ -146,7 +146,7 @@ def bf16_steps(x):
 
 def test_fused_predictor_is_close_to_the_exact_one(engine):
     """Every frame's predictor inputs from real sentences; the fused predictor fed the exact one's codes."""
-    from app.engine.predictor import StaticCodePredictor
+    from app.tts_engine.predictor import StaticCodePredictor
 
     cp = engine._talker.code_predictor
     exact, fused, inputs = StaticCodePredictor(cp), StaticCodePredictor(cp, fused=True), []
@@ -195,7 +195,7 @@ def test_streamed_audio_matches_the_whole_decode(engine, voice, text):
 
 def test_a_sentence_that_never_ends_is_cut_off(engine):
     """Greedy "Warming up." never produces the end code: the limit stops it (50 + 8 a character)."""
-    from app.engine.tts import max_frames
+    from app.tts_engine.engine import max_frames
 
     n = sum(1 for _ in engine.frames("Warming up.", "ryan", sample=False))
     assert n <= max_frames("Warming up.") == 138

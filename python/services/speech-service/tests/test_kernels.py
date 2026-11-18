@@ -25,7 +25,7 @@ class QwenRMSNorm(torch.nn.Module):
 @pytest.mark.parametrize("shape", [(1, 2, 1024), (1, 1, 1024), (1, 1, 16, 128), (1, 2, 8, 128), (3, 1, 1024)])
 def test_rms_norm_matches_qwens(shape):
     """At most a rare element one bfloat16 step off (the mean adds in another order), never more."""
-    from app.engine.kernels import rms_norm
+    from app.tts_engine.kernels import rms_norm
 
     torch.manual_seed(0)
     ref = QwenRMSNorm(shape[-1]).to("cuda", torch.bfloat16)
@@ -50,7 +50,7 @@ def rotate_half(x):
 @pytest.mark.parametrize("batch, n, start", [(1, 2, 0), (1, 1, 5), (1, 1, 15), (3, 2, 0), (2, 1, 9)])
 def test_rope_and_cache_is_bit_exact(batch, n, start):
     """No sums, so nothing reordered: the same three roundings as Qwen's, so the same bits."""
-    from app.engine.kernels import rope_and_cache
+    from app.tts_engine.kernels import rope_and_cache
 
     torch.manual_seed(start)
     dt, dev, d = torch.bfloat16, "cuda", 128
@@ -77,7 +77,7 @@ def test_decode_attention_matches_pytorch(length):
     same up to rounding (its own summation order, and float32 throughout where PyTorch's kernel rounds
     the softmax weights to bfloat16)."""
     import torch.nn.functional as F
-    from app.engine.kernels import decode_attention
+    from app.tts_engine.kernels import decode_attention
 
     torch.manual_seed(length)
     dt, dev, d = torch.bfloat16, "cuda", 128
@@ -99,7 +99,7 @@ def test_decode_attention_matches_pytorch(length):
 def test_each_batch_row_has_its_own_position():
     """A batch of 3 at positions 5, 200 and 0: each row equals that row alone at its position, for the
     rotary/cache write and for the decode attention (a batch's sentences are at different points)."""
-    from app.engine.kernels import decode_attention, rope_and_cache
+    from app.tts_engine.kernels import decode_attention, rope_and_cache
 
     torch.manual_seed(7)
     dt, dev, d, cap = torch.bfloat16, "cuda", 128, 256

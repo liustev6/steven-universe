@@ -39,7 +39,7 @@ def decoder_layers(layers, final_norm, h, start: int, n: int, keys, values, cos,
         q, k = norm(a.q_norm, a.q_proj(h).view(shape)), norm(a.k_norm, a.k_proj(h).view(shape))
         v = a.v_proj(h).view(shape)
         if fused:                                                 # rotate, and write k, v into the cache
-            from app.engine.kernels import decode_attention, rope_and_cache
+            from app.tts_engine.kernels import decode_attention, rope_and_cache
 
             q = rope_and_cache(q, k, v, cos, sin, k_cache, v_cache, start, position=position)
         else:
@@ -97,6 +97,6 @@ def _module_norm(module, x):
 
 
 def _fused_norm(module, x):
-    from app.engine.kernels import rms_norm
+    from app.tts_engine.kernels import rms_norm
 
     return rms_norm(x, module.weight, module.variance_epsilon)

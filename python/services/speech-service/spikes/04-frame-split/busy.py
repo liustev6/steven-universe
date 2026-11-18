@@ -8,7 +8,7 @@ import os, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import torch
 from torch.profiler import ProfilerActivity, profile
-from app.engine.tts import QwenTTSEngine
+from app.tts_engine.engine import QwenTTSEngine
 
 text, voice = "Sure. Tomorrow looks cloudy in the morning, with a little rain in the afternoon.", "aiden"
 e = QwenTTSEngine(os.environ["TTS_MODEL"]); e.load(); e.warm_up()

@@ -12,10 +12,10 @@ Each piece at batch 1, 2 and 4 (synchronized GPU time, medians of 30):
 import os, statistics, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import numpy as np, torch
-from app.engine.layers import decoder_layers, new_cache, rotary_table
-from app.engine.predictor import GraphCodePredictor
-from app.engine.stt import QwenSTTEngine
-from app.engine.tts import QwenTTSEngine
+from app.tts_engine.layers import decoder_layers, new_cache, rotary_table
+from app.tts_engine.predictor import GraphCodePredictor
+from app.stt_engine.engine import QwenSTTEngine
+from app.tts_engine.engine import QwenTTSEngine
 
 DEV, BF = "cuda:0", torch.bfloat16
 SAMPLING = dict(do_sample=True, top_k=50, top_p=1.0, temperature=0.9)
