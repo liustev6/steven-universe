@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np  # noqa: E402
 
-from app.engine.qwen import QwenEngine  # noqa: E402
+from app.engine.tts import QwenTTSEngine  # noqa: E402
 
 SENTENCES = [("ryan", "Hi, how can I help you today?"),
              ("vivian", "好的，我现在帮你把客厅的灯关掉。"),
@@ -75,7 +75,7 @@ def main(args):
         i = args.index("--talker")
         talker, args = args[i + 1], args[:i] + args[i + 2:]
     sizes = [tuple(int(n) for n in a.split(",")) for a in args] or [(4,), (1, 2, 4), (1, 1, 2, 4), (1, 1, 2, 2, 4)]
-    engine = QwenEngine(os.environ["TTS_MODEL"], predictor=predictor, talker=talker)
+    engine = QwenTTSEngine(os.environ["TTS_MODEL"], predictor=predictor, talker=talker)
     print(f"predictor: {predictor}, talker: {talker}")
     engine.load()
     engine.warm_up()

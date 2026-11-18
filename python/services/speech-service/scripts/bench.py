@@ -15,7 +15,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app.engine.qwen import PREDICTORS, QwenEngine  # noqa: E402
+from app.engine.tts import PREDICTORS, QwenTTSEngine  # noqa: E402
 
 SENTENCES = [("ryan", "The kitchen lights are on, and the door is locked."),
              ("vivian", "好的，我现在帮你把客厅的灯关掉。"),
@@ -40,7 +40,7 @@ def one(engine, voice, text):
 
 
 def main(names):
-    engine = QwenEngine(os.environ["TTS_MODEL"])
+    engine = QwenTTSEngine(os.environ["TTS_MODEL"])
     engine.load()
     engine.warm_up()
     print(f"{'predictor:talker':<20} {'ms/frame':>9} {'first audio':>12} {'RTF':>6}")

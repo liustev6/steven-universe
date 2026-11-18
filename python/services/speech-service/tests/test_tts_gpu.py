@@ -30,9 +30,9 @@ SENTENCES = [("ryan", "Hi, how can I help you today?"),
 
 @pytest.fixture(scope="module")
 def engine():
-    from app.engine.qwen import QwenEngine
+    from app.engine.tts import QwenTTSEngine
 
-    e = QwenEngine(os.environ["TTS_MODEL"])
+    e = QwenTTSEngine(os.environ["TTS_MODEL"])
     e.load()
     e.warm_up()
     return e
@@ -127,7 +127,7 @@ def test_our_talker_samples_and_stops(engine, talker, predictor):
     seconds = len(np.concatenate(list(engine.stream("Sure. Tomorrow looks cloudy in the morning.", "ryan")))) / 24000
     assert 1.5 < seconds < 6, seconds
     n = sum(1 for _ in engine.frames("Warming up.", "ryan", sample=False))      # and the limit holds
-    from app.engine.qwen import max_frames
+    from app.engine.tts import max_frames
     assert n <= max_frames("Warming up.")
 
 
@@ -195,7 +195,7 @@ def test_streamed_audio_matches_the_whole_decode(engine, voice, text):
 
 def test_a_sentence_that_never_ends_is_cut_off(engine):
     """Greedy "Warming up." never produces the end code: the limit stops it (50 + 8 a character)."""
-    from app.engine.qwen import max_frames
+    from app.engine.tts import max_frames
 
     n = sum(1 for _ in engine.frames("Warming up.", "ryan", sample=False))
     assert n <= max_frames("Warming up.") == 138

@@ -11,9 +11,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import torch
 from app.engine import kernels
 from app.engine.predictor import StaticCodePredictor
-from app.engine.qwen import QwenEngine
+from app.engine.tts import QwenTTSEngine
 
-e = QwenEngine(os.environ["TTS_MODEL"], predictor="ours-static"); e.load()
+e = QwenTTSEngine(os.environ["TTS_MODEL"], predictor="ours-static"); e.load()
 cp = e._talker.code_predictor
 inputs, orig = [], e._predictors["ours-static"]
 e._predictors["ours-static"] = lambda inputs_embeds, **kw: (inputs.append(inputs_embeds.clone()), orig(inputs_embeds, **kw))[1]

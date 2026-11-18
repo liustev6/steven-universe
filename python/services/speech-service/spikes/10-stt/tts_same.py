@@ -9,13 +9,13 @@ first run saves them, a run on the other version compares. Both versions are pat
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import torch, transformers
-from app.engine.qwen import QwenEngine
+from app.engine.tts import QwenTTSEngine
 
 SENTENCES = [("ryan", "Hi, how can I help you today?"), ("vivian", "好的，我现在帮你把客厅的灯关掉。"),
              ("aiden", "Sure. Tomorrow looks cloudy in the morning, with a little rain in the afternoon."),
              ("serena", "今天西雅图多云，最高气温十二度。"), ("ryan", "The kitchen lights are on, and the door is locked.")]
 mode, path = sys.argv[1], sys.argv[2]
-e = QwenEngine(os.environ["TTS_MODEL"]); e.load()
+e = QwenTTSEngine(os.environ["TTS_MODEL"]); e.load()
 codes = {}
 for setup in ("qwen:qwen", "ours-fused:ours-graph"):
     e.predictor, e.talker = setup.split(":")

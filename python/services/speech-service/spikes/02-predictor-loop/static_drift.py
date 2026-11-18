@@ -3,9 +3,9 @@ import os, sys
 sys.path.insert(0, "/src")
 import torch
 from transformers import DynamicCache, StaticCache
-from app.engine.qwen import QwenEngine
+from app.engine.tts import QwenTTSEngine
 
-e = QwenEngine(os.environ["TTS_MODEL"]); e.load()
+e = QwenTTSEngine(os.environ["TTS_MODEL"]); e.load()
 cp = e._talker.code_predictor
 inputs = []
 orig = cp.generate

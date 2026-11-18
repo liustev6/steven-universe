@@ -60,7 +60,7 @@ def max_frames(text: str) -> int:
     return 50 + 8 * len(text)
 
 
-class QwenEngine:
+class QwenTTSEngine:
     def __init__(self, model_path: str, *, device: str = "cuda:0", chunks: int | tuple[int, ...] = (1, 1, 2, 4),
                  context: int = 25, predictor: str = "qwen", talker: str = "qwen"):
         self.model_path, self.device, self.chunks, self.context = model_path, device, chunks, context

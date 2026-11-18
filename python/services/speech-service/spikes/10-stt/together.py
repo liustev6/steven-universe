@@ -18,7 +18,7 @@ import json, os, statistics, subprocess, sys, threading, time
 here = os.path.dirname(__file__)
 sys.path.insert(0, os.path.join(here, "..", "..")); sys.path.insert(0, here)
 import numpy as np, soundfile as sf, torch
-from app.engine.qwen import QwenEngine
+from app.engine.tts import QwenTTSEngine
 from asr_bench import Qwen
 
 SENTENCES = [("ryan", "Hi, how can I help you today?"), ("vivian", "好的，我现在帮你把客厅的灯关掉。"),
@@ -54,7 +54,7 @@ def main():
     data = os.environ.get("DATA", "/data")
     clips = [sf.read(f"{data}/{json.loads(l)['path']}", dtype="float32")[0] for l in open(f"{data}/manifest.jsonl")][::6]
     torch.cuda.reset_peak_memory_stats()
-    e = QwenEngine(os.environ["TTS_MODEL"], predictor="ours-fused", talker="ours-graph"); e.load(); e.warm_up()
+    e = QwenTTSEngine(os.environ["TTS_MODEL"], predictor="ours-fused", talker="ours-graph"); e.load(); e.warm_up()
     after_tts = torch.cuda.max_memory_allocated() / 2**30
     load, priority = os.environ.get("ASR_LOAD", "utt"), int(os.environ.get("ASR_PRIORITY", "-1"))
     asr = Qwen(); asr_stream = torch.cuda.Stream(priority=priority)

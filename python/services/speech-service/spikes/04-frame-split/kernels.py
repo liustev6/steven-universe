@@ -6,10 +6,10 @@ import collections, os, re, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 import torch
 from torch.profiler import ProfilerActivity, profile
-from app.engine.qwen import QwenEngine
+from app.engine.tts import QwenTTSEngine
 
 text, voice = "Sure. Tomorrow looks cloudy in the morning, with a little rain in the afternoon.", "aiden"
-e = QwenEngine(os.environ["TTS_MODEL"]); e.load(); e.warm_up()
+e = QwenTTSEngine(os.environ["TTS_MODEL"]); e.load(); e.warm_up()
 cp = e._talker.code_predictor
 # Count only the predictor's kernels: profile a direct call of the predictor, 20 times
 x = torch.randn(1, 2, 1024, device="cuda", dtype=torch.bfloat16)
