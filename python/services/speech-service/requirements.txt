@@ -1,0 +1,7 @@
+# speech-service runtime dependencies: the web side. The model stack (PyTorch 2.15 + CUDA 13.2,
+# qwen-tts, qwen-asr, transformers 4.57.6, Triton) comes with the image (4.6; spikes/10's Dockerfile),
+# and the image also installs ../../libs/service-auth[fastapi].
+fastapi==0.163.1        # the version qwen-tts's dependencies already bring
+uvicorn[standard]==0.54.0
+pydantic-settings==2.16.2
+httpx==0.28.1
