@@ -54,7 +54,7 @@ def router(service: Service, auth) -> APIRouter:
         except QueueTimeout:
             return problem(503, "busy", "no place in time", headers=busy)
         service.sessions["tts"] += 1
-        sentences = Sentences()
+        sentences = Sentences(first_clause=s.TTS_FIRST_CLAUSE)
         parts = sentences.add(req.input) + sentences.flush()
 
         async def body():

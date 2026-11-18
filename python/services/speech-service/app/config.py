@@ -31,5 +31,6 @@ class Settings(BaseSettings):
     TTS_MAX_SECONDS: float = 600.0             # one reply
     STT_MAX_SECONDS: float = 60.0              # one utterance
     MAX_TEXT_CHARS: int = 4096                 # one reply's text (T8, OpenAI's limit)
+    TTS_FIRST_CLAUSE: bool = True              # a reply's first segment may end at a comma (sentences.py)
 
     STT_TICK_SECONDS: float = 0.1              # the STT's batch ticks this often (and at once on an end)

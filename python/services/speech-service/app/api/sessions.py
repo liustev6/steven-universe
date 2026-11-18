@@ -157,7 +157,7 @@ async def speech_session(ws: WebSocket, service: Service, auth) -> None:
         if not await wait_for_place(ws, ticket, service, stream_format(TTS_RATE)):
             return await close(ws, "queue_timeout", "no place in time")
         reader = asyncio.create_task(inbox.read(ws))
-        sentences, pending = Sentences(), deque()
+        sentences, pending = Sentences(first_clause=s.TTS_FIRST_CLAUSE), deque()
         ended, chars, start = False, 0, time.monotonic()
         idle_since, first_audio_at, asked_at = time.monotonic(), None, None
         index, samples = -1, 0                                     # the sentence being spoken, its audio so far
@@ -222,16 +222,29 @@ async def transcription_session(ws: WebSocket, service: Service, auth) -> None:
     """Client: binary audio (16 kHz 16-bit PCM, raw, ~100 ms each), {type: commit} (the speaker stopped),
     {type: cancel}. Server: queued, started {format, sample_rate, channels}, {type: partial, text,
     stable, language} (the whole text so far, which replaces the last; `stable`: its start that won't
-    change), {type: final, text, language, reason}, where reason is commit, idle (no audio for a while
-    after some: what was heard is the final), or too_long (the 60 s limit: what was heard up to it);
-    or cancelled; or error {code: idle (no audio at all) | queue_timeout | bad_message | failed}."""
+    change), {type: final, text, language, reason}, where reason is commit, silence (server-side turn
+    detection heard the speaker stop), idle (no audio for a while after some: what was heard is the
+    final), or too_long (the 60 s limit: what was heard up to it); or cancelled; or error {code: idle
+    (no audio at all) | queue_timeout | bad_message | failed}.
+
+    `?turn_detection=server` (default: none, the client commits): the server ends the turn itself
+    after `silence_ms` (300-3000, default 700) of quiet following speech (turns.py)."""
     s = service.settings
-    language = ws.query_params.get("language") or None
+    q = ws.query_params
+    language = q.get("language") or None
     if await authenticate(ws, auth, "speech:transcribe") is None:
         return
     if language and language not in service.languages:
         await ws.send_denial_response(problem(400, "unknown_language", f"languages: {', '.join(service.languages)}"))
         return
+    endpoint = None
+    if q.get("turn_detection", "none") not in ("none", "server") or not q.get("silence_ms", "700").isdigit() \
+            or not 300 <= int(q.get("silence_ms", "700")) <= 3000:
+        await ws.send_denial_response(problem(400, "bad_parameter", "turn_detection: none | server; silence_ms: 300-3000"))
+        return
+    if q.get("turn_detection") == "server":
+        from app.stt_engine.turns import SilenceEndpoint
+        endpoint = SilenceEndpoint(silence_ms=int(q.get("silence_ms", "700")))
     if (ticket := await admit(ws, service, service.stt_admission)) is None:
         return
     await ws.accept()
@@ -259,10 +272,16 @@ async def transcription_session(ws: WebSocket, service: Service, auth) -> None:
                 if kind == "gone":
                     return
                 if kind == "bytes":
+                    if committed is not None and reason in ("silence", "idle", "too_long"):
+                        continue                                        # the turn already ended: the rest is dropped
                     if committed is not None or len(payload) % 2:
                         return await close(ws, "bad_message", "16-bit PCM frames, before the commit")
-                    service.stt.audio(utterance, np.frombuffer(payload, dtype="<i2"))
+                    pcm = np.frombuffer(payload, dtype="<i2")
+                    service.stt.audio(utterance, pcm)
                     last_audio, heard = time.monotonic(), True
+                    if endpoint is not None and committed is None and endpoint.feed(pcm.astype(np.float32) / 32768):
+                        committed, reason = time.monotonic(), "silence"     # the server heard the turn end
+                        service.stt.end(utterance)
                     continue
                 msg = control(payload)
                 if msg.get("type") == "commit" and committed is None:

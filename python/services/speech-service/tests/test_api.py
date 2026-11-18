@@ -98,13 +98,13 @@ def test_a_reply_streamed_in_comes_back_as_audio_then_done():
             ws.send_json({"type": "text", "text": piece})
         ws.send_json({"type": "end"})
         msgs, audio, code = drain(ws, with_code=True)
-    first, second = "Sure, tomorrow looks cloudy.", "And then some rain"
-    assert msgs == [{"type": "sentence", "index": 0, "text": first},
-                    {"type": "sentence_done", "index": 0, "samples": len(first.split()) * SPF},
-                    {"type": "sentence", "index": 1, "text": second},
-                    {"type": "sentence_done", "index": 1, "samples": len(second.split()) * SPF},
-                    {"type": "done"}]
-    assert audio == (len(first.split()) + len(second.split())) * SPF * 2     # 16-bit: 2 bytes a sample
+    segments = ["Sure,", "tomorrow looks cloudy.", "And then some rain"]  # the first clause starts at once
+    expected = []
+    for i, text in enumerate(segments):
+        expected += [{"type": "sentence", "index": i, "text": text},
+                     {"type": "sentence_done", "index": i, "samples": len(text.split()) * SPF}]
+    assert msgs == expected + [{"type": "done"}]
+    assert audio == sum(len(t.split()) for t in segments) * SPF * 2          # 16-bit: 2 bytes a sample
     assert code == 1000
     assert service.tts_admission.counts()["running"] == 0
     assert len(service.first_audio_ms) == 1
@@ -251,3 +251,18 @@ def test_voices_status_health():
     assert client.get("/health").status_code == 200
     service.warm = False
     assert client.get("/health").status_code == 503
+
+
+
+def test_server_side_turn_detection_commits_by_itself():
+    from tests.test_turns import loud, quiet
+    client, _ = make()
+    with client.websocket_connect("/v1/realtime/transcription?turn_detection=server&silence_ms=500", headers=ALL) as ws:
+        ws.receive_json()
+        audio = np.concatenate([quiet(0.3), loud(1.2), quiet(1.0)])
+        for i in range(0, len(audio), 1600):
+            ws.send_bytes((audio[i:i + 1600] * 32767).astype("<i2").tobytes())
+        msgs, _, code = drain(ws, with_code=True)                      # no commit sent
+    assert msgs[-1]["type"] == "final" and msgs[-1]["reason"] == "silence" and code == 1000
+    assert denied(client, "/v1/realtime/transcription?turn_detection=maybe", ALL).status_code == 400
+    assert denied(client, "/v1/realtime/transcription?turn_detection=server&silence_ms=50", ALL).status_code == 400

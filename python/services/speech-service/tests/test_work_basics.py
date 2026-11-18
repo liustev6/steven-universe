@@ -89,3 +89,15 @@ def test_a_long_stretch_without_punctuation_cuts_at_a_comma_or_space():
 def test_line_breaks_cut():
     out, rest = feed(["first line\nsecond"])
     assert out == ["first line"] and rest == ["second"]
+
+
+
+def test_the_first_clause_starts_at_a_comma():
+    out, rest = feed(["好的，", "我现在帮你，", "把灯关掉。"], first_clause=True)
+    assert out == ["好的，", "我现在帮你，把灯关掉。"]                   # only the first segment cuts at a comma
+    out, _ = feed(["Sure, ", "tomorrow looks cloudy, with rain. Then sun."], first_clause=True)
+    assert out == ["Sure,", "tomorrow looks cloudy, with rain."]
+    out, _ = feed(["3,500 people came. ", "Yes."], first_clause=True)
+    assert out == ["3,500 people came."]                               # "," not before a space: no cut
+    out, _ = feed(["好的，我现在帮你。"], first_clause=False)
+    assert out == ["好的，我现在帮你。"]
