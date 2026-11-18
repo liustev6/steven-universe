@@ -252,14 +252,23 @@ class VoiceAssistant:
             while (piece := await texts.get()) is not None:
                 yield piece
 
-        async def play(pcm: bytes) -> None:
+        # The speech is read as fast as it comes and queued for the speaker, which plays it in real
+        # time on its own: the TTS session ends (and frees its slot) when the audio is made, not played.
+        audio: asyncio.Queue[Optional[bytes]] = asyncio.Queue()
+
+        async def received(pcm: bytes) -> None:
             if "first_audio" not in timings:
                 mark("first_audio")
                 await self.ui.phase(turn_id, "speaking")
-            await speaker.write(pcm)
+            audio.put_nowait(pcm)
+
+        async def play() -> None:
+            while (pcm := await audio.get()) is not None:
+                await speaker.write(pcm)
 
         speaking = asyncio.create_task(self.speech.speak(
-            text_in(), voice=self.options.voice, language=self.options.tts_language, on_audio=play))
+            text_in(), voice=self.options.voice, language=self.options.tts_language, on_audio=received))
+        player = asyncio.create_task(play())
         agent_done = False
 
         async def write() -> None:
@@ -292,14 +301,17 @@ class VoiceAssistant:
                     raise task.exception()
             await writing
             await speaking
-            mark("audio_done")
+            mark("audio_done")                                         # all of it made (the session closed)
+            audio.put_nowait(None)
+            await player
             await speaker.drain()
             mark("played")
             logger.info("turn %s: timings (ms from heard) %s", turn_id, timings)
         except BaseException:
             writing.cancel()
             speaking.cancel()
-            await asyncio.wait([writing, speaking])
+            player.cancel()
+            await asyncio.wait([writing, speaking, player])
             await speaker.stop()
             if not agent_done:                                         # don't leave it writing
                 await self.agent.cancel()

@@ -339,3 +339,32 @@ def test_an_ended_session_is_replaced_in_the_same_conversation():
         assert events[-1]["type"] == "turn.completed" and agent.session_id == "s2"
         assert [b for _, p, b in log if p == "/v1/sessions"][-1] == {"profile": "voice", "conversation_id": "c1"}
     run(go())
+
+
+def test_the_speech_is_read_at_once_while_the_speaker_plays_on_its_own():
+    """The TTS session ends when its audio is made, not when it has played (it holds a slot)."""
+    async def go():
+        r = Rig()
+        released = asyncio.Event()
+        order = []
+
+        async def slow_write(pcm):                                   # a speaker that plays in real time
+            order.append("write")
+            await released.wait()
+
+        r.speaker.write = slow_write
+        spoken = r.speech.speak
+
+        async def speak(*a, **kw):
+            await spoken(*a, **kw)
+            order.append("speech done")
+
+        r.speech.speak = speak
+        await r.va.say("hello")
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert "speech done" in order and r.va.state is State.REPLYING   # made; still playing
+        released.set()
+        await r.settle()
+        assert r.va.state is State.WAITING
+    run(go())
