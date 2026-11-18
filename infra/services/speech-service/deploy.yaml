@@ -4,7 +4,7 @@
 # Spec: docs/specs/speech-service.md.
 service: speech-service
 host: speech-host
-pipeline: false                        # by hand until its first deploy is proven (as every service)
+pipeline: true                         # since 2026-11-18, after its first hand deploy (CP4 4.6)
 wave: 1
 code: python/services/speech-service
 libs: [service-auth]                   # in the image (its Dockerfile copies it; CI checks)
