@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     CLIENT_SECRET_FILE: Path = Path("/etc/pi-server/credentials/client_secret")
     SPEECH_URL: str = "https://speech.lan.liustev6.ca"
     AGENT_URL: str = "https://agent.lan.liustev6.ca"
-    AGENT_PROFILE: str = "voice"
+    AGENT_PROFILE: str = "pi"                    # its own profile (infra/services/agent-service/profiles.yaml)
     WAKE_WORD: str = "hey_jarvis"                # a built-in microWakeWord model, or a trained one's .json
     LISTEN_WINDOW_SECONDS: float = 5.0           # a session waits this long for someone to speak (V9)
     VOICE_NAME: str = "ryan"
