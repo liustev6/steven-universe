@@ -23,6 +23,10 @@
 set -euo pipefail
 
 entries='[]'   # images to build
+
+# The Python a service's tests run on in CI: its folder's .python-version (the file pyenv, uv and
+# setup-python read; speech-service: 3.12, its image's), else 3.11.
+pyver() { if [ -f "$1/.python-version" ]; then tr -d ' \n' <"$1/.python-version"; else echo 3.11; fi; }
 wave1='[]'     # services to deploy, by wave
 wave2='[]'
 
@@ -113,7 +117,7 @@ for m in infra/services/*/deploy.yaml; do
   fi
   echo "$svc: build ${image_sha:0:7} (last change to: ${inputs% })"
   entries="$(jq -c --arg s "$svc" --arg c "$code" --arg i "$image_sha" --arg x "$context" --arg f "$dockerfile" \
-    '. + [{service: $s, code: $c, image_sha: $i, context: $x, dockerfile: $f}]' <<<"$entries")"
+    --arg p "$(pyver "$code")" '. + [{service: $s, code: $c, image_sha: $i, context: $x, dockerfile: $f, python: $p}]' <<<"$entries")"
 done
 
 # ---- images that aren't services: built like service images, never deployed themselves ----------
@@ -134,7 +138,8 @@ for f in infra/images/*.yaml; do
   fi
   echo "$name (image): build ${image_sha:0:7} (last change to: ${inputs% })"
   entries="$(jq -c --arg s "$name" --arg c "$code" --arg i "$image_sha" --arg x "$context" --arg f "$dockerfile" \
-    --argjson l "$large" '. + [{service: $s, code: $c, image_sha: $i, context: $x, dockerfile: $f, large: $l}]' <<<"$entries")"
+    --argjson l "$large" --arg p "$(pyver "$code")" \
+    '. + [{service: $s, code: $c, image_sha: $i, context: $x, dockerfile: $f, large: $l, python: $p}]' <<<"$entries")"
 done
 
 {

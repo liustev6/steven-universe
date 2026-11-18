@@ -1,6 +1,6 @@
 # Local development and the CPU tests (the GPU tests run on CT 108, in the image)
 -r requirements.txt
 -e ../../libs/service-auth[fastapi]   # token checks (ServiceAuth)
-numpy==2.5.5
+numpy==2.5.4                          # the image's (base-image/requirements.lock)
 PyYAML==6.0.3                         # app.models (the weights' lock)
 pytest==9.2.0

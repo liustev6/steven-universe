@@ -101,6 +101,8 @@ echo v2 >python/libs/img/x.py; C10="$(commit "the image changes")"
 o="$(run "$C10" push "$C9" "")"
 expect_eq "an image's change: builds it, deploys the service that runs it, and only that one" \
   "$(builds "$o")/$(svcs wave1 "$o")/$(svcs wave2 "$o")" "img/a/"
+expect_eq "without a .python-version, an image's tests run on 3.11" \
+  "$(sed -n 's/^matrix=//p' <<<"$o" | jq -r '.include[] | select(.service == "img") | .python')" "3.11"
 expect_eq "an image marked large carries it to the build (disk freed, no layer cache)" \
   "$(sed -n 's/^matrix=//p' <<<"$o" | jq -r '.include[] | select(.service == "img") | .large')" "true"
 
