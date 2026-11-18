@@ -73,6 +73,7 @@ class VoiceOptions:
     voice_zh: str = "dylan"            # Chinese replies (spikes/14-15: steadiest on Chinese, natural pace)
     tts_language: Optional[str] = None
     stt_language: Optional[str] = None
+    stt_context: str = ""              # who speaks to Hey Pi (their languages): every context starts with it
     silence_ms: int = 700
     window: float = 5.0                # the session waits this long for someone to speak
 
@@ -231,9 +232,9 @@ class VoiceAssistant:
     def context(self) -> str:
         """For speech-to-text: this session's last turns, so a name or a place said again is heard as
         itself ("Seattle downtown", not 死丫头当场), and the language follows the conversation."""
-        if not self._recent:
-            return ""
-        lines = ["Recent conversation:"]
+        lines = [self.options.stt_context] if self.options.stt_context else []
+        if self._recent:
+            lines.append("Recent conversation:")
         for said, replied in self._recent:
             lines += [f"User: {said[:CONTEXT_TURN_CHARS]}", f"Assistant: {replied[:CONTEXT_TURN_CHARS]}"]
         return "\n".join(lines)

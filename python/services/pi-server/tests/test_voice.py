@@ -126,7 +126,8 @@ class Rig:
         self.ui, self.speaker, self.wake = UI(), Speaker(), Wake()
         self.speech, self.agent = speech or Speech(), agent or Agent()
         self.va = VoiceAssistant(self.speech, self.agent, mic=None, speaker=lambda: self.speaker, ui=self.ui,
-                                 options=VoiceOptions(window=5.0), wake=self.wake, voice=Voice(),
+                                 options=VoiceOptions(window=5.0, stt_context="Speaks English and Chinese."),
+                                 wake=self.wake, voice=Voice(),
                                  clock=lambda: self.now[0])
 
     async def frames(self, *frames):
@@ -404,11 +405,12 @@ def test_speech_to_text_hears_with_the_sessions_last_two_turns():
             await r.frames(*turn)
             await r.settle()
         first, second, third, fourth = r.speech.contexts
-        assert first == ""                                               # nothing said yet
+        assert first == "Speaks English and Chinese."                    # nothing said yet: the speakers' hint
+        assert all(c.startswith("Speaks English and Chinese.") for c in r.speech.contexts)
         assert "User: what's the weather" in second and "Assistant: Sunny, and warm." in second
         assert "Seattle downtown" in third
         assert "what's the weather" not in fourth and "Seattle downtown" in fourth   # the last two only
         await r.frames(*[QUIET] * 51)                                    # the session ends
         await r.settle()
-        assert r.va.context() == ""                                      # a new session starts clean
+        assert r.va.context() == "Speaks English and Chinese."           # a new session starts clean
     run(go())

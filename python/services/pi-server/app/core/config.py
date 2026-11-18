@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     VOICE_ZH: str = "dylan"                      # ... in Chinese; mixed: the main language's (speech-service spikes/14-15)
     TTS_LANGUAGE: Optional[str] = None           # None: Auto (the model reads it from the text)
     STT_LANGUAGE: Optional[str] = None           # None: detected
+    # Speech-to-text's context (speech-service T18): who speaks to Hey Pi, then the session's last turns
+    STT_CONTEXT: str = "The speaker may speak English, Chinese, or both mixed in one sentence."
     SILENCE_MS: int = 700                        # the turn ends after this much silence
     MIC_DEVICE: str = "plughw:CARD=Speakerphone,DEV=0"
     SPEAKER_DEVICE: str = "plughw:CARD=Speakerphone,DEV=0"

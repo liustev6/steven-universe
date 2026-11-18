@@ -27,7 +27,7 @@ def create(settings, ui):
     speech = SpeechClient(settings.SPEECH_URL, lambda: tokens.token("speech-service"))
     agent = AgentClient(settings.AGENT_URL, lambda: tokens.token("agent-service"), settings.AGENT_PROFILE)
     options = VoiceOptions(voice_en=settings.VOICE_EN, voice_zh=settings.VOICE_ZH, tts_language=settings.TTS_LANGUAGE,
-                           stt_language=settings.STT_LANGUAGE, silence_ms=settings.SILENCE_MS,
+                           stt_language=settings.STT_LANGUAGE, stt_context=settings.STT_CONTEXT, silence_ms=settings.SILENCE_MS,
                            window=settings.LISTEN_WINDOW_SECONDS)
     wake = WakeWord(settings.WAKE_WORD)
     logger.info("voice: wake word %r, voices %s (English) and %s (Chinese), speech %s, agent %s (profile %s), mic %s, speaker %s", wake.name,
