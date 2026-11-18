@@ -41,7 +41,7 @@ from app.protocol import (
     client_message,
 )
 from app.settings_store import SettingsStore
-from app.voice.turn import VoiceAssistant
+from app.voice.assistant import VoiceAssistant
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +76,7 @@ class PiServer:
         if self.settings.VOICE:
             from app import voice
             self.voice = voice.create(self.settings, self)
+            self._tasks.append(asyncio.create_task(self.voice.run()))     # the mic, always on
         if self.settings.MOCK:
             self._tasks.append(asyncio.create_task(self._weather_loop()))
 
@@ -180,14 +181,14 @@ class PiServer:
     async def say(self, text: str) -> None:
         """A typed turn: the voice assistant speaks the reply; or the mock answers on screen."""
         if self.voice:
-            await self.voice.reply(self._new_turn(), text)
+            await self.voice.say(text)
         else:
             self.start_turn(text)
 
     async def listen(self) -> None:
-        """A spoken turn starts (push-to-talk, later the wake word)."""
+        """A spoken turn starts now (push-to-talk; the wake word starts one by itself)."""
         if self.voice:
-            await self.voice.listen(self._new_turn())
+            await self.voice.listen()
         else:
             await self._set_phase(self._new_turn(), "listening")
 
@@ -198,12 +199,16 @@ class PiServer:
         else:
             self.start_turn("(push-to-talk)", turn_id=self.turn_id)
 
-    # Phases (app.voice.turn): what the voice assistant tells Hey Pi.
+    # The voice assistant's UI (app.voice.assistant): what it tells Hey Pi.
     async def phase(self, turn_id: str, phase: AssistantPhase, transcript: Optional[str] = None) -> None:
         await self._set_phase(turn_id, phase, transcript=transcript)
 
     async def reply_delta(self, turn_id: str, text: str) -> None:
         await self.hub.broadcast(Assistant(turn_id=turn_id, phase=self.assistant_phase, reply_delta=text))
+
+    async def awake(self) -> None:
+        """The wake word: the screen comes on."""
+        await self.set_display("active")
 
     def start_turn(self, text: str, turn_id: Optional[str] = None) -> None:
         if self._turn_task:

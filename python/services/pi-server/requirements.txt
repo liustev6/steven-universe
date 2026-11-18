@@ -9,3 +9,9 @@ pydantic-settings==2.8.1
 websockets==17.4
 httpx==0.28.1
 # service-auth (python/libs/service-auth) is installed from the copy the deploy puts next to the code
+
+# The wake word and voice detection, on the Pi (microWakeWord: Home Assistant's voice satellites)
+pymicro-wakeword==2.5.0
+pymicro-features==2.0.2
+pymicro-vad==2.1.0
+numpy==2.4.6                # the last with Python 3.11 wheels (the Pi's Python)
