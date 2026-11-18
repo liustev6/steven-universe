@@ -9,8 +9,12 @@
   - idle: only the wake word listens, on the Pi; nothing leaves it
   - waiting: the session is open (its agent session claimed at the wake word); the first voice
     within `window` seconds starts a turn, with the half second before it (so its first syllable
-    isn't lost); none: the session ends and its agent session is released
-  - listening: the mic's frames go to speech-to-text until the turn ends (silence, or commit)
+    isn't lost); none: the session ends and its agent session is released. A voice is
+    `speech_start_ms` of speech in a row (300 ms): a click or a fan's burst isn't one
+  - listening: the mic's frames go to speech-to-text until the turn ends (silence, or commit), for
+    at most `max_turn` seconds (15): at the cap, the session's first turn (asked with the wake word
+    or push-to-talk) is sent as heard; a follow-up is dropped and the session ends, as one that
+    long is noise (a fan, a TV) that never fell silent, not someone talking to Hey Pi
   - replying: the agent's text, as it's written, into speech, to the speaker; the mic is ignored
     (half duplex, V6), then waiting again
 Hey Pi sees `listening` for the whole session between turns, `thinking` and `speaking` in a turn,
@@ -43,6 +47,7 @@ PREROLL_FRAMES = 5                    # 500 ms kept before a voice starts a turn
 CONTEXT_TURNS = 2                     # the last turns given to speech-to-text as context
 CONTEXT_TURN_CHARS = 300              # each side of a turn, at most
 HOLDOFF_SECONDS = 0.3                 # after the wake word and after a reply: not yet a new voice
+FRAME_MS = 100                        # the mic's frames (audio.py)
 
 
 class UI(Protocol):
@@ -77,6 +82,8 @@ class VoiceOptions:
     stt_context: str = ""              # who speaks to Hey Pi (their languages): every context starts with it
     silence_ms: int = 700
     window: float = 7.0                # the session waits this long for someone to speak
+    speech_start_ms: int = 300         # this much speech in a row starts a turn (not a click, a burst)
+    max_turn: float = 15.0             # a turn listens at most this long (requests are short)
 
     def voice_for(self, text: str, heard: str = "") -> str:
         """The voice for a turn's main language (mixed Chinese and English: whichever most of it is).
@@ -109,6 +116,10 @@ class VoiceAssistant:
         self._ending: Optional[asyncio.Task] = None
         self._recent: collections.deque[tuple[str, str]] = collections.deque(maxlen=CONTEXT_TURNS)
         self._session_voice: Optional[str] = None
+        self._speech_run = 0                 # waiting: frames of speech in a row
+        self._replied = False                # this session has replied once: a new turn is a follow-up
+        self._listen_until = 0.0             # listening: the turn's cap (max_turn)
+        self._follow_up = False              # listening: a follow-up (dropped at the cap) or asked
 
     # ---- the mic loop ------------------------------------------------------------------------------
     async def run(self) -> None:
@@ -131,17 +142,21 @@ class VoiceAssistant:
                 await self._open()
         elif self.state is State.WAITING:
             now = self.clock()
-            if speaking and now >= self._holdoff:
+            self._speech_run = self._speech_run + 1 if speaking and now >= self._holdoff else 0
+            if self._speech_run * FRAME_MS >= self.options.speech_start_ms:
                 self._listen(list(self._preroll))
             elif now >= self._deadline:
                 self._ending = self._end("idle")        # released in the background: the mic reads on
         elif self.state is State.LISTENING and self._frames is not None:
             self._frames.put_nowait(frame)
+            if self.clock() >= self._listen_until and not self._commit.is_set():
+                self._at_the_cap()
         # REPLYING: the mic is ignored (half duplex)
 
     # ---- the session -------------------------------------------------------------------------------
     async def _open(self) -> None:
         """A session: its agent session claimed now, while the user starts talking."""
+        self._replied = False
         self._claim = asyncio.create_task(self.agent.start())
         await self.ui.awake()
         await self._wait(holdoff=HOLDOFF_SECONDS)
@@ -150,6 +165,7 @@ class VoiceAssistant:
         self.state = State.WAITING
         now = self.clock()
         self._deadline, self._holdoff = now + self.options.window, now + holdoff
+        self._speech_run = 0
         self._preroll.clear()
         self.turn_id = f"v{next(self._turn_ids)}"
         await self.ui.phase(self.turn_id, "listening")
@@ -181,13 +197,26 @@ class VoiceAssistant:
         return asyncio.create_task(release())
 
     # ---- a turn ------------------------------------------------------------------------------------
-    def _listen(self, preroll: list[bytes]) -> None:
+    def _listen(self, preroll: list[bytes], asked: bool = False) -> None:
+        """`asked`: push-to-talk, never a follow-up."""
         self.state = State.LISTENING
+        self._listen_until = self.clock() + self.options.max_turn
+        self._follow_up = self._replied and not asked
         self._commit = asyncio.Event()
         self._frames = asyncio.Queue()
         for frame in preroll:
             self._frames.put_nowait(frame)
         self._turn = asyncio.create_task(self._spoken_turn(self.turn_id, self._frames))
+
+    def _at_the_cap(self) -> None:
+        """A turn listened `max_turn` seconds without falling silent."""
+        if self._follow_up:
+            logger.info("turn %s: still no silence after %.0f s: noise, not a follow-up", self.turn_id,
+                        self.options.max_turn)
+            self._ending = self._end("too long")    # the turn is cancelled with the session
+        else:
+            logger.info("turn %s: %.0f s: sent as heard", self.turn_id, self.options.max_turn)
+            self._commit.set()
 
     async def _mic_frames(self, frames: asyncio.Queue) -> AsyncIterator[bytes]:
         while True:
@@ -225,6 +254,7 @@ class VoiceAssistant:
                     logger.warning("claiming the agent session: %s (the turn tries again)", self._claim.exception())
                 self._claim = None
             await self._reply(turn_id, text, heard_at, voice)
+            self._replied = True
         except asyncio.CancelledError:
             raise
         except Exception as e:                           # V8: this turn ends, the session goes on
@@ -257,7 +287,7 @@ class VoiceAssistant:
         elif self.state in (State.LISTENING, State.REPLYING):
             await self._stop_turn()
             await self._wait(holdoff=0)
-        self._listen([])
+        self._listen([], asked=True)
 
     def commit(self) -> None:
         """The user is done talking (push-to-talk released): don't wait for the silence."""

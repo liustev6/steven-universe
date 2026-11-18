@@ -15,6 +15,7 @@ from app.voice.speech import Heard, SpeechError
 from app.voice.spoken import SpokenText
 
 WAKE, SPEECH, QUIET = b"W" * 3200, b"S" * 3200, b"\0" * 3200
+VOICE = (SPEECH,) * 3                   # 300 ms of speech in a row: what starts a turn
 
 
 class UI:
@@ -164,7 +165,7 @@ def test_a_session_end_to_end():
         r = Rig()
         await r.frames(WAKE)
         assert r.va.state is State.WAITING and r.ui.woke == 1 and r.ui.phases == ["listening"]
-        await r.frames(QUIET, QUIET, QUIET, SPEECH, SPEECH, QUIET)        # a voice, then the turn ends
+        await r.frames(QUIET, QUIET, QUIET, *VOICE, QUIET)                 # a voice, then the turn ends
         await r.settle()
         assert r.agent.started == 1 and r.agent.asked == ["what's the weather"]
         assert r.ui.phases == ["listening", "thinking", "speaking", "listening"]
@@ -180,19 +181,19 @@ def test_a_session_end_to_end():
 def test_the_half_second_before_a_voice_goes_with_it():
     async def go():
         r = Rig()
-        await r.frames(WAKE, QUIET, QUIET, QUIET, QUIET, QUIET, QUIET, SPEECH, QUIET)
+        await r.frames(WAKE, QUIET, QUIET, QUIET, QUIET, QUIET, QUIET, *VOICE, QUIET)
         await r.settle()
         heard = r.speech.utterances[0]
-        assert heard[:5] == [QUIET] * 4 + [SPEECH]                   # 400 ms before it, then the voice
+        assert heard[:5] == [QUIET] * 2 + [SPEECH] * 3               # 200 ms before it, then the voice's 300
     run(go())
 
 
 def test_a_follow_up_within_the_window_is_the_same_session():
     async def go():
         r = Rig(speech=Speech(heard=["what's the weather", "and tomorrow?"]))
-        await r.frames(WAKE, QUIET, QUIET, QUIET, SPEECH, QUIET)
+        await r.frames(WAKE, QUIET, QUIET, QUIET, *VOICE, QUIET)
         await r.settle()
-        await r.frames(QUIET, QUIET, QUIET, QUIET, SPEECH, QUIET)      # 0.5 s later: no wake word needed
+        await r.frames(QUIET, QUIET, QUIET, QUIET, *VOICE, QUIET)      # 0.5 s later: no wake word needed
         await r.settle()
         assert r.agent.asked == ["what's the weather", "and tomorrow?"] and r.agent.started == 1
         assert r.agent.ended == 0 and r.va.state is State.WAITING
@@ -220,7 +221,7 @@ def test_the_wake_word_itself_does_not_start_a_turn():
 def test_the_mic_is_ignored_while_replying():
     async def go():
         r = Rig(agent=Agent(hang=True))
-        await r.frames(WAKE, QUIET, QUIET, QUIET, SPEECH, QUIET)
+        await r.frames(WAKE, QUIET, QUIET, QUIET, *VOICE, QUIET)
         assert r.va.state is State.REPLYING
         await r.frames(SPEECH, WAKE, SPEECH, QUIET)
         assert len(r.speech.utterances) == 1 and r.va.state is State.REPLYING
@@ -230,7 +231,7 @@ def test_the_mic_is_ignored_while_replying():
 def test_cancel_mid_reply_ends_everything():
     async def go():
         r = Rig(agent=Agent(hang=True))
-        await r.frames(WAKE, QUIET, QUIET, QUIET, SPEECH, QUIET)
+        await r.frames(WAKE, QUIET, QUIET, QUIET, *VOICE, QUIET)
         await r.va.cancel()
         assert r.agent.cancelled == 1 and r.speaker.stopped and r.agent.ended == 1
         assert r.va.state is State.IDLE and r.ui.phases[-1] == "idle"
@@ -264,7 +265,7 @@ def test_a_typed_turn_is_spoken_in_the_session():
 def test_a_failed_hop_ends_the_turn_not_the_session():
     async def go():
         r = Rig(speech=Speech(fail=SpeechError("transcription: refused, 503")))
-        await r.frames(WAKE, QUIET, QUIET, QUIET, SPEECH)
+        await r.frames(WAKE, QUIET, QUIET, QUIET, *VOICE)
         await r.settle()
         assert r.va.state is State.WAITING and r.agent.ended == 0
     run(go())
@@ -389,7 +390,7 @@ def test_the_reply_speaks_in_the_turns_main_language():
 def test_the_sessions_first_turn_picks_its_voice_for_the_whole_session():
     async def go():
         r = Rig(speech=Speech(heard=["今天星期几？", "What time is it?"]))
-        turn = (QUIET, QUIET, QUIET, SPEECH, QUIET)
+        turn = (QUIET, QUIET, QUIET, *VOICE, QUIET)
         await r.frames(WAKE, *turn)
         await r.settle()
         await r.frames(*turn)                                        # English now: still dylan
@@ -408,7 +409,7 @@ def test_the_sessions_first_turn_picks_its_voice_for_the_whole_session():
 def test_speech_to_text_hears_with_the_sessions_last_two_turns():
     async def go():
         r = Rig(speech=Speech(heard=["what's the weather", "Seattle downtown", "and tomorrow?", "thanks"]))
-        turn = (QUIET, QUIET, QUIET, SPEECH, QUIET)
+        turn = (QUIET, QUIET, QUIET, *VOICE, QUIET)
         await r.frames(WAKE, *turn)
         await r.settle()
         for _ in range(3):
@@ -461,9 +462,62 @@ def test_a_search_answer_is_spoken_without_its_citation():
     async def go():
         r = Rig(agent=Agent(deltas=("Let me check.", None, "Cloudy, about 10 degrees. \ue200cite\ue202turn0",
                                     "forecast0\ue201")))
-        await r.frames(WAKE, QUIET, SPEECH, SPEECH, QUIET)
+        await r.frames(WAKE, QUIET, QUIET, QUIET, *VOICE, QUIET)
         await r.settle()
         said = "".join(r.speech.spoken)
         assert said.split() == ["Let", "me", "check.", "Cloudy,", "about", "10", "degrees."]
         assert "turn0" not in "".join(r.ui.deltas) and "\ue200" not in said
+    run(go())
+
+
+def test_a_short_burst_is_not_a_voice():
+    async def go():
+        r = Rig()
+        await r.frames(WAKE, QUIET, QUIET, QUIET, SPEECH, SPEECH, QUIET, SPEECH, QUIET)   # 200 ms, then 100
+        assert r.va.state is State.WAITING and r.speech.utterances == []
+        await r.frames(*VOICE)                                        # 300 ms in a row: a turn
+        assert r.va.state is not State.WAITING
+    run(go())
+
+
+class Endless(Speech):
+    """Never hears silence (a fan): only a commit ends the turn."""
+
+    async def transcribe(self, frames, *, commit, silence_ms, language=None, context="", on_partial=None):
+        got = []
+        async for frame in frames:
+            got.append(frame)
+            if commit.is_set():
+                break
+        self.utterances.append(got)
+        return Heard(self.heard.pop(0) if self.heard else "", "English", "commit")
+
+
+def test_the_first_turn_is_sent_as_heard_at_the_cap_then_the_fan_ends_the_session():
+    async def go():
+        r = Rig(speech=Endless(heard=["what's the weather", "嘿派"]))
+        await r.frames(WAKE, QUIET, QUIET, QUIET, *VOICE)
+        await r.frames(*[SPEECH] * 160)                               # a fan: 16 s, never silent
+        assert r.agent.asked == ["what's the weather"]                # asked with the wake word: answered at 15 s
+        assert len(r.speech.utterances[0]) == 5 + 150 + 1               # the pre-roll, 15 s, the frame that sees the commit
+        await r.frames(*[SPEECH] * 160)                               # the fan goes on: a "follow-up"
+        await r.settle()
+        assert r.agent.asked == ["what's the weather"]                # ... dropped, never sent
+        assert r.va.state is State.IDLE and r.agent.ended == 1
+    run(go())
+
+
+def test_a_follow_up_without_silence_is_noise_and_ends_the_session():
+    async def go():
+        r = Rig(speech=Endless(heard=["what's the weather", "嘿派"]))
+        await r.frames(WAKE, QUIET, QUIET, QUIET, *VOICE)
+        await r.frames(*[SPEECH] * 2)
+        r.va.commit()                                                 # the first turn, answered
+        await r.frames(SPEECH)
+        await r.settle()
+        assert r.agent.asked == ["what's the weather"] and r.va.state is State.WAITING
+        await r.frames(QUIET, QUIET, QUIET, QUIET, *[SPEECH] * 160)   # the fan: a "follow-up" never silent
+        await r.settle()
+        assert r.agent.asked == ["what's the weather"]                # not sent to the agent
+        assert r.va.state is State.IDLE and r.agent.ended == 1 and r.ui.phases[-1] == "idle"
     run(go())
