@@ -1,0 +1,178 @@
+Wake-word benchmark: 7 models, the same held-out audio (benchmark.py). Clips per set: spike 01's 2 unheard voices 128, the owner, Pi mic, quiet 25, the owner, Pi mic, a video playing 21, the owner, Mac mic 7, 51 voices, core 30 (小胖小胖, 小怕小怕 …) 1530, 51 voices, doubled 25 (小快小快, 小派小心 …) 1275, spike 01's near misses 132, the owner's near misses, Pi mic 15, the owner's other lines, Mac mic 55
+
+=== EACH MODEL AT ITS OWN CUTOFF FOR AT MOST 0.5 FALSE WAKES AN HOUR (the comparison point) ===
+FALSE WAKES (per hour; the same audio for every model)
+                                                     xiao_pai   xiao_pai_02   xiao_pai_03   xiao_pai_04  xiao_pai_04b  xiao_pai_04c  xiao_pai_04d
+  cutoff                                                0.925         0.995         0.985         0.995         0.910         0.800         0.925
+  false wakes per hour, all streams                      0.29          0.29          0.29          0.00          0.29          0.29          0.00
+    the owner's room, Pi mic (10 min held out)            0.0           0.0           0.0           0.0           0.0           0.0           0.0
+    the owner's short videos (15 min held out)            0.0           0.0           0.0           0.0           0.0           0.0           0.0
+    Mandarin meetings, AliMeeting test (2 h)              0.0           0.5           0.5           0.0           0.0           0.0           0.0
+    everyday speech, unheard voices (30 min)              2.0           0.0           0.0           0.0           2.0           2.0           0.0
+    AudioSet sounds (35 min)                              0.0           0.0           0.0           0.0           0.0           0.0           0.0
+
+RECALL: the model's own word, share woken
+                                                       xiao_pai   xiao_pai_02   xiao_pai_03   xiao_pai_04  xiao_pai_04b  xiao_pai_04c  xiao_pai_04d
+  51 unheard voices, designed                               45%           62%           80%           49%           78%           86%           82%
+  51 unheard voices, designed + background 10 dB            41%           46%           64%           34%           61%           63%           57%
+  51 unheard voices, designed + background 5 dB             30%           37%           51%           19%           50%           45%           41%
+  51 unheard voices, cloned                                 81%           90%           92%           51%           95%           97%           91%
+  51 unheard voices, cloned + background 10 dB              70%           79%           88%           37%           89%           83%           78%
+  51 unheard voices, cloned + background 5 dB               58%           66%           72%           22%           78%           65%           61%
+  spike 01's 2 unheard voices                               48%           68%           78%           42%           82%           93%           80%
+  spike 01's 2 unheard voices + background 10 dB            48%           59%           56%           25%           67%           68%           59%
+  spike 01's 2 unheard voices + background 5 dB             38%           45%           44%           14%           52%           44%           42%
+  the owner, Pi mic, quiet                                   8%           52%           68%           84%           92%           92%           68%
+  the owner, Pi mic, a video playing                        24%          100%           86%          100%          100%          100%          100%
+  the owner, Mac mic                                        43%           57%           43%           86%          100%          100%           86%
+
+NEAR MISSES: the model's own, share that wakes it
+                                                              xiao_pai   xiao_pai_02   xiao_pai_03   xiao_pai_04  xiao_pai_04b  xiao_pai_04c  xiao_pai_04d
+  51 voices, core 30 (小胖小胖, 小怕小怕 …)                                 4%            9%            7%            2%            9%           11%            6%
+  51 voices, doubled 25 (小快小快, 小派小心 …)                             11%           24%           20%            6%           19%           21%           14%
+  spike 01's near misses                                            2%            0%            2%            0%            6%            7%            2%
+  the owner's near misses, Pi mic                                   0%            0%            0%            7%           13%            7%            0%
+  the owner's other lines, Mac mic                                  0%            5%            0%            4%            7%            2%            0%
+  the owner's 'Hey Pi's back to back (4 min) (per hour)            0.0           0.0          48.3           0.0           0.0         209.5           0.0
+
+=== EVERY MODEL AT CUTOFF 0.90 ===
+FALSE WAKES (per hour; the same audio for every model)
+                                                     xiao_pai   xiao_pai_02   xiao_pai_03   xiao_pai_04  xiao_pai_04b  xiao_pai_04c  xiao_pai_04d
+  cutoff                                                0.900         0.900         0.900         0.900         0.900         0.900         0.900
+  false wakes per hour, all streams                      0.86          3.43          4.00         14.00          0.57          0.29          0.86
+    the owner's room, Pi mic (10 min held out)            0.0           0.0           0.0          49.1           0.0           0.0           0.0
+    the owner's short videos (15 min held out)            0.0           0.0           3.9           3.9           0.0           0.0           0.0
+    Mandarin meetings, AliMeeting test (2 h)              0.5           2.0           1.5           7.0           0.0           0.0           0.0
+    everyday speech, unheard voices (30 min)              2.0          15.8          17.8          43.4           3.9           2.0           5.9
+    AudioSet sounds (35 min)                              1.7           0.0           1.7           6.9           0.0           0.0           0.0
+
+RECALL: the model's own word, share woken
+                                                       xiao_pai   xiao_pai_02   xiao_pai_03   xiao_pai_04  xiao_pai_04b  xiao_pai_04c  xiao_pai_04d
+  51 unheard voices, designed                               47%           81%           92%           94%           79%           80%           84%
+  51 unheard voices, designed + background 10 dB            42%           72%           86%           83%           64%           49%           64%
+  51 unheard voices, designed + background 5 dB             32%           58%           77%           76%           54%           30%           48%
+  51 unheard voices, cloned                                 83%           97%           99%           95%           96%           95%           92%
+  51 unheard voices, cloned + background 10 dB              71%           93%           97%           89%           90%           75%           83%
+  51 unheard voices, cloned + background 5 dB               61%           83%           94%           83%           80%           55%           66%
+  spike 01's 2 unheard voices                               51%           86%           94%           89%           84%           84%           84%
+  spike 01's 2 unheard voices + background 10 dB            50%           76%           82%           81%           69%           53%           63%
+  spike 01's 2 unheard voices + background 5 dB             40%           64%           73%           73%           52%           35%           47%
+  the owner, Pi mic, quiet                                   8%           80%           92%           96%           92%           88%           68%
+  the owner, Pi mic, a video playing                        24%          100%          100%          100%          100%           95%          100%
+  the owner, Mac mic                                        43%           57%          100%          100%          100%           86%           86%
+
+NEAR MISSES: the model's own, share that wakes it
+                                                              xiao_pai   xiao_pai_02   xiao_pai_03   xiao_pai_04  xiao_pai_04b  xiao_pai_04c  xiao_pai_04d
+  51 voices, core 30 (小胖小胖, 小怕小怕 …)                                 5%           20%           15%           24%           10%            7%            7%
+  51 voices, doubled 25 (小快小快, 小派小心 …)                             12%           44%           38%           36%           20%           15%           16%
+  spike 01's near misses                                            2%            5%            5%           18%            7%            5%            2%
+  the owner's near misses, Pi mic                                   0%           13%            7%           33%           13%            0%            0%
+  the owner's other lines, Mac mic                                  0%            9%            7%           11%            9%            2%            0%
+  the owner's 'Hey Pi's back to back (4 min) (per hour)            0.0           0.0         241.7         161.2           0.0          32.2           0.0
+
+=== EVERY MODEL AT CUTOFF 0.95 ===
+FALSE WAKES (per hour; the same audio for every model)
+                                                     xiao_pai   xiao_pai_02   xiao_pai_03   xiao_pai_04  xiao_pai_04b  xiao_pai_04c  xiao_pai_04d
+  cutoff                                                0.950         0.950         0.950         0.950         0.950         0.950         0.950
+  false wakes per hour, all streams                      0.00          3.14          2.86          6.86          0.29          0.00          0.00
+    the owner's room, Pi mic (10 min held out)            0.0           0.0           0.0          24.5           0.0           0.0           0.0
+    the owner's short videos (15 min held out)            0.0           0.0           0.0           0.0           0.0           0.0           0.0
+    Mandarin meetings, AliMeeting test (2 h)              0.0           2.0           1.0           3.0           0.0           0.0           0.0
+    everyday speech, unheard voices (30 min)              0.0          13.8          13.8          23.7           2.0           0.0           0.0
+    AudioSet sounds (35 min)                              0.0           0.0           1.7           3.5           0.0           0.0           0.0
+
+RECALL: the model's own word, share woken
+                                                       xiao_pai   xiao_pai_02   xiao_pai_03   xiao_pai_04  xiao_pai_04b  xiao_pai_04c  xiao_pai_04d
+  51 unheard voices, designed                               43%           78%           90%           88%           67%           71%           74%
+  51 unheard voices, designed + background 10 dB            38%           65%           78%           78%           48%           36%           50%
+  51 unheard voices, designed + background 5 dB             27%           54%           70%           68%           37%           21%           34%
+  51 unheard voices, cloned                                 79%           95%           99%           91%           92%           92%           88%
+  51 unheard voices, cloned + background 10 dB              69%           91%           96%           83%           82%           65%           71%
+  51 unheard voices, cloned + background 5 dB               54%           79%           90%           75%           69%           43%           53%
+  spike 01's 2 unheard voices                               46%           83%           92%           80%           68%           76%           74%
+  spike 01's 2 unheard voices + background 10 dB            45%           74%           75%           73%           52%           39%           52%
+  spike 01's 2 unheard voices + background 5 dB             37%           57%           59%           59%           38%           23%           34%
+  the owner, Pi mic, quiet                                   8%           72%           84%           92%           84%           76%           68%
+  the owner, Pi mic, a video playing                        24%          100%          100%          100%           95%           95%          100%
+  the owner, Mac mic                                        43%           57%           71%          100%           86%           86%           86%
+
+NEAR MISSES: the model's own, share that wakes it
+                                                              xiao_pai   xiao_pai_02   xiao_pai_03   xiao_pai_04  xiao_pai_04b  xiao_pai_04c  xiao_pai_04d
+  51 voices, core 30 (小胖小胖, 小怕小怕 …)                                 4%           18%           11%           16%            6%            5%            4%
+  51 voices, doubled 25 (小快小快, 小派小心 …)                             10%           40%           30%           28%           14%           10%           10%
+  spike 01's near misses                                            2%            5%            3%           11%            1%            2%            1%
+  the owner's near misses, Pi mic                                   0%           13%            7%           33%           13%            0%            0%
+  the owner's other lines, Mac mic                                  0%            9%            4%           11%            7%            0%            0%
+  the owner's 'Hey Pi's back to back (4 min) (per hour)            0.0           0.0         177.3          32.2           0.0           0.0           0.0
+
+=== EVERY MODEL AT CUTOFF 0.97 ===
+FALSE WAKES (per hour; the same audio for every model)
+                                                     xiao_pai   xiao_pai_02   xiao_pai_03   xiao_pai_04  xiao_pai_04b  xiao_pai_04c  xiao_pai_04d
+  cutoff                                                0.970         0.970         0.970         0.970         0.970         0.970         0.970
+  false wakes per hour, all streams                      0.00          2.00          1.71          4.00          0.00          0.00          0.00
+    the owner's room, Pi mic (10 min held out)            0.0           0.0           0.0          18.4           0.0           0.0           0.0
+    the owner's short videos (15 min held out)            0.0           0.0           0.0           0.0           0.0           0.0           0.0
+    Mandarin meetings, AliMeeting test (2 h)              0.0           1.0           1.0           0.5           0.0           0.0           0.0
+    everyday speech, unheard voices (30 min)              0.0           9.9           5.9          19.7           0.0           0.0           0.0
+    AudioSet sounds (35 min)                              0.0           0.0           1.7           0.0           0.0           0.0           0.0
+
+RECALL: the model's own word, share woken
+                                                       xiao_pai   xiao_pai_02   xiao_pai_03   xiao_pai_04  xiao_pai_04b  xiao_pai_04c  xiao_pai_04d
+  51 unheard voices, designed                               41%           76%           87%           85%           55%           62%           59%
+  51 unheard voices, designed + background 10 dB            35%           64%           72%           68%           38%           25%           41%
+  51 unheard voices, designed + background 5 dB             23%           48%           59%           56%           28%           14%           23%
+  51 unheard voices, cloned                                 78%           94%           97%           85%           87%           89%           80%
+  51 unheard voices, cloned + background 10 dB              65%           90%           93%           77%           73%           56%           61%
+  51 unheard voices, cloned + background 5 dB               50%           76%           84%           65%           53%           32%           37%
+  spike 01's 2 unheard voices                               45%           78%           85%           77%           56%           65%           64%
+  spike 01's 2 unheard voices + background 10 dB            41%           72%           67%           66%           38%           31%           37%
+  spike 01's 2 unheard voices + background 5 dB             34%           55%           52%           46%           25%           20%           23%
+  the owner, Pi mic, quiet                                   8%           64%           84%           92%           80%           72%           68%
+  the owner, Pi mic, a video playing                        24%          100%           95%          100%           95%           95%           95%
+  the owner, Mac mic                                        29%           57%           71%          100%           86%           86%           86%
+
+NEAR MISSES: the model's own, share that wakes it
+                                                              xiao_pai   xiao_pai_02   xiao_pai_03   xiao_pai_04  xiao_pai_04b  xiao_pai_04c  xiao_pai_04d
+  51 voices, core 30 (小胖小胖, 小怕小怕 …)                                 4%           16%            9%           11%            4%            3%            2%
+  51 voices, doubled 25 (小快小快, 小派小心 …)                              9%           36%           25%           23%           11%            7%            7%
+  spike 01's near misses                                            2%            3%            3%            9%            0%            1%            1%
+  the owner's near misses, Pi mic                                   0%           13%            7%           27%           13%            0%            0%
+  the owner's other lines, Mac mic                                  0%            9%            0%           11%            7%            0%            0%
+  the owner's 'Hey Pi's back to back (4 min) (per hour)            0.0           0.0         112.8          16.1           0.0           0.0           0.0
+
+=== EVERY MODEL AT CUTOFF 0.99 ===
+FALSE WAKES (per hour; the same audio for every model)
+                                                     xiao_pai   xiao_pai_02   xiao_pai_03   xiao_pai_04  xiao_pai_04b  xiao_pai_04c  xiao_pai_04d
+  cutoff                                                0.990         0.990         0.990         0.990         0.990         0.990         0.990
+  false wakes per hour, all streams                      0.00          1.14          0.29          0.57          0.00          0.00          0.00
+    the owner's room, Pi mic (10 min held out)            0.0           0.0           0.0           0.0           0.0           0.0           0.0
+    the owner's short videos (15 min held out)            0.0           0.0           0.0           0.0           0.0           0.0           0.0
+    Mandarin meetings, AliMeeting test (2 h)              0.0           0.5           0.5           0.5           0.0           0.0           0.0
+    everyday speech, unheard voices (30 min)              0.0           5.9           0.0           2.0           0.0           0.0           0.0
+    AudioSet sounds (35 min)                              0.0           0.0           0.0           0.0           0.0           0.0           0.0
+
+RECALL: the model's own word, share woken
+                                                       xiao_pai   xiao_pai_02   xiao_pai_03   xiao_pai_04  xiao_pai_04b  xiao_pai_04c  xiao_pai_04d
+  51 unheard voices, designed                               33%           68%           74%           65%           27%           37%           35%
+  51 unheard voices, designed + background 10 dB            27%           54%           59%           46%           16%           11%           17%
+  51 unheard voices, designed + background 5 dB             17%           41%           43%           32%           10%            5%           11%
+  51 unheard voices, cloned                                 71%           93%           88%           69%           60%           73%           54%
+  51 unheard voices, cloned + background 10 dB              59%           83%           82%           53%           37%           27%           26%
+  51 unheard voices, cloned + background 5 dB               44%           71%           68%           39%           28%           13%           15%
+  spike 01's 2 unheard voices                               41%           75%           70%           62%           29%           41%           37%
+  spike 01's 2 unheard voices + background 10 dB            34%           64%           49%           37%           17%           17%           22%
+  spike 01's 2 unheard voices + background 5 dB             29%           46%           38%           27%            8%            7%            9%
+  the owner, Pi mic, quiet                                   4%           56%           60%           84%           72%           60%           52%
+  the owner, Pi mic, a video playing                        14%          100%           86%          100%           95%           81%           90%
+  the owner, Mac mic                                        29%           57%           43%          100%           71%           71%           43%
+
+NEAR MISSES: the model's own, share that wakes it
+                                                              xiao_pai   xiao_pai_02   xiao_pai_03   xiao_pai_04  xiao_pai_04b  xiao_pai_04c  xiao_pai_04d
+  51 voices, core 30 (小胖小胖, 小怕小怕 …)                                 2%           12%            5%            4%            1%            1%            0%
+  51 voices, doubled 25 (小快小快, 小派小心 …)                              7%           28%           16%           11%            3%            3%            2%
+  spike 01's near misses                                            1%            2%            2%            3%            0%            0%            0%
+  the owner's near misses, Pi mic                                   0%            7%            0%            7%            7%            0%            0%
+  the owner's other lines, Mac mic                                  0%            9%            0%            4%            2%            0%            0%
+  the owner's 'Hey Pi's back to back (4 min) (per hour)            0.0           0.0          32.2           0.0           0.0           0.0           0.0
+
+[exited with code 0]
