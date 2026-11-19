@@ -139,6 +139,38 @@ def test_a_long_reply_continues_in_new_generations_on_its_row():
     w.stop()
 
 
+def test_a_flush_speaks_the_passage_now_and_the_rest_comes_in_a_new_generation():
+    """An agent saying "let me check" before a search: the passage is spoken whole at once (its generation
+    ended, not waiting for the answer's text), and the answer starts a new generation on the same row."""
+    w = tts_worker()
+    c = Collect()
+    job = w.open("ryan", None, c)
+    w.feed(job, "Sure, let me check.")
+    w.flush(job)
+    time.sleep(0.05)
+    assert c.samples() == 4 * SPF                       # all four words out, while no more text has come
+    assert w.batch.state[0] is None and not c.done.is_set()   # its generation ended; the reply goes on
+    w.feed(job, "It is sunny.")
+    w.end(job)
+    assert c.done.wait(5) and [k for k, _ in c.items].count("done") == 1
+    assert c.samples() == 7 * SPF and w.batch.joins == [0, 0]  # two generations, one row
+    w.stop()
+
+
+def test_a_flush_with_nothing_running_is_nothing():
+    w = tts_worker()
+    c = Collect()
+    job = w.open("ryan", None, c)
+    w.flush(job)                                         # before any text
+    w.feed(job, "Hello there.")
+    w.flush(job)
+    w.flush(job)                                         # twice: the second has nothing to finish
+    w.end(job)
+    assert c.done.wait(5) and c.items[-1] == ("done", None)
+    assert c.samples() == 2 * SPF and w.batch.joins == [0]
+    w.stop()
+
+
 def test_two_at_once_and_a_third_waits_its_turn():
     w = tts_worker(slots=2)
     cs = [Collect() for _ in range(3)]

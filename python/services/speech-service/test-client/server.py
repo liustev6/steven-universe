@@ -305,7 +305,7 @@ async def voice(ws: WebSocket):
                         texts.put_nowait({"type": "text", "text": said})
                 elif kind == "message.completed":
                     spoken.inside = False
-                    texts.put_nowait({"type": "text", "text": " "})   # a gap between text blocks
+                    texts.put_nowait({"type": "flush"})   # speak this message whole now: a search may come before the next
                 elif kind == "turn.completed":
                     mark("agent_done")
                     timings["agent_first_text_ms"] = event.get("first_text_ms")

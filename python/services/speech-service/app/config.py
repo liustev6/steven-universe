@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     # ---- Releases (T13) ----------------------------------------------------------------------------
     QUEUE_WAIT_SECONDS: float = 10.0           # waiting for a place, at most
     TTS_IDLE_SECONDS: float = 15.0             # nothing left to speak and no new text
+    TTS_FLUSHED_IDLE_SECONDS: float = 60.0     # after a flush: the caller is waiting for more (an agent searching)
     STT_IDLE_SECONDS: float = 10.0             # no audio
     TTS_MAX_SECONDS: float = 600.0             # one reply
     STT_MAX_SECONDS: float = 60.0              # one utterance

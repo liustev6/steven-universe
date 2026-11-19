@@ -12,6 +12,11 @@ codec's chunked decode on the high-priority stream) and hands it to the reply's 
     feed(job, text)                       the next piece of its text: a whole sentence or clause, as
                                           the session's splitter cuts it (normalization needs whole
                                           numbers, so never half a word)
+    flush(job)                            the text so far is a whole passage: speak all of it now (its
+                                          generation gets its end mark) and start the text after it in a
+                                          new generation on the same row (ElevenLabs' `flush`: a reply that
+                                          pauses, as when the agent searches between "let me check" and
+                                          the answer, isn't left mid-word waiting for text)
     end(job)                              its text is complete
     cancel(job)                           stop it now: its slot is free at the next step
 
@@ -48,6 +53,7 @@ logger = logging.getLogger(__name__)
 Sink = Callable[[str, object], None]
 CJK = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
 GENERATION_FRAMES = 1100                 # a generation's text, in expected frames (~90 s), before a new one
+FLUSH = object()                         # in a job's texts: the text before it is a whole passage
 
 
 def expected_frames(text: str) -> float:
@@ -119,6 +125,9 @@ class TTSWorker:
     def feed(self, job: Job, text: str) -> None:
         self._inbox.put(("feed", job, text))
 
+    def flush(self, job: Job) -> None:
+        self._inbox.put(("flush", job, None))
+
     def end(self, job: Job) -> None:
         self._inbox.put(("end", job, None))
 
@@ -175,10 +184,17 @@ class TTSWorker:
                         self._decoders[slot].inbox.put(("cut",))  # more to say: the decoder flushes, carries on
 
     def _can_start(self, jobs) -> bool:
+        for j in jobs:
+            while j.slot is None and j.texts and j.texts[0] is FLUSH:   # a flush with no generation running
+                j.texts.popleft()
         return any(j.slot is None and ((j.texts and self.batch.free()) or (j.ended and not j.texts)) for j in jobs)
 
     def _start(self, job: Job, jobs: deque) -> None:
         """A generation for the reply: its next piece's prompt into a free slot (its last row, if free)."""
+        while job.texts and job.texts[0] is FLUSH:                 # nothing before it to finish
+            job.texts.popleft()
+        if not job.texts:
+            return
         text = job.texts.popleft()
         preferred = job.last_slot
         slot = preferred if preferred in self.batch.free() else None
@@ -203,13 +219,18 @@ class TTSWorker:
         this generation has enough (the rest: a new generation)."""
         if job.finished:
             return
-        while job.texts and job.expected + expected_frames(job.texts[0]) <= self.generation_frames:
+        while job.texts and job.texts[0] is not FLUSH \
+                and job.expected + expected_frames(job.texts[0]) <= self.generation_frames:
             text = job.texts.popleft()
             self.batch.feed(job.slot, self.text.more(text, job.said), limit=self.text.limit(job.said + " " + text))
             job.said += " " + text
             job.expected += expected_frames(text)
             self.sentences_done += 1
-        if (job.ended and not job.texts) or job.texts:             # complete, or the rest needs a new generation
+        if job.texts and job.texts[0] is FLUSH:                    # a whole passage: spoken now, the rest anew
+            job.texts.popleft()
+            self.batch.finish(job.slot, self.text.end())
+            job.finished = True
+        elif (job.ended and not job.texts) or job.texts:           # complete, or the rest needs a new generation
             self.batch.finish(job.slot, self.text.end())
             job.finished = True
 
@@ -239,6 +260,8 @@ class TTSWorker:
                 continue                                           # already done or cancelled
             elif kind == "feed":
                 job.texts.append(text)
+            elif kind == "flush":
+                job.texts.append(FLUSH)
             elif kind == "end":
                 job.ended = True
             elif kind == "cancel":

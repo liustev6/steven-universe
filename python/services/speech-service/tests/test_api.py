@@ -108,6 +108,22 @@ def test_a_reply_streamed_in_comes_back_as_audio_then_done():
     assert len(service.first_audio_ms) == 1
 
 
+def test_a_flush_speaks_the_passage_whole_and_the_reply_carries_on():
+    """The agent's "let me check" before a search, then its answer: the unfinished sentence goes out at the
+    flush (no sentence end yet), then the answer; done once, every word spoken."""
+    client, service = make()
+    with client.websocket_connect("/v1/realtime/speech?voice=ryan", headers=ALL) as ws:
+        ws.receive_json()
+        ws.send_json({"type": "text", "text": "Sure, let me check."})        # "." at the end: the splitter waits
+        ws.send_json({"type": "flush"})
+        ws.send_json({"type": "text", "text": "It is sunny today."})
+        ws.send_json({"type": "end"})
+        msgs, audio, code = drain(ws, with_code=True)
+    segments = ["Sure,", "let me check.", "It is sunny today."]
+    assert [m["text"] for m in msgs if m["type"] == "sentence"] == segments
+    assert msgs[-1] == {"type": "done", "samples": 8 * SPF} and audio == 8 * SPF * 2 and code == 1000
+
+
 def test_two_run_one_waits_then_starts_and_the_fourth_is_refused():
     client, service = make(slots=2)
     url = "/v1/realtime/speech?voice=ryan"

@@ -136,7 +136,8 @@ def control(raw) -> dict:
 
 # ---- TTS: one reply ----------------------------------------------------------------------------------
 async def speech_session(ws: WebSocket, service: Service, auth) -> None:
-    """Client: {type: text, text} (as it's written), {type: end} (the reply is complete), {type: cancel}.
+    """Client: {type: text, text} (as it's written), {type: flush} (the text so far is a whole passage: speak
+    all of it now; more follows), {type: end} (the reply is complete), {type: cancel}.
     Server: queued, started {format, sample_rate, channels}; {type: sentence, index, text} as each
     sentence (or the first clause) is accepted for speaking; the reply's binary audio (24 kHz 16-bit
     PCM, raw), one continuous voice (T19); at the end done {samples}, or cancelled, or error {code:
@@ -163,6 +164,7 @@ async def speech_session(ws: WebSocket, service: Service, auth) -> None:
         sentences = Sentences(first_clause=s.TTS_FIRST_CLAUSE)
         ended, chars, start, index, samples = False, 0, time.monotonic(), -1, 0
         idle_since, first_audio_at, asked_at = time.monotonic(), None, None
+        flushed = False                                     # waiting after a flush: a longer idle limit
 
         async def speak(pieces: list[str]) -> None:
             nonlocal job, index, asked_at
@@ -176,7 +178,7 @@ async def speech_session(ws: WebSocket, service: Service, auth) -> None:
         while True:
             limit = start + s.TTS_MAX_SECONDS
             # Idle: no new text and nothing being spoken (no audio: the generation is waiting for text)
-            idle = idle_since + s.TTS_IDLE_SECONDS if not ended else limit
+            idle = idle_since + (s.TTS_FLUSHED_IDLE_SECONDS if flushed else s.TTS_IDLE_SECONDS) if not ended else limit
             source, kind, payload = await inbox.next(min(limit, idle) - time.monotonic())
             if source == "timeout":
                 return await close(ws, "too_long" if time.monotonic() >= limit else "idle",
@@ -190,7 +192,12 @@ async def speech_session(ws: WebSocket, service: Service, auth) -> None:
                     if chars > s.MAX_TEXT_CHARS:
                         return await close(ws, "too_long", f"over {s.MAX_TEXT_CHARS} characters")
                     await speak(sentences.add(msg["text"]))
-                    idle_since = time.monotonic()
+                    idle_since, flushed = time.monotonic(), False
+                elif msg.get("type") == "flush" and not ended:
+                    await speak(sentences.flush())                 # the splitter's last, unfinished piece too
+                    if job is not None:
+                        service.tts.flush(job)
+                    idle_since, flushed = time.monotonic(), True
                 elif msg.get("type") == "end" and not ended:
                     await speak(sentences.flush())
                     ended = True
@@ -202,7 +209,7 @@ async def speech_session(ws: WebSocket, service: Service, auth) -> None:
                     await ws.send_json({"type": "cancelled"})
                     return await close(ws)
                 elif msg.get("type") != "end":
-                    return await close(ws, "bad_message", "expected {type: text|end|cancel}")
+                    return await close(ws, "bad_message", "expected {type: text|flush|end|cancel}")
             elif kind == "audio":
                 if first_audio_at is None:
                     first_audio_at = time.monotonic()
