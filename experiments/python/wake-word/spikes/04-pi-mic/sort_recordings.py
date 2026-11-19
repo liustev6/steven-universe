@@ -9,7 +9,7 @@ and evaluate.py read. Rerun as takes arrive: each run rebuilds the me-pi sets fr
                   both sides, never trained on as either.
   family          someone else's wake word → eval/pi-family-positive only: an unheard voice on the real mic
   near            the core near misses on the Pi's mic → negatives/me-pi-near, every 4th held out → eval/me-pi-near
-  room            your room, whole 5-minute files → the last file of each take held out (eval/me-pi-room), the
+  room            your room, whole 5-minute files → the last quarter of each take held out (eval/me-pi-room), the
                   others cut into 3 s clips (extra/me-pi-room: an extra negative set, not a near miss)
 """
 
@@ -72,7 +72,7 @@ for p in sorted(REC.glob("pi-room-*.wav")):
     rooms.setdefault(re.sub(r"-\d{2}$", "", p.stem), []).append(p)   # arecord's split: take-01.wav, take-02.wav…
 for files in rooms.values():
     files = sorted(files)
-    held = files[-1:] if len(files) > 1 else []
+    held = files[len(files) - max(1, round(len(files) / 4)):] if len(files) > 1 else []   # the last quarter
     for p in held:
         shutil.copy2(p, OUT["room_eval"] / p.name)
         counts["room_eval"] += 1
