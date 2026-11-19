@@ -276,7 +276,7 @@ if __name__ == "__main__":
     ours = sorted(p for p in (DATA / "positives").iterdir() if p.is_dir())
     RUN.mkdir(parents=True, exist_ok=True)
     positives = gather(RUN / "positives", ([(piper, 1)] if piper else [])
-                       + [(p, CONFIG["own_voice_copies"] if p.name == "me" else 1) for p in ours])
+                       + [(p, CONFIG["own_voice_copies"] if p.name.startswith("me") else 1) for p in ours])
     print(f"   positives: {len(list(positives.glob('*.wav')))} clips ({', '.join(p.name for p in ours)}"
           f"{' + Piper' if piper else ''})")
     positive = features("positive", positives, aug)

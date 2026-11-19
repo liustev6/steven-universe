@@ -4,6 +4,9 @@
 #   near_miss_core   ALWAYS: every voice says all of these (read each twice). The closest sounds, other
 #                    assistants' names, a lone 小派.
 #   near_miss_extra  more sound-alikes and assistant names (read each twice when there's time)
+#   near_miss_doubled  spike 04: what spike 03's model still woke for, said by every synthetic voice: a doubled
+#                    syllable near 派 (another consonant or vowel: not 拍/牌/排, a tone apart, which is how your
+#                    own 小派小派 is often heard) and a lone 小派 inside a longer phrase
 #   zh, en, mixed    everyday speech at home: questions to an assistant, family life, small talk (read once;
 #                    as many as you can). Words sharing 小派's sounds on purpose: 小时, 派出所, 拍照, 排队, 白天 …
 #
@@ -13,6 +16,12 @@ near_miss_core: [
   "小派", "小拍", "小牌", "小排", "小派派", "派派", "小小派", "嘿小派", "小派你好", "小派呢",
   "小派是谁", "叫小派", "小白小白", "小胖小胖", "小潘小潘", "小八小八", "小怕小怕", "小贝小贝", "小爱小爱", "小爱同学",
   "小度小度", "小艺小艺", "天猫精灵", "小米小米", "苹果派", "蛋黄派", "派对", "晓得了", "Hey Pi", "Hey Siri",
+]
+
+near_miss_doubled: [
+  "小拜小拜", "小盼小盼", "小帕小帕", "小迈小迈", "小快小快", "小开小开", "小菜小菜", "小佩小佩", "小太小太", "小赖小赖",
+  "小胖胖", "小派小朋友", "小派小心", "小派小姐", "小派小宝", "我们家小派", "喂小派", "小派在吗", "找小派", "小派快来",
+  "小派别闹", "小小派派", "派小派小", "Hey Pi Hey Pi", "Hi Pi Hi Pi",
 ]
 
 near_miss_extra: [

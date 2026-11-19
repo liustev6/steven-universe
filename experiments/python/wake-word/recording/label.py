@@ -1,6 +1,6 @@
 """Your recordings, labelled: each take in data/xiao_pai/recordings split into utterances (segment.py), each
 utterance through speech-to-text (speech-service, through its test client), all of it in one manifest,
-data/xiao_pai/recordings/transcripts.jsonl: clip, take, start and end in the take, duration, kind, what was
+data/xiao_pai/recordings/transcripts.jsonl (the Mac's takes, mac-*, and the Pi's, pi-*): clip, take, start and end in the take, duration, kind, what was
 said, the language heard, and where the label came from. For the wake word now; for training a voice of your
 own later (audio with its text). Run with speech-service's venv, its test client running:
 
@@ -10,7 +10,8 @@ A take already in the manifest is skipped (a rerun labels only new takes). Each 
 transcript (`asr`) and the closest line of the bank you read from (`match`, `match_score`: phrases/
 xiao_pai_bank.yaml, that take's language); `text` is the bank's line when it matches closely (score 0.75 and
 up, `label: "bank"`: what you were reading, exactly) and the transcript otherwise (`label: "asr"`: something
-you said in your own words). The wake word's clips are `text: 小派小派` (`label: "intended"`). Short-video and
+you said in your own words). The Pi's near-miss takes are read in order, each line twice, so their
+clips are labelled by position (`label: "order"`), the transcript kept beside it. The wake word's clips are `text: 小派小派` (`label: "intended"`). Short-video and
 ambient takes aren't split (no one is talking to the mic); they're listed whole.
 """
 
@@ -37,7 +38,12 @@ KINDS = {  # take name → (kind, longest utterance in s, the language speech-to
     "mac-wake-": ("wake", 2.5, "Chinese", "小派小派"),
     "mac-zh-": ("zh", 10.0, "Chinese", None),        # Chinese mode still writes the English words of mixed lines
     "mac-en-": ("en", 10.0, "English", None),        # detection took a short "Hey Pi" for Cantonese
+    "pi-wake-bg-": ("wake-bg", 2.5, "Chinese", "小派小派"),   # the Pi's mic, a video playing (before "pi-wake-")
+    "pi-wake-": ("wake", 2.5, "Chinese", "小派小派"),
+    "pi-family-": ("family", 2.5, "Chinese", "小派小派"),
+    "pi-near-": ("near", 4.0, None, None),           # the core near misses, Chinese and English
 }
+UNSPLIT = {"mac-video-": "video", "pi-room-": "room"}   # no one talking to the mic: listed whole
 CJK = re.compile(r"[\u4e00-\u9fff]")
 
 
@@ -46,7 +52,7 @@ def bank_lines() -> dict[str, list[str]]:
     b = yaml.safe_load(open(HERE.parent / "phrases/xiao_pai_bank.yaml"))
     near = b["near_miss_core"] + b["near_miss_extra"]
     return {"zh": [t for t in near if CJK.search(t)] + b["zh"] + b["mixed"],
-            "en": [t for t in near if not CJK.search(t)] + b["en"]}
+            "en": [t for t in near if not CJK.search(t)] + b["en"], "near": b["near_miss_core"]}
 
 
 def plain(text: str) -> str:
@@ -81,14 +87,14 @@ async def main():
     done = set()
     if MANIFEST.exists():
         done = {json.loads(line)["take"] for line in MANIFEST.read_text().splitlines() if line.strip()}
-    takes = sorted(p for p in RECORDINGS.glob("mac-*.wav") if p.name not in done)
+    takes = sorted(p for p in [*RECORDINGS.glob("mac-*.wav"), *RECORDINGS.glob("pi-*.wav")] if p.name not in done)
     bank = bank_lines()
     with MANIFEST.open("a") as out:
         for take in takes:
             kind = next((v for k, v in KINDS.items() if take.name.startswith(k)), None)
             x = read(take)
             if kind is None:                               # ambient, short videos: the whole take, unsplit
-                kind_name = "video" if take.name.startswith("mac-video-") else "ambient"
+                kind_name = next((v for k, v in UNSPLIT.items() if take.name.startswith(k)), "ambient")
                 out.write(json.dumps({"clip": None, "take": take.name, "start": 0.0, "end": round(len(x) / 16000, 2),
                                       "duration": round(len(x) / 16000, 2), "kind": kind_name, "asr": None,
                                       "language": None, "text": None, "label": None}, ensure_ascii=False) + "\n")
@@ -107,6 +113,9 @@ async def main():
                        "asr": asr, "language": heard_language}
                 if intended:
                     row |= {"text": intended, "label": "intended"}
+                elif name == "near" and k <= 2 * len(bank["near"]):   # each line read twice, in order: the order
+                    line = bank["near"][(k - 1) // 2]                  # is the label (speech-to-text hears 派派 as 太太)
+                    row |= {"match": line, "match_score": match(asr, [line])[1], "text": line, "label": "order"}
                 else:
                     line, score = match(asr, bank[name])
                     row |= {"match": line, "match_score": score}

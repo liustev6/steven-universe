@@ -12,6 +12,7 @@ is skipped (out/<voice>/done), so a rerun resumes.
         /code/spikes/03-many-voices/gen_voices.py --source design|clone [--limit N]
 
 /exp: models/ (VoiceDesign, Base), data/datasets/aishell3-refs/ (fetch_refs.py), out/spike-03/ (written).
+Spike 04: `--lines doubled --out spike-04`: the same voices, each saying the bank's near_miss_doubled once.
 """
 
 import argparse
@@ -31,12 +32,15 @@ ap.add_argument("--source", choices=["design", "clone"], required=True)
 ap.add_argument("--limit", type=int, default=0, help="only the first N voices (a speed test)")
 ap.add_argument("--exp", default="/exp", help="models/ and the reference clips under it; out/spike-03 written")
 ap.add_argument("--bank", default="/code/phrases/xiao_pai_bank.yaml")
+ap.add_argument("--lines", choices=["spike03", "doubled"], default="spike03",
+                help="what each voice says: spike 03's script, or (spike 04) the bank's near_miss_doubled once each")
+ap.add_argument("--out", default="spike-03", help="under /exp/out")
 ap.add_argument("--batch", type=int, default=0, help="lines per call (default: 8 designed, 4 cloned: a clone's"
                 " reference voice goes with every line)")
 MAX_CODES = 400        # ~32 s at 12.5 codes/s: a sample that never stops is cut there (one took the GPU's 8 GB)
 args = ap.parse_args()
 EXP = Path(args.exp)
-OUT = EXP / "out/spike-03"
+OUT = EXP / "out" / args.out
 REFS = EXP / "data/datasets/aishell3-refs"
 BANK = yaml.safe_load(open(args.bank))
 WAKE = ["小派小派", "小派小派。", "小派小派！", "小派小派？", "小派，小派。", "小派，小派！", "小派小派，"]
@@ -77,6 +81,8 @@ def cloned() -> list[dict]:
 
 # ---- what each voice says -------------------------------------------------------------------------------------------
 def script(voice: str) -> list[tuple[str, str]]:
+    if args.lines == "doubled":
+        return [("near_doubled", t) for t in BANK["near_miss_doubled"]]
     rng = random.Random(voice)
     lines = [("positive", t) for t in WAKE * 2]
     lines += [("near_core", t) for t in BANK["near_miss_core"]]
