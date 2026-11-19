@@ -27,6 +27,21 @@ NEAR MISSES: share that wakes it (the same mix)
     room noise (246)                                       17%     13%     12%      9%      6%        4%
     video, TV or meeting (207)                             12%     10%      7%      5%      2%        1%
     very noisy (92)                                        12%      4%      1%      1%      1%        1%
+  '小派小派' back to back, 51 unheard voices, per hour        49.4    33.8    33.8    26.0     7.8       5.2
+
+THE OTHER WAKE WORD'S CLIPS: share that wakes it (its word and its near misses)
+                                                          0.80    0.90    0.95    0.97    0.99    ≤0.5/h
+  小派小派: 51 unheard voices, designed (355)                   5%      3%      2%      2%      1%        1%
+  小派小派: 51 unheard voices, cloned (293)                     0%      0%      0%      0%      0%        0%
+  小派小派: spike 01's 2 unheard voices (128)                   9%      9%      5%      5%      2%        2%
+  小派小派: the owner, Pi mic, quiet (25)                       0%      0%      0%      0%      0%        0%
+  小派小派: the owner, Pi mic, a video playing (21)             0%      0%      0%      0%      0%        0%
+  小派小派: the owner, Mac mic (7)                              0%      0%      0%      0%      0%        0%
+  小派小派: 51 voices, core 30 (小胖小胖, 小怕小怕 …) (1530)            9%      7%      6%      5%      3%        2%
+  小派小派: 51 voices, doubled 25 (小快小快, 小派小心 …) (1275)         4%      3%      2%      2%      1%        1%
+  小派小派: spike 01's near misses (132)                       13%      9%      7%      6%      5%        5%
+  小派小派: the owner's near misses, Pi mic (15)               20%     13%     13%     13%      0%        0%
+  小派小派: the owner's other lines, Mac mic (55)               9%      5%      4%      4%      2%        2%
 
 CERTAINTY: the peak score its word gets (1.00 = sure; the higher, the more margin for audio no test has)
                                                         median     p25     p10

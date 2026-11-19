@@ -35,7 +35,13 @@ NEAR MISSES: share that wakes it (the same mix)
     room noise (747)                                       15%      8%      4%      3%      0%        6%
     video, TV or meeting (693)                              7%      5%      2%      1%      0%        4%
     very noisy (296)                                        6%      3%      2%      2%      0%        3%
-  the owner's 'Hey Pi's back to back (4 min), per hour    16.1     0.0     0.0     0.0     0.0       0.0
+  'Hey Pi' back to back, 51 unheard voices, per hour      26.0    17.4     8.7     4.3     0.0      13.0
+
+THE OTHER WAKE WORD'S CLIPS: share that wakes it (its word and its near misses)
+                                                          0.80    0.90    0.95    0.97    0.99    ≤0.5/h
+  Hey Pi: 51 unheard voices, designed (287)                 0%      0%      0%      0%      0%        0%
+  Hey Pi: 51 unheard voices, cloned (216)                   0%      0%      0%      0%      0%        0%
+  Hey Pi: 51 voices, Hey Pi's 18 (Hey pal, Apple pie …) (918)      0%      0%      0%      0%      0%        0%
 
 CERTAINTY: the peak score its word gets (1.00 = sure; the higher, the more margin for audio no test has)
                                                         median     p25     p10
