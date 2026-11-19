@@ -1,0 +1,35 @@
+xiao_pai_02 (小派小派): the common test (evaluate.py), audio no model trained on
+last column: its cutoff for at most 0.5 false wakes an hour over all the streams: 0.995
+
+FALSE WAKES PER HOUR, each set as one stream
+                                                          0.80    0.90    0.95    0.97    0.99    ≤0.5/h
+  the owner's room, Pi mic (10 min held out)               0.0     0.0     0.0     0.0     0.0       0.0
+  the owner's short videos (15 min held out)               0.0     0.0     0.0     0.0     0.0       0.0
+  Mandarin meetings, AliMeeting test (2 h)                 2.5     2.0     2.0     1.0     0.5       0.5
+  everyday speech, unheard voices (30 min)                25.7    15.8    13.8     9.9     5.9       0.0
+  AudioSet sounds (35 min)                                 1.7     0.0     0.0     0.0     0.0       0.0
+  all together (3.5 h)                                    5.43    3.43    3.14    2.00    1.14      0.29
+
+RECALL: its word, share woken
+                                                          0.80    0.90    0.95    0.97    0.99    ≤0.5/h
+  51 unheard voices, designed (355)                        84%     81%     78%     76%     68%       62%
+    + background 10 dB                                     75%     72%     65%     64%     54%       46%
+    + background 5 dB                                      64%     58%     54%     48%     41%       37%
+  51 unheard voices, cloned (293)                          98%     97%     95%     94%     93%       90%
+    + background 10 dB                                     94%     93%     91%     90%     83%       79%
+    + background 5 dB                                      86%     83%     79%     76%     71%       66%
+  spike 01's 2 unheard voices (128)                        90%     86%     83%     78%     75%       68%
+    + background 10 dB                                     81%     76%     74%     72%     64%       59%
+    + background 5 dB                                      68%     64%     57%     55%     46%       45%
+  the owner, Pi mic, quiet (25)                            84%     80%     72%     64%     56%       52%
+  the owner, Pi mic, a video playing (21)                 100%    100%    100%    100%    100%      100%
+  the owner, Mac mic (7)                                   57%     57%     57%     57%     57%       57%
+
+NEAR MISSES: share that wakes it
+                                                          0.80    0.90    0.95    0.97    0.99    ≤0.5/h
+  51 voices, core 30 (小胖小胖, 小怕小怕 …) (1530)                 24%     20%     18%     16%     12%        9%
+  51 voices, doubled 25 (小快小快, 小派小心 …) (1275)              49%     44%     40%     36%     28%       24%
+  spike 01's near misses (132)                              9%      5%      5%      3%      2%        0%
+  the owner's near misses, Pi mic (15)                     13%     13%     13%     13%      7%        0%
+  the owner's other lines, Mac mic (55)                     9%      9%      9%      9%      9%        5%
+  the owner's 'Hey Pi's back to back (4 min), per hour     0.0     0.0     0.0     0.0     0.0       0.0
