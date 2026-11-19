@@ -82,8 +82,10 @@ kernel the module isn't built for ([lxc-gpu-passthrough-setup.md](../lxc-gpu-pas
   makes a start fail out of memory: stop it before a deploy.
 - **GPU work that can't run beside the live service runs in a maintenance window:** the live service
   stopped, the work run in its place (same port, same token), then the live one started again:
-  `scripts/gpu_window.sh` (the GPU tests, then the dev code as the service: e2e, a streamed reply), or
-  `scripts/evenness.py` against the dev service (a model or voice change).
+  `scripts/gpu_window.sh` (the GPU tests, then the dev code as the service: e2e, a streamed reply).
+  Experiments (a new model, a voice change measured with `experiments/python/speech-service/evenness.py`,
+  synthetic data) run on the playground (CT 110, [playground.md](../playground.md)), speech-service
+  stopped by hand meanwhile.
 - **Changing a model:** lock it from a tested copy (`python -m app.models lock`), add it to
   `models.yaml`, place its weights on CT 108 (or let the hook download them), point `config.env` at it.
 
@@ -105,9 +107,11 @@ kernel the module isn't built for ([lxc-gpu-passthrough-setup.md](../lxc-gpu-pas
 ## Appendix: the spikes
 Every measurement behind a decision. Each spike's write-up and raw results (the metrics) are kept in
 `docs/specs/speech-service-spikes/`; their code was removed once decided (2026-11-18; recover it with
-`git log --diff-filter=D -- python/services/speech-service/spikes`). The measuring tools still in use are
-`scripts/evenness.py` (pace, pauses, babble per voice), `scripts/roundtrip.py` (spoken, then heard back),
-`scripts/trace_reply.py` (one reply, step by step) and `scripts/gpu_window.sh`. All on CT 108's RTX 5060 (8 GB), PyTorch 2.15 with CUDA 13.2.
+`git log --diff-filter=D -- python/services/speech-service/spikes`). The measuring tools still in use are in
+`experiments/python/speech-service/` (since 2026-11-19): `evenness.py` (pace, pauses, babble per voice),
+`roundtrip.py` (spoken, then heard back), `trace_reply.py` (one reply, step by step); the service keeps
+`scripts/gpu_window.sh` (its GPU tests) and `scripts/e2e.py`. `scripts/bench.py` and `scripts/chunks.py`
+(spikes 02-09) were removed then, their numbers in the spikes' write-ups. All on CT 108's RTX 5060 (8 GB), PyTorch 2.15 with CUDA 13.2.
 Spikes 01–14 used the TTS model Qwen3-TTS-12Hz-0.6B-CustomVoice; 15 compared it with the 1.7B; 16 ran on the 1.7B.
 A frame is 80 ms of audio. RTF (real-time factor) is generation time ÷ audio length: below 1 is faster
 than speech. First audio is the time from a sentence's text to its first audio packet. Margin is how

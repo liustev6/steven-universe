@@ -4,9 +4,10 @@ A reply arrives as an agent streams it (small deltas at the agent's pace), the s
 cuts it into pieces, each piece is normalized and fed to the reply's row as its tokens; the batch
 steps in real time. Logged: each delta, each piece handed over (and its tokens), each step (a frame,
 or the row waiting for text), the end mark, the end. The frames are decoded and kept as a WAV.
-Runs in the service image with the GPU (the live service stopped), the dev code at /src:
+Runs in the service image with the GPU (on the playground, speech-service stopped: docs/playground.md),
+the service's code at /src (it imports the engine) and this folder at /exp:
 
-    python scripts/trace_reply.py /models/Qwen3-TTS-12Hz-1.7B-CustomVoice dylan /out/trace.wav
+    PYTHONPATH=/src python /exp/trace_reply.py /models/Qwen3-TTS-12Hz-1.7B-CustomVoice dylan /out/trace.wav
 """
 
 import sys

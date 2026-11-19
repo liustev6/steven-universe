@@ -10,7 +10,7 @@ the live service (the test client holds the token); each clip measured from its 
 
     cd python/services/speech-service
     .venv/bin/python test-client/server.py &
-    .venv/bin/python scripts/evenness.py --runs 4 --voices ryan,dylan > evenness.txt
+    .venv/bin/python ../../../experiments/python/speech-service/evenness.py --runs 4 --voices ryan,dylan > evenness.txt
 """
 
 from __future__ import annotations

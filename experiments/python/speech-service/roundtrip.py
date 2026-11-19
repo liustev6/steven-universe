@@ -7,7 +7,7 @@ in 11 s where 5 would do). Through the test client (it holds the token):
 
     cd python/services/speech-service
     .venv/bin/python test-client/server.py &
-    .venv/bin/python scripts/roundtrip.py --runs 3 --out /tmp/tn > roundtrip.txt
+    .venv/bin/python ../../../experiments/python/speech-service/roundtrip.py --runs 3 --out /tmp/tn > roundtrip.txt
 
 The service normalizes each sentence itself (T14), so this measures what callers get.
 """

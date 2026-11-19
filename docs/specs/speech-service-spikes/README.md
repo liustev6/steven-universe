@@ -3,9 +3,10 @@ The measurements that shaped speech-service ([speech-service.md](../speech-servi
 an appendix summarizing each). Each folder keeps its write-up (`README.md`: the question, how it ran, the
 results, what was decided) and, from spike 13 on, its raw output (`.txt`, `.log`). **The spikes' code was
 removed once each was decided** (2026-11-18), so the service's dependencies can move on; it's in git:
-`git log --diff-filter=D -- python/services/speech-service/spikes`. The measuring tools still in use are in
-`python/services/speech-service/scripts/`: `evenness.py` (from 14), `roundtrip.py` (13), `trace_reply.py`
-(16), `gpu_window.sh`.
+`git log --diff-filter=D -- python/services/speech-service/spikes`. So were `scripts/bench.py` and
+`scripts/chunks.py` (spikes 02-09; 2026-11-19): `git log --diff-filter=D -- python/services/speech-service/scripts`.
+The measuring tools still in use are in `experiments/python/speech-service/`: `evenness.py` (from 14),
+`roundtrip.py` (13), `trace_reply.py` (16); the service keeps `scripts/gpu_window.sh` (its GPU tests).
 
 All ran on CT 108's RTX 5060 (8 GB), PyTorch 2.15.0 (CUDA 13.2), `qwen-tts` 0.1.1 (transformers 4.57.3).
 The TTS model: Qwen3-TTS-12Hz-0.6B-CustomVoice (`85e237c`) through spike 14; spike 15 compared the 1.7B

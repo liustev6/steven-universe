@@ -12,9 +12,9 @@ Speech out and in, streamed, from two models kept loaded on pve01's GPU (CT 108)
 | `app/main.py` | listens at once, loads and warms both models through the work threads, then healthy |
 | `base-image/` | speech-base: the model stack (PyTorch + CUDA 13.2 libraries, Triton, qwen-tts, qwen-asr), ~7 GB, built by CI from a lock |
 | `Dockerfile` | the service image: speech-base (pinned by digest) + our code, COPY only |
-| `scripts/` | `smoke_test.py` (a sentence spoken, then heard back), `cert-hook.sh`, `bench.py`, `chunks.py`, `e2e.py` |
 | `test-client/` | a local page that talks to the live service and plays it, as `speech-test-client` (its server forwards the WebSockets with the token) |
-| `scripts/` | the deploy's smoke test and cert hook; e2e, evenness, roundtrip, trace_reply (measuring the live or dev service); gpu_window.sh (GPU work in a maintenance window) |
+| `scripts/` | the deploy's smoke test (`smoke_test.py`) and cert hook; `e2e.py` (the live or dev service, end to end); `gpu_window.sh` (the service's GPU tests in a maintenance window) |
+| (measuring tools) | evenness, roundtrip, trace_reply: `experiments/python/speech-service/` |
 | (metrics) | every spike's write-up and raw results: `docs/specs/speech-service-spikes/` |
 
 ## Configuration

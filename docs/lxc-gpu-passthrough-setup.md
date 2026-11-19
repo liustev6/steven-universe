@@ -268,17 +268,29 @@ pct set 110 --dev0 /dev/nvidia0,mode=0666 --dev1 /dev/nvidiactl,mode=0666 \
 pct start 110
 pct exec 110 -- ip -4 -o addr show eth0
 ```
+**Result (2026-11-19):** CT 110 `playground`, MAC `BC:24:11:4B:93:DD`, `192.168.50.119`; unprivileged, 12 cores,
+32 GB, 500 GB, not at boot; the four device files inside, `crw-rw-rw-`.
 
 ### 2. The usual container setup, without the service parts
 [lxc-setup.md](lxc-setup.md) step 2 (a DHCP reservation; no DNS name: nothing serves from here), 3 (console),
 4 (packages and Docker), 5 (the SSH alias `playground`, through pve01 as `speech-host`). Not 6-7: no
 deploy wrapper (the deployer never deploys here), not in the boot order.
 
+**Result (2026-11-19):** console autologin (CT 105's overrides; no password set: SSH is key-only); packages
+(no certbot: nothing serves TLS here; plus `rsync`, `tmux`, `ffmpeg`, `python3-venv`) and Docker (Compose
+v5.8.0); SSH alias `playground` (host key `SHA256:ZVOwaoMq…`, read through pve01). DHCP reservation: yours.
+
 ### 3. NVIDIA's libraries and the Container Toolkit
 Part 2's steps 4 and 5 in CT 110's shell, unchanged: `nvidia-driver-cuda` at **620.70.06** (the host's
 module's version), held; `nvidia-persistenced` and `nvidia-powerd` masked; the toolkit with
 `no-cgroups = true`; `docker run --rm --gpus all nvidia/cuda:12.8.2-base-ubuntu24.04 nvidia-smi`.
 A driver update (below) now has two containers to update: CT 108 and CT 110.
+
+**Result (2026-11-19):** keyring `77f0992e…34bbe`, the same as pve01's; 25 packages at 620.70.06, held;
+`nvidia-persistenced`, `nvidia-powerd` masked. `nvidia-smi` in CT 110: RTX 5060, 620.70.06, 8151 MiB, with
+6704 MiB already used (speech-service, on CT 108: the card is shared). Toolkit `no-cgroups`; NVIDIA's
+vector-add sample as uid 10001 in a CUDA container: **Test PASSED**. speech-base pulled (the model stack,
+for experiments on production's exact versions); the repository cloned to `/srv/src/steven-universe`.
 
 ## The chain, end to end
 ```

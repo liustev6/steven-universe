@@ -27,9 +27,9 @@ trap restore EXIT
 mkdir -p "$OUT"
 
 log "the dev code to $HOST:/opt/speech-dev"
-COPYFILE_DISABLE=1 tar -czf - --exclude __pycache__ app tests scripts spikes pytest.ini requirements-dev.txt 2>/dev/null \
+COPYFILE_DISABLE=1 tar -czf - --exclude __pycache__ app tests scripts pytest.ini requirements-dev.txt 2>/dev/null \
   | ssh $HOST 'cd /opt/speech-dev && rm -rf stage && mkdir stage && tar -xzf - -C stage 2>/dev/null \
-      && for d in app tests scripts spikes; do rm -rf $d; mv stage/$d .; done; mv stage/* . 2>/dev/null; rm -rf stage'
+      && for d in app tests scripts; do rm -rf $d; mv stage/$d .; done; mv stage/* . 2>/dev/null; rm -rf stage'
 
 log "stopping the live service"
 ssh $HOST "docker stop $LIVE >/dev/null"
