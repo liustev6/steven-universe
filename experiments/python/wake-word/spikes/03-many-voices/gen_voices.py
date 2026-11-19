@@ -122,20 +122,33 @@ def main():
         if (folder / "done").exists():
             continue
         folder.mkdir(exist_ok=True)
+        for old in folder.glob("*.wav"):                  # a voice cut short before: made again whole
+            old.unlink()                                  # (its manifest lines repeat: the last one per clip counts)
         t = time.monotonic()
         lines = script(v["voice"])
         prompt = model.create_voice_clone_prompt(v["ref_audio"], v["ref_text"]) if args.source == "clone" else None
+
+        def say(texts: list[str]) -> tuple[list, int]:
+            langs = ["Chinese" if CJK.search(t_) else "English" for t_ in texts]
+            if args.source == "design":
+                return model.generate_voice_design(text=texts, instruct=[v["instruct"]] * len(texts), language=langs,
+                                                   max_new_tokens=MAX_CODES)
+            return model.generate_voice_clone(text=texts, language=langs, voice_clone_prompt=prompt * len(texts),
+                                              max_new_tokens=MAX_CODES)
+
         size = args.batch or (8 if args.source == "design" else 4)
         for batch_start in range(0, len(lines), size):
             batch = lines[batch_start: batch_start + size]
             texts = [t_ for _, t_ in batch]
-            langs = ["Chinese" if CJK.search(t_) else "English" for t_ in texts]
-            if args.source == "design":
-                wavs, sr = model.generate_voice_design(text=texts, instruct=[v["instruct"]] * len(texts), language=langs,
-                                                       max_new_tokens=MAX_CODES)
-            else:
-                wavs, sr = model.generate_voice_clone(text=texts, language=langs, voice_clone_prompt=prompt * len(texts),
-                                                      max_new_tokens=MAX_CODES)
+            try:
+                wavs, sr = say(texts)
+            except torch.cuda.OutOfMemoryError:           # a batch too big for what's left: one line at a time
+                torch.cuda.empty_cache()
+                wavs = []
+                for text in texts:
+                    one, sr = say([text])
+                    wavs += one
+                    torch.cuda.empty_cache()
             torch.cuda.empty_cache()                      # each batch's working memory back before the next
             for k, ((kind, text), wav) in enumerate(zip(batch, wavs), batch_start):
                 pcm = to16k(np.asarray(wav, dtype=np.float32).reshape(-1), sr)
