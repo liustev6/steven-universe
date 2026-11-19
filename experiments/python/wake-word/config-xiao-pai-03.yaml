@@ -1,0 +1,34 @@
+# Spike 03 (spikes/03-many-voices): spike 02 plus many voices and the owner's voice. DATA=<root>/xiao_pai:
+#   positives: tts (spike 01's 5 voices), tts3 (204 designed and cloned voices, cleaned), me (the owner, ×5)
+#   negatives (near misses, weight 5): tts-near, tts-speech, tts3-near (every voice's 30 core near misses),
+#     tts3-everyday, me-zh, me-en (the owner's Chinese and English)
+#   held out (eval/): serena and uncle_fu, 51 of the new voices, 7 of the owner's wake words, 55 of the
+#     owner's other lines, 15 min of short videos
+run: xiao_pai_03
+word: 小派小派
+wake_word: 小派小派
+model_name: xiao_pai_03
+languages: [zh]
+piper_samples: 0
+own_voice_copies: 5
+probability_cutoff: 0.97
+
+augmentation:
+  probabilities: {SevenBandParametricEQ: 0.1, TanhDistortion: 0.1, PitchShift: 0.1, BandStopFilter: 0.1,
+                  AddColorNoise: 0.1, AddBackgroundNoise: 0.75, Gain: 1.0, RIR: 0.5}
+  background_min_snr_db: -5
+  background_max_snr_db: 10
+  background_dirs:               # under the data root; besides AudioSet and FMA music
+    - datasets/demand
+    - datasets/musan/musan/noise
+
+extra_negatives:                 # under the data root
+  - {name: alimeeting, dir: xiao_pai_02/extra/alimeeting, weight: 10}     # 36 h of Mandarin meetings, far-field
+  - {name: demand, dir: xiao_pai_02/extra/demand, weight: 3}
+  - {name: musan_noise, dir: xiao_pai_02/extra/musan_noise, weight: 3}
+  - {name: video, dir: xiao_pai/extra/video, weight: 8}                   # 39 min of short videos playing: what set off false wakes
+
+training:
+  steps: 10000
+  negative_class_weight: 20
+  near_miss_weight: 5.0

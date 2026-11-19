@@ -14,14 +14,14 @@ augmentation:
                   AddColorNoise: 0.1, AddBackgroundNoise: 0.75, Gain: 1.0, RIR: 0.5}
   background_min_snr_db: -5
   background_max_snr_db: 10
-  background_dirs:               # besides AudioSet and FMA music: a home's and a city's noise (DEMAND), noise (MUSAN)
-    - data/datasets/demand
-    - data/datasets/musan/musan/noise
+  background_dirs:               # under the data root; besides AudioSet and FMA music: a home's and a city's noise (DEMAND), noise (MUSAN)
+    - datasets/demand
+    - datasets/musan/musan/noise
 
 extra_negatives:                 # sampling weights as microWakeWord's own sets (speech 10, dinner party 10, no speech 5)
-  - {name: alimeeting, dir: data/xiao_pai_02/extra/alimeeting, weight: 10}     # 36 h of Mandarin meetings, far-field
-  - {name: demand, dir: data/xiao_pai_02/extra/demand, weight: 3}             # 3.2 h: kitchen, living room, washer, …
-  - {name: musan_noise, dir: data/xiao_pai_02/extra/musan_noise, weight: 3}   # MUSAN's noise, cut into clips
+  - {name: alimeeting, dir: xiao_pai_02/extra/alimeeting, weight: 10}     # 36 h of Mandarin meetings, far-field
+  - {name: demand, dir: xiao_pai_02/extra/demand, weight: 3}             # 3.2 h: kitchen, living room, washer, …
+  - {name: musan_noise, dir: xiao_pai_02/extra/musan_noise, weight: 3}   # MUSAN's noise, cut into clips
 
 training:
   steps: 10000

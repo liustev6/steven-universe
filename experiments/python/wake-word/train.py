@@ -8,7 +8,8 @@ A config with `run: NAME` keeps that run's positives, features and trained model
 downloads stay shared), so a second wake word doesn't overwrite the first; `piper_samples: 0` trains on our
 own clips only (Piper's voices are English: a Chinese word has none). `extra_negatives` adds negative sets of
 our own (folders of clips: Mandarin conversation, household noise), each with its sampling weight, and
-`augmentation.background_dirs` adds background sound mixed into every clip.
+`augmentation.background_dirs` adds background sound mixed into every clip. Both are folders under the data
+root (DATA's parent: data/ here, /srv/experiments/wake-word/data on the playground), so one config runs on both.
 
 Steps, as microWakeWord's notebook (kahrendt/microWakeWord, notebooks/basic_training_notebook.ipynb):
   1. Piper samples of the word (Piper's ONNX LibriTTS voice through piper-tts: 904 speakers)
@@ -38,6 +39,7 @@ import yaml
 CONFIG = yaml.safe_load(open(sys.argv[1] if len(sys.argv) > 1 else "config.yaml"))
 WORK, DATA, OUT = Path(os.environ.get("WORK", "/work")), Path(os.environ.get("DATA", "/data")), Path(os.environ.get("OUT", "/out"))
 RUN = WORK / "runs" / CONFIG["run"] if CONFIG.get("run") else WORK       # this run's own files
+ROOT = DATA.parent                                                      # extra sets and backgrounds: under it
 T0 = time.monotonic()
 
 
@@ -153,7 +155,7 @@ def augmenter():
     from microwakeword.audio.augmentation import Augmentation
 
     a = CONFIG["augmentation"]
-    backgrounds = [str(WORK / "fma_16k"), str(WORK / "audioset_16k")] + [str(Path(d)) for d in a.get("background_dirs", [])]
+    backgrounds = [str(WORK / "fma_16k"), str(WORK / "audioset_16k")] + [str(ROOT / d) for d in a.get("background_dirs", [])]
     return Augmentation(augmentation_duration_s=3.2, augmentation_probabilities=a["probabilities"],
                         impulse_paths=[str(WORK / "mit_rirs")],
                         background_paths=backgrounds,
@@ -282,7 +284,7 @@ if __name__ == "__main__":
     if (DATA / "negatives").exists():
         near_dir = gather(RUN / "near_misses", [(p, 1) for p in sorted((DATA / "negatives").iterdir()) if p.is_dir()])
         near = features("near_miss", near_dir, aug)
-    extra = [(features(n["name"], Path(n["dir"]), aug, repeat=n.get("repeat", 1)), float(n["weight"]))
+    extra = [(features(n["name"], ROOT / n["dir"], aug, repeat=n.get("repeat", 1)), float(n["weight"]))
              for n in CONFIG.get("extra_negatives", [])]
     negatives = negative_datasets()
     train(positive, near, negatives, extra)
