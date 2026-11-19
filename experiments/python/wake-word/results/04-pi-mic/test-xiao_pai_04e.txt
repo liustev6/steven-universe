@@ -1,4 +1,4 @@
-xiao_pai_04e (小派小派): the common test (evaluate.py), audio no model trained on
+xiao_pai_04e (小派小派): the common test (evaluate.py), test set v1 (testset.py): audio no model trained on
 last column: its cutoff for at most 0.5 false wakes an hour over all the streams: 0.945
 
 FALSE WAKES PER HOUR, each set as one stream
@@ -7,53 +7,54 @@ FALSE WAKES PER HOUR, each set as one stream
   the owner's short videos (15 min held out)               0.0     0.0     0.0     0.0     0.0       0.0
   Mandarin meetings, AliMeeting test (2 h)                 0.5     0.0     0.0     0.0     0.0       0.0
   everyday speech, unheard voices (30 min)                 3.9     3.9     0.0     0.0     0.0       0.0
-  AudioSet sounds (35 min)                                 0.0     0.0     0.0     0.0     0.0       0.0
-  all together (3.5 h)                                    0.86    0.57    0.00    0.00    0.00      0.00
+  all together (2.9 h)                                    1.03    0.68    0.00    0.00    0.00      0.00
 
-RECALL: its word, share woken
+RECALL: its word, share woken (test set v1: the unheard voices 40% quiet, 25% room noise, 25% a video, TV or meeting, 10% very noisy; the owner as recorded)
                                                           0.80    0.90    0.95    0.97    0.99    ≤0.5/h
-  51 unheard voices, designed (355)                        79%     70%     55%     39%     12%       57%
-    + background 10 dB                                     58%     43%     31%     22%      3%       32%
-    + background 5 dB                                      45%     32%     19%     10%      1%       20%
-  51 unheard voices, cloned (293)                          97%     89%     79%     63%     32%       81%
-    + background 10 dB                                     84%     70%     52%     38%     17%       56%
-    + background 5 dB                                      63%     51%     33%     25%     11%       35%
-  spike 01's 2 unheard voices (128)                        74%     68%     54%     40%     18%       55%
-    + background 10 dB                                     58%     45%     32%     21%      5%       34%
-    + background 5 dB                                      46%     33%     20%     12%      3%       20%
+  51 unheard voices, designed (355)                        61%     49%     37%     25%      8%       39%
+  51 unheard voices, cloned (293)                          81%     72%     56%     39%     18%       60%
+  spike 01's 2 unheard voices (128)                        63%     51%     38%     28%     14%       39%
   the owner, Pi mic, quiet (25)                            84%     84%     84%     60%     36%       84%
   the owner, Pi mic, a video playing (21)                 100%     95%     90%     81%     62%       90%
   the owner, Mac mic (7)                                   86%     86%     57%     57%     14%       71%
+  the unheard voices together, by condition:
+    quiet (314)                                            84%     76%     63%     46%     20%       66%
+    room noise (195)                                       78%     64%     49%     32%     16%       50%
+    video, TV or meeting (202)                             50%     40%     25%     15%      1%       28%
+    very noisy (65)                                        25%      9%      5%      0%      0%        5%
 
-NEAR MISSES: share that wakes it
+NEAR MISSES: share that wakes it (the same mix)
                                                           0.80    0.90    0.95    0.97    0.99    ≤0.5/h
-  51 voices, core 30 (小胖小胖, 小怕小怕 …) (1530)                  9%      5%      3%      2%      1%        3%
-  51 voices, doubled 25 (小快小快, 小派小心 …) (1275)              17%     11%      7%      4%      1%        7%
+  51 voices, core 30 (小胖小胖, 小怕小怕 …) (1530)                  6%      3%      2%      1%      0%        2%
+  51 voices, doubled 25 (小快小快, 小派小心 …) (1275)              13%      8%      5%      3%      1%        5%
   spike 01's near misses (132)                              2%      1%      1%      0%      0%        1%
   the owner's near misses, Pi mic (15)                     13%      0%      0%      0%      0%        0%
   the owner's other lines, Mac mic (55)                     4%      4%      2%      0%      0%        2%
+  the synthetic near misses together, by condition:
+    quiet (1201)                                           13%      9%      6%      3%      1%        6%
+    room noise (747)                                        7%      3%      2%      1%      0%        2%
+    video, TV or meeting (693)                              4%      2%      1%      1%      0%        1%
+    very noisy (296)                                        3%      1%      1%      0%      0%        1%
   the owner's 'Hey Pi's back to back (4 min), per hour    80.6    16.1    16.1     0.0     0.0      16.1
 
 CERTAINTY: the peak score its word gets (1.00 = sure; the higher, the more margin for audio no test has)
                                                         median     p25     p10
-  51 unheard voices, designed (355)                      0.959   0.854   0.524
-    + background 10 dB                                   0.873   0.572   0.180
-    + background 5 dB                                    0.752   0.307   0.072
-  51 unheard voices, cloned (293)                        0.980   0.955   0.898
-    + background 10 dB                                   0.952   0.870   0.651
-    + background 5 dB                                    0.900   0.688   0.263
-  spike 01's 2 unheard voices (128)                      0.956   0.795   0.546
-    + background 10 dB                                   0.883   0.583   0.109
-    + background 5 dB                                    0.772   0.154   0.069
+  51 unheard voices, designed (355)                      0.894   0.504   0.096
+  51 unheard voices, cloned (293)                        0.961   0.876   0.463
+  spike 01's 2 unheard voices (128)                      0.904   0.664   0.171
   the owner, Pi mic, quiet (25)                          0.976   0.959   0.609
   the owner, Pi mic, a video playing (21)                0.996   0.983   0.959
   the owner, Mac mic (7)                                 0.972   0.944   0.857
+  unheard voices, quiet (314)                            0.967   0.908   0.668
+  unheard voices, room noise (195)                       0.945   0.828   0.354
+  unheard voices, video, TV or meeting (202)             0.802   0.348   0.078
+  unheard voices, very noisy (65)                        0.345   0.145   0.069
 
 … and its near misses (the lower, the surer it isn't the word)
                                                         median     p75     p90
-  51 voices, core 30 (小胖小胖, 小怕小怕 …) (1530)               0.088   0.500   0.791
-  51 voices, doubled 25 (小快小快, 小派小心 …) (1275)            0.201   0.623   0.916
-  spike 01's near misses (132)                           0.069   0.148   0.628
+  51 voices, core 30 (小胖小胖, 小怕小怕 …) (1530)               0.069   0.348   0.694
+  51 voices, doubled 25 (小快小快, 小派小心 …) (1275)            0.109   0.481   0.857
+  spike 01's near misses (132)                           0.069   0.095   0.363
   the owner's near misses, Pi mic (15)                   0.162   0.645   0.799
   the owner's other lines, Mac mic (55)                  0.069   0.069   0.165
-  margin: unheard voices p10 − near misses p90          -0.170   (above 0: they don't overlap)
+  margin: unheard voices p10 − near misses p90          -0.575   (above 0: they don't overlap)

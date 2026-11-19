@@ -1,5 +1,5 @@
-hey_pi (Hey Pi): the common test (evaluate.py), audio no model trained on
-last column: its cutoff for at most 0.5 false wakes an hour over all the streams: never reached (at 0.995, the highest tried: 1.43 an hour)
+hey_pi (Hey Pi): the common test (evaluate.py), test set v1 (testset.py): audio no model trained on
+last column: its cutoff for at most 0.5 false wakes an hour over all the streams: never reached (at 0.995, the highest tried: 1.71 an hour)
 
 FALSE WAKES PER HOUR, each set as one stream
                                                           0.80    0.90    0.95    0.97    0.99    ≤0.5/h
@@ -7,32 +7,37 @@ FALSE WAKES PER HOUR, each set as one stream
   the owner's short videos (15 min held out)               0.0     0.0     0.0     0.0     0.0       0.0
   Mandarin meetings, AliMeeting test (2 h)                 7.5     3.0     2.0     1.0     0.5       0.5
   everyday speech, unheard voices (30 min)                80.9    49.3    35.5    25.7    13.8       7.9
-  AudioSet sounds (35 min)                                 6.9     1.7     1.7     1.7     0.0       0.0
-  all together (3.5 h)                                   17.42    9.14    6.57    4.57    2.29      1.43
+  all together (2.9 h)                                   19.49   10.60    7.52    5.13    2.73      1.71
 
-RECALL: its word, share woken
+RECALL: its word, share woken (test set v1: the unheard voices 40% quiet, 25% room noise, 25% a video, TV or meeting, 10% very noisy; the owner as recorded)
                                                           0.80    0.90    0.95    0.97    0.99    ≤0.5/h
-  51 unheard voices, designed (287)                        87%     80%     77%     75%     67%       56%
-    + background 10 dB                                     81%     73%     68%     65%     56%       49%
-    + background 5 dB                                      72%     67%     61%     56%     45%       35%
-  51 unheard voices, cloned (216)                          93%     89%     85%     82%     67%       51%
-    + background 10 dB                                     84%     78%     69%     62%     46%       36%
-    + background 5 dB                                      72%     62%     55%     48%     32%       21%
+  51 unheard voices, designed (287)                        78%     69%     66%     61%     52%       45%
+  51 unheard voices, cloned (216)                          81%     77%     68%     62%     50%       37%
+  the unheard voices together, by condition:
+    quiet (204)                                            91%     83%     79%     76%     68%       54%
+    room noise (135)                                       85%     83%     75%     67%     55%       49%
+    video, TV or meeting (114)                             71%     60%     51%     42%     31%       22%
+    very noisy (50)                                        38%     32%     32%     24%     16%       14%
 
-NEAR MISSES: share that wakes it
+NEAR MISSES: share that wakes it (the same mix)
                                                           0.80    0.90    0.95    0.97    0.99    ≤0.5/h
-  51 voices, Hey Pi's 18 (Hey pal, Apple pie …) (918)      19%     15%     12%      9%      6%        4%
+  51 voices, Hey Pi's 18 (Hey pal, Apple pie …) (918)      16%     12%     10%      8%      4%        3%
+  the synthetic near misses together, by condition:
+    quiet (373)                                            20%     15%     12%     10%      5%        3%
+    room noise (246)                                       17%     13%     12%      9%      6%        4%
+    video, TV or meeting (207)                             12%     10%      7%      5%      2%        1%
+    very noisy (92)                                        12%      4%      1%      1%      1%        1%
 
 CERTAINTY: the peak score its word gets (1.00 = sure; the higher, the more margin for audio no test has)
                                                         median     p25     p10
-  51 unheard voices, designed (287)                      0.996   0.967   0.564
-    + background 10 dB                                   0.995   0.893   0.338
-    + background 5 dB                                    0.986   0.739   0.187
-  51 unheard voices, cloned (216)                        0.995   0.986   0.888
-    + background 10 dB                                   0.987   0.908   0.601
-    + background 5 dB                                    0.965   0.749   0.325
+  51 unheard voices, designed (287)                      0.992   0.837   0.254
+  51 unheard voices, cloned (216)                        0.989   0.918   0.382
+  unheard voices, quiet (204)                            0.996   0.978   0.817
+  unheard voices, room noise (135)                       0.994   0.949   0.580
+  unheard voices, video, TV or meeting (114)             0.954   0.729   0.243
+  unheard voices, very noisy (50)                        0.502   0.118   0.026
 
 … and its near misses (the lower, the surer it isn't the word)
                                                         median     p75     p90
-  51 voices, Hey Pi's 18 (Hey pal, Apple pie …) (918)    0.111   0.629   0.965
-  margin: unheard voices p10 − near misses p90          -0.180   (above 0: they don't overlap)
+  51 voices, Hey Pi's 18 (Hey pal, Apple pie …) (918)    0.095   0.504   0.942
+  margin: unheard voices p10 − near misses p90          -0.592   (above 0: they don't overlap)
