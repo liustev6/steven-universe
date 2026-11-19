@@ -230,7 +230,8 @@ def report(r: dict) -> str:
 
 if __name__ == "__main__":
     out_dir = Path(sys.argv[sys.argv.index("--out") + 1]) if "--out" in sys.argv else None
-    with ProcessPoolExecutor(max_workers=min(len(MODELS), os.cpu_count() or 1)) as pool:
+    workers = int(os.environ.get("WORKERS", 4))           # each holds hours of audio as a stream: memory, not cores
+    with ProcessPoolExecutor(max_workers=min(len(MODELS), workers)) as pool:
         results = list(pool.map(score, MODELS))
     for r in results:
         text = report(r)
