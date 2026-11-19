@@ -1,7 +1,7 @@
 # speech-service experiments
 
 Measuring tools for speech-service's models, kept out of the service's code (docs/playground.md). Each came
-from a spike whose write-up and numbers are in `docs/specs/speech-service-spikes/`.
+from a spike whose write-up and numbers are in [results/](results/) (one folder per spike).
 
 | Tool | What it measures | From |
 |---|---|---|

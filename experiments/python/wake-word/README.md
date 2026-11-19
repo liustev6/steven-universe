@@ -9,7 +9,10 @@ built-in `hey_jarvis` that pi-server runs today (`app/voice/wake.py`, `PI_SERVER
 | `train_hey_pi.ipynb` | the same as a Colab notebook (T4); a fallback: it hung at its installs on 2026-11-18 |
 | `segment.py` | a recording session on the Pi → one clip per "Hey Pi" |
 | `tts_samples.py`, `phrases/` | samples from speech-service's 9 voices, through the live service: a phrase set's positives, near misses or everyday speech |
-| `config-xiao-pai.yaml`, `spikes/` | 小派小派, a Chinese wake word: spike 01 (our TTS alone) and its results |
+| `config-xiao-pai*.yaml`, `spikes/` | 小派小派, a Chinese wake word: each spike's config and its own scripts (spikes 01-04) |
+| `results/` | each spike's write-up and raw results (00: "Hey Pi"; 01-04: 小派小派); the decisions: docs/specs/wake-word.md |
+| `recording/` | the recording pages: the Mac's mic (`/`) and the Pi's (`/pi`), and `label.py` (every clip transcribed and labelled) |
+| `train-run.sh` | a training run on the playground (CT 110), then its tests; logs at :8080 (`GPU=1` for the card) |
 | `data/` (not in git) | the clips: `positives/me`, `positives/tts`, `negatives/tts`; voice recordings are personal and stay local |
 
 ## Steps

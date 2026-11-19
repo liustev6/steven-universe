@@ -1,5 +1,5 @@
 # speech-service spikes: the metrics
-The measurements that shaped speech-service ([speech-service.md](../speech-service.md), its decisions and
+The measurements that shaped speech-service ([speech-service.md](../../../../docs/specs/speech-service.md), its decisions and
 an appendix summarizing each). Each folder keeps its write-up (`README.md`: the question, how it ran, the
 results, what was decided) and, from spike 13 on, its raw output (`.txt`, `.log`). **The spikes' code was
 removed once each was decided** (2026-11-18), so the service's dependencies can move on; it's in git:

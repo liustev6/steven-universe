@@ -1,4 +1,4 @@
-# Training 小派小派 (train.py; spike 01, docs/specs/wake-word-spikes): our TTS's voices only, no Piper (its
+# Training 小派小派 (train.py; spike 01, results/01-xiao-pai): our TTS's voices only, no Piper (its
 # voices are English), no recordings yet. Data: DATA=data/xiao_pai (tts_samples.py, phrases/xiao_pai.yaml).
 run: xiao_pai                    # work/runs/xiao_pai: its own features and model, "Hey Pi"'s kept
 word: 小派小派

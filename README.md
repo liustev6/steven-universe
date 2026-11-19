@@ -17,7 +17,6 @@ steven-universe/
 ├── python/
 │   ├── services/        # the lab's services (one folder each; table below)
 │   ├── libs/            # agent-runtime (inside every sandbox), service-auth (tokens), shared-schemas
-│   ├── features/        # wake-word: the "Hey Pi" wake-word trainer (runs on a Mac)
 │   └── workers/         # gpu-server's worker images (archived with gpu-server)
 ├── dart/apps/hey-pi/    # Hey Pi, the Flutter panel app (Raspberry Pi 5, flutter-pi)
 ├── js/
@@ -29,8 +28,10 @@ steven-universe/
 │   ├── secrets-manager/ # OpenBao: container, config, OpenTofu policies, runbook
 │   ├── hosts/pve01/     # host setup (setup.sh) and VM 200's Proxmox firewall
 │   └── images/          # shared base images (agent-runtime, speech-base)
+├── experiments/python/ # the playground's (CT 110) work: wake-word training, speech-service's measuring tools;
+│                       # each with results/ (spikes' write-ups, raw numbers, logs)
 ├── docs/
-│   ├── specs/           # one spec per service: design, decisions, measured results, status
+│   ├── specs/           # one spec per service or feature: design, decisions, core results, status
 │   └── *.md             # host setup guides (LXC, GPU passthrough, sandbox worker VM)
 ├── models/3d-print/     # 3D-printable frame for the panel's screen
 └── .github/workflows/   # build.yml (images to GHCR), deploy.yml (to the lab through the deployer)
@@ -56,7 +57,7 @@ on a push to `main`; "by hand" = from the Mac with `infra/deployment/`.
 | [speech-service](python/services/speech-service/) | Streamed text-to-speech (Qwen3-TTS 1.7B) and speech-to-text (Qwen3-ASR 0.6B), both kept loaded on the GPU | CT 108 (RTX 5060, 8 GB) | Live since 2026-11-18, pipeline | [speech-service.md](docs/specs/speech-service.md) |
 | [pi-server](python/services/pi-server/) | The Pi's local service: Hey Pi's WebSocket, the voice turn (mic → speech-to-text → agent → speech), the "Hey Pi" wake word | Raspberry Pi 5 | Live (voice turn and wake word since 2026-11-18); dashboard data still mocked; by hand (`infra/deployment/pi-server.sh`) | [voice-path.md](docs/specs/voice-path.md) |
 | [Hey Pi](dart/apps/hey-pi/) (Flutter) | The panel's touch UI; talks only to pi-server | Raspberry Pi 5 | In progress: dashboard on pi-server's mock data; showing the voice assistant is CP4 4.14 | [flutter_ui.md](docs/specs/flutter_ui.md) |
-| [wake-word](experiments/python/wake-word/) | Trains the "Hey Pi" microWakeWord model | a Mac | In progress: the model is on the Pi, its real-world test (4.12b) is running | [voice-path.md](docs/specs/voice-path.md) |
+| [wake-word](experiments/python/wake-word/) | Trains the Pi's microWakeWord model: "Hey Pi" (live), 小派小派 (its replacement) | the playground (CT 110) | In progress: 小派小派's spike 04b beats "Hey Pi" offline; next, a trial on the Pi | [wake-word.md](docs/specs/wake-word.md) |
 | [web-gateway](python/services/web-gateway/) | The old API gateway | not running | Legacy: its routes are ported to api-service one at a time, then it's deleted | [api-service.md](docs/specs/api-service.md) "Migration" |
 | [stevenai-service](python/services/stevenai-service/) | RAG chatbot about me (FAISS, BGE embeddings) | not among pve01's guests in [boot.md](docs/specs/boot.md) | Legacy: retired by CP8 (knowledge in agent-service) | [tracker.md](docs/specs/agent-service/tracker.md) |
 | [gpu-server](python/services/gpu-server/) (+ [workers](python/workers/gpu-server/)) | Session-based GPU task service | not deployed | Archived 2026-11-17: the GPU serves only speech; a GPU service will be redesigned when the lab has several GPUs | its [README](python/services/gpu-server/README.md) |
@@ -81,16 +82,17 @@ the voice part of CP4 is planned step by step in [voice-path.md](docs/specs/voic
 | 9 | outside access (the phone through api-service) and operations (alerts, load test) | Planned |
 
 **Where CP4 is now:** speech-service is live (4.1–4.6); on the Pi, the voice turn, the wake word and
-the voice session are done (4.8–4.12). Next: 4.12b finishes testing "Hey Pi" (wakes at different
-distances, an evening of TV), then 4.13 barge-in, 4.14 Hey Pi shows the assistant, 4.15 protocol B in
+the voice session are done (4.8–4.12). Next: 4.12b replaces "Hey Pi" with 小派小派
+([wake-word.md](docs/specs/wake-word.md): fewer false wakes, trained on the playground), then 4.13 barge-in, 4.14 Hey Pi shows the assistant, 4.15 protocol B in
 shared-schemas and the agent's latency levers.
 
 ## Docs and deploys
 
 - **Specs:** [docs/specs/](docs/specs/), one per service, each starting with a `**Status:**` line;
   agent-service's parts are in [docs/specs/agent-service/](docs/specs/agent-service/).
-- **Spikes:** [docs/specs/speech-service-spikes/](docs/specs/speech-service-spikes/), the measurements
-  behind speech-service's engine.
+- **Experiments and their results:** [experiments/](experiments/): each one's code, and in its `results/` the
+  spikes' write-ups, raw numbers and logs (speech-service's engine, the wake word); the specs keep the decisions
+  and core numbers.
 - **Host setup:** [lxc-setup.md](docs/lxc-setup.md) (a new service's container and its deployer
   onboarding), [lxc-gpu-passthrough-setup.md](docs/lxc-gpu-passthrough-setup.md),
   [sandbox-worker-setup.md](docs/sandbox-worker-setup.md), [boot.md](docs/specs/boot.md).

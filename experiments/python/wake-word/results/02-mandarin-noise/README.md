@@ -67,5 +67,6 @@ sentence reached 0.95; the closest: 小作文 0.94, 爸爸 0.94, 换个台 0.92,
   (50% at 5 dB). Next: more near misses from more voices, speaker variety (spike 03, cloned voices), your
   recordings, and your room's own audio.
 
-Files: `results.txt` (both models' evaluation output), `extract_alimeeting.py`, `cut_clips.py`; the config
+Files: `results.txt` here (both models' evaluation output); the code in [spikes/02-mandarin-noise/](../../spikes/02-mandarin-noise/)
+(`extract_alimeeting.py`, `cut_clips.py`); the config
 `config-xiao-pai-02.yaml`; the model `out/xiao_pai_02.{tflite,json}`; the data in `data/` (not in git).

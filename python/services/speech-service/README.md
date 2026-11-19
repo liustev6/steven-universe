@@ -15,7 +15,7 @@ Speech out and in, streamed, from two models kept loaded on pve01's GPU (CT 108)
 | `test-client/` | a local page that talks to the live service and plays it, as `speech-test-client` (its server forwards the WebSockets with the token) |
 | `scripts/` | the deploy's smoke test (`smoke_test.py`) and cert hook; `e2e.py` (the live or dev service, end to end); `gpu_window.sh` (the service's GPU tests in a maintenance window) |
 | (measuring tools) | evenness, roundtrip, trace_reply: `experiments/python/speech-service/` |
-| (metrics) | every spike's write-up and raw results: `docs/specs/speech-service-spikes/` |
+| (metrics) | every spike's write-up and raw results: `experiments/python/speech-service/results/` |
 
 ## Configuration
 `infra/services/speech-service/config.env` → `/etc/speech-service/config.env` (settings: `app/config.py`,

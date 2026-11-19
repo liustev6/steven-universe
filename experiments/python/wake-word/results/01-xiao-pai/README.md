@@ -67,5 +67,6 @@ The false-wake sets are short (minutes, not hours): "0" means none seen, not a r
 - **Next:** spike 02 adds Mandarin conversation (AliMeeting) and household noise (DEMAND, MUSAN), with a
   Mandarin false-wake test of hours, not minutes; then speaker variety and your recordings.
 
-Files: `results.txt` (the evaluation's output), `check_clips.py`, `evaluate.py`; the data in
+Files: `results.txt` here (the evaluation's output); the code in [spikes/01-xiao-pai/](../../spikes/01-xiao-pai/)
+(`check_clips.py`, `evaluate.py`); the data in
 `data/xiao_pai/` (not in git), the model `out/xiao_pai.{tflite,json}`.

@@ -77,5 +77,5 @@ stream's wakes come the same way, where one sentence runs into the next.
 **Next:** near misses weighted higher and said by every voice in more forms (doubled 怕/潘/拍/白, lone 小派 in
 phrases); the owner's wake word recorded on the Pi; then a trial on the Pi beside "Hey Pi" at 0.97.
 
-Files: `results.txt` (the evaluation's output and the model's own test), `gen_voices.py`, `fetch_refs.py`,
-`voices_page.py`, `evaluate.py`; the model on the playground (`/srv/experiments/wake-word/out/models/`).
+Files: `results.txt` here (the evaluation's output and the model's own test); the code in
+[spikes/03-many-voices/](../../spikes/03-many-voices/) (`gen_voices.py`, `fetch_refs.py`, `voices_page.py`, `evaluate.py`); the model on the playground (`/srv/experiments/wake-word/out/models/`).

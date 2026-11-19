@@ -1,0 +1,71 @@
+
+RECALL: unheard voices saying 小派小派, share woken, by cutoff
+                                        0.80    0.90    0.95    0.97    0.99
+  serena, uncle_fu (spike 01) (128)      93%     84%     76%     65%     41%
+    + background 10 dB                   70%     60%     48%     34%     17%
+    + background 5 dB                    52%     41%     33%     29%     12%
+  51 new voices: designed (355)          86%     80%     71%     62%     37%
+    + background 10 dB                   61%     48%     34%     25%     10%
+    + background 5 dB                    43%     30%     19%     14%      5%
+  51 new voices: cloned (293)            97%     95%     92%     89%     73%
+    + background 10 dB                   82%     72%     62%     52%     30%
+    + background 5 dB                    68%     58%     45%     34%     15%
+  your voice (7 held out) (7)           100%     86%     86%     86%     71%
+    + background 10 dB                   86%     71%     29%     29%     29%
+    + background 5 dB                    71%     29%     29%     14%     14%
+
+NEAR MISSES AND OTHER SPEECH: share that wakes it
+                                        0.80    0.90    0.95    0.97    0.99
+  51 new voices, core (1530)             11%      7%      5%      3%      1%
+    小潘小潘                                 67%     37%     25%     22%     14%
+    小怕小怕                                 71%     55%     39%     25%      8%
+    小白小白                                 31%     14%     10%      6%      4%
+    小爱小爱                                 29%     20%     12%      4%      2%
+    小胖小胖                                 25%     20%      8%      2%      0%
+    嘿小派                                  22%     10%     10%      6%      6%
+    小拍                                    6%      6%      4%      2%      2%
+    小小派                                  12%      6%      2%      0%      0%
+  spike 01's near misses (132)            7%      5%      2%      1%      0%
+  your own other lines (55)               2%      2%      0%      0%      0%
+
+FALSE WAKES PER HOUR, as one continuous stream
+                                        0.80    0.90    0.95    0.97    0.99
+  your short videos (held out) (15 min)     0.0     0.0     0.0     0.0     0.0
+  Mandarin meetings (AliMeeting test) (120 min)     0.0     0.0     0.0     0.0     0.0
+  everyday Chinese, unheard voices (30 min)     2.0     2.0     0.0     0.0     0.0
+  your 'Hey Pi' recordings (4 min)     209.5    32.2     0.0     0.0     0.0
+  AudioSet sounds (200 clips) (35 min)     0.0     0.0     0.0     0.0     0.0
+xiao_pai_04c on the Pi's mic (held-out sets)
+
+WAKE WORD: share woken
+                                        0.80    0.90    0.95    0.97    0.99
+  quiet room (25)                        92%     88%     76%     72%     60%
+  a video playing (21)                  100%     95%     95%     95%     81%
+
+NEAR MISSES: share that wakes it
+                                        0.80    0.90    0.95    0.97    0.99
+  all (15)                                7%      0%      0%      0%      0%
+    小贝小贝                 peaks 0.87
+    小胖小胖                 peaks 0.34
+    叫小派                  peaks 0.31
+    小排                   peaks 0.29
+    小拍                   peaks 0.24
+    嘿小派                  peaks 0.22
+    派派                   peaks 0.21
+    小派呢                  peaks 0.21
+
+DOUBLED NEAR MISSES, the 51 held-out voices: share that wakes it
+                                        0.80    0.90    0.95    0.97    0.99
+  all (1275)                             21%     15%     10%      7%      3%
+    小开小开                                 73%     67%     49%     39%     22%
+    小盼小盼                                 71%     57%     47%     33%     20%
+    小太小太                                 59%     53%     31%     31%     16%
+    小帕小帕                                 47%     37%     27%     22%      4%
+    小快小快                                 53%     37%     25%     22%      8%
+    小拜小拜                                 31%     20%     12%      6%      0%
+    小菜小菜                                 45%     24%     20%     14%      4%
+    小迈小迈                                 33%     20%     10%      4%      0%
+
+THE ROOM (10 min, one stream): false wakes per hour
+                                        0.80    0.90    0.95    0.97    0.99
+                                         0.0     0.0     0.0     0.0     0.0

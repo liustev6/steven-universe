@@ -1,5 +1,5 @@
 """How evenly does the TTS speak? (spikes 14-15: how the model, its instruction and the voices were
-chosen; docs/specs/speech-service-spikes.) Short replies, each spoken N times by each voice through
+chosen; experiments/python/speech-service/results.) Short replies, each spoken N times by each voice through
 the live service (the test client holds the token); each clip measured from its audio:
 
     duration        the whole clip

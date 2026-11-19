@@ -7,7 +7,7 @@ pipeline. Built in [agent-service](agent-service/README.md)'s CP4 (voice), sub-c
 [boot.md](boot.md), [auth-service.md](auth-service.md), [deployer.md](deployer.md). Code:
 [python/services/speech-service](../../python/services/speech-service/). Every measurement behind a
 decision is a spike: summarized in the appendix, its write-up and raw results (the metrics) in
-[speech-service-spikes/](speech-service-spikes/).
+[experiments/python/speech-service/results/](../../experiments/python/speech-service/results/).
 
 ## What it is
 One long-running process on the GPU that turns **text into speech** and **speech into text**, both
@@ -106,7 +106,7 @@ kernel the module isn't built for ([lxc-gpu-passthrough-setup.md](../lxc-gpu-pas
 
 ## Appendix: the spikes
 Every measurement behind a decision. Each spike's write-up and raw results (the metrics) are kept in
-`docs/specs/speech-service-spikes/`; their code was removed once decided (2026-11-18; recover it with
+`experiments/python/speech-service/results/`; their code was removed once decided (2026-11-18; recover it with
 `git log --diff-filter=D -- python/services/speech-service/spikes`). The measuring tools still in use are in
 `experiments/python/speech-service/` (since 2026-11-19): `evenness.py` (pace, pauses, babble per voice),
 `roundtrip.py` (spoken, then heard back), `trace_reply.py` (one reply, step by step); the service keeps
