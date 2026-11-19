@@ -1,0 +1,50 @@
+
+RECALL: unheard voices saying 小派小派, share woken, by cutoff
+                                        0.80    0.90    0.95    0.97    0.99
+  serena, uncle_fu (spike 01) (128)      96%     94%     92%     85%     70%
+    + background 10 dB                   89%     84%     78%     68%     47%
+    + background 5 dB                    84%     73%     65%     60%     41%
+  51 new voices: designed (355)          96%     92%     90%     87%     74%
+    + background 10 dB                   93%     87%     80%     72%     58%
+    + background 5 dB                    83%     76%     66%     59%     43%
+  51 new voices: cloned (293)           100%     99%     99%     97%     88%
+    + background 10 dB                   98%     96%     94%     91%     83%
+    + background 5 dB                    95%     92%     88%     83%     71%
+  your voice (7 held out) (7)           100%    100%     71%     71%     43%
+    + background 10 dB                   71%     71%     71%     57%     29%
+    + background 5 dB                    86%     57%     29%     14%      0%
+
+NEAR MISSES AND OTHER SPEECH: share that wakes it
+                                        0.80    0.90    0.95    0.97    0.99
+  51 new voices, core (1530)             21%     15%     11%      9%      5%
+    小怕小怕                                 78%     69%     61%     53%     39%
+    小潘小潘                                 78%     65%     57%     45%     27%
+    小派派                                  51%     35%     24%     20%     12%
+    小爱小爱                                 53%     45%     27%     27%     10%
+    叫小派                                  39%     31%     22%     14%     10%
+    小小派                                  47%     25%     16%     12%      6%
+    嘿小派                                  35%     29%     18%     16%     12%
+    小白小白                                 45%     37%     27%     24%     14%
+  spike 01's near misses (132)           11%      5%      3%      3%      2%
+  your own other lines (55)               7%      7%      4%      0%      0%
+
+FALSE WAKES PER HOUR, as one continuous stream
+                                        0.80    0.90    0.95    0.97    0.99
+  your short videos (held out) (15 min)     7.8     3.9     0.0     0.0     0.0
+  Mandarin meetings (AliMeeting test) (120 min)     5.0     1.5     1.0     1.0     0.5
+  everyday Chinese, unheard voices (30 min)    31.6    17.8    13.8     5.9     0.0
+  your 'Hey Pi' recordings (4 min)     354.6   241.7   177.3   112.8    32.2
+  AudioSet sounds (200 clips) (35 min)     3.5     1.7     1.7     1.7     0.0
+
+INFO:absl:AUC 0.23228
+INFO:absl:Cutoff 0.97: frr=0.2978; faph=0.000
+INFO:absl:Cutoff 0.87: frr=0.1550; faph=0.187
+INFO:absl:Cutoff 0.85: frr=0.1429; faph=0.375
+INFO:absl:Cutoff 0.83: frr=0.1259; faph=0.562
+INFO:absl:Cutoff 0.79: frr=0.1065; faph=0.937
+INFO:absl:Cutoff 0.78: frr=0.1017; faph=1.125
+INFO:absl:Cutoff 0.70: frr=0.0847; faph=1.312
+INFO:absl:Cutoff 0.67: frr=0.0823; faph=1.500
+INFO:absl:Cutoff 0.66: frr=0.0823; faph=1.687
+INFO:absl:Cutoff 0.65: frr=0.0799; faph=1.875
+INFO:absl:Cutoff 0.65: frr=0.0775; faph=2.000
