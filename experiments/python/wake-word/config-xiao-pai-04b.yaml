@@ -1,0 +1,33 @@
+# Spike 04b (spikes/04-pi-mic): spike 04 without the short videos as background under the wake word. Spike 04 woke
+# 18 times an hour in the held-out room, every time to a short video playing quietly (spike 03: 0); mixing the same
+# videos under the positives (down to -5 dB) taught it that video speech can carry the wake word.
+run: xiao_pai_04b
+word: 小派小派
+wake_word: 小派小派
+model_name: xiao_pai_04b
+languages: [zh]
+piper_samples: 0
+own_voice_copies: 5
+own_voice_negative_copies: 5
+probability_cutoff: 0.97
+
+augmentation:
+  probabilities: {SevenBandParametricEQ: 0.1, TanhDistortion: 0.1, PitchShift: 0.1, BandStopFilter: 0.1,
+                  AddColorNoise: 0.1, AddBackgroundNoise: 0.75, Gain: 1.0, RIR: 0.5}
+  background_min_snr_db: -5
+  background_max_snr_db: 10
+  background_dirs:               # under the data root; besides AudioSet and FMA music
+    - datasets/demand
+    - datasets/musan/musan/noise
+
+extra_negatives:                 # under the data root
+  - {name: alimeeting, dir: xiao_pai_02/extra/alimeeting, weight: 10}
+  - {name: demand, dir: xiao_pai_02/extra/demand, weight: 3}
+  - {name: musan_noise, dir: xiao_pai_02/extra/musan_noise, weight: 3}
+  - {name: video, dir: xiao_pai/extra/video, weight: 8}
+  - {name: room, dir: xiao_pai/extra/me-pi-room, weight: 8}               # the owner's room on the Pi's mic
+
+training:
+  steps: 10000
+  negative_class_weight: 20
+  near_miss_weight: 8.0
