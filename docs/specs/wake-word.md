@@ -1,7 +1,8 @@
 # Spec: the wake word (小派小派, a microWakeWord model of our own, listening on the Pi)
 
-**Status: live.** **小派小派** (model 04b, cutoff 0.91) has been the Pi's wake word since 2026-11-19, replacing "Hey Pi"
-(2026-11-18), whose model stays in pi-server for a switch back. Part of the voice path ([voice-path.md](voice-path.md):
+**Status: live.** **小派小派** has been the Pi's wake word since 2026-11-19, replacing "Hey Pi" (2026-11-18): model 04b at
+0.91 first, then **04f at 0.96** the same day, after 04b woke on the owner's casual conversation. The earlier models stay
+in pi-server for a switch back. Part of the voice path ([voice-path.md](voice-path.md):
 V9, 4.12, 4.12b), which owns what happens after the word (the session, the turn). Related: [playground.md](../playground.md),
 [speech-service.md](speech-service.md) (the voices it trains on). Code: the detector in pi-server
 ([app/voice/wake.py](../../python/services/pi-server/app/voice/wake.py)); training and testing in
@@ -16,8 +17,8 @@ model is trained on the playground from synthetic voices, the owner's recordings
 fixed test set no model trains on, and copied to pi-server as two files.
 
 ```
-the Pi:  speakerphone ─ arecord 16 kHz ─▶ pi-server ─ wake.py: pymicro-wakeword ─ score ≥ 0.91 ─▶ a voice session (V9)
-                                                  └ models/xiao_pai_04b.tflite + .json (the cutoff)
+the Pi:  speakerphone ─ arecord 16 kHz ─▶ pi-server ─ wake.py: pymicro-wakeword ─ score ≥ 0.96 ─▶ a voice session (V9)
+                                                  └ models/xiao_pai_04f.tflite + .json (the cutoff)
 
 the playground (CT 110), data/:
   datasets/full/        as downloaded, recorded, generated ──▶ datasets/processed/recordings (your takes as labelled clips)
@@ -25,16 +26,21 @@ the playground (CT 110), data/:
   datasets/processed/test/   ──▶ testset.py ──▶ testset/v1 (fixed) ──▶ evaluate.py ──▶ results/<spike>/test-<model>.txt
 ```
 
-**As it stands** (2026-11-19, the common test, each model at its cutoff for at most 0.5 false wakes an hour):
+**As it stands** (2026-11-19, the common test on test set v1):
 
-| | "Hey Pi" (retired) | **小派小派 04b (live, 0.91)** |
-|---|---|---|
-| false wakes per hour, 2.9 h of test-only audio | 1.71 (never under 0.5: shown at 0.995) | 0.34 (1 in 2.9 h) |
-| … the owner's room, short videos, Mandarin meetings | 0 / 0 / 0.5 at 0.995; 6.1 / 0 / 7.5 at 0.80 | 0 / 0 / 0 |
-| the owner on the Pi's mic: quiet / a video playing | (no held-out clips) | 92% / 100% |
-| unheard voices: quiet / room noise / a video, TV or meeting / very noisy | 54 / 49 / 22 / 14% | 84 / 81 / 59 / 31% |
-| near misses (unheard voices) | 3% | 7% (core), 16% (doubled) |
-| the other wake word said back to back | 5.2 an hour | 0 |
+| | "Hey Pi" (retired, 0.995) | 04b at 0.91 (the first day) | **04f at 0.96 (live)** |
+|---|---|---|---|
+| false wakes per hour, 2.9 h of test-only audio | 1.71 | 0.34 | **0** |
+| the owner's other lines (55) that wake it | – | 9% | **0%** |
+| the owner on the Pi's mic: quiet / a video playing | (no held-out clips) | 92 / 100% | 68 / 95% |
+| unheard voices: quiet / room noise / a video, TV or meeting / very noisy | 54 / 49 / 22 / 14% | 84 / 82 / 62 / 31% | 74 / 65 / 42 / 15% |
+| near misses: core / doubled | 3% (its own) | 8 / 17% | 4 / 9% |
+| the other wake word said back to back | 5.2 an hour | 0 | 0 |
+
+04b scored a tenth of the owner's ordinary lines above 0.67 (one at 0.995): it woke on the owner's casual talk. 04f keeps
+nine-tenths of them under 0.08 (none above 0.876) and the owner's wake words at 0.99+ three times in four; at 0.96 it
+hears 81% of the owner's 53 held-out takes and never wakes on the test's ordinary speech. Its weak spot: the owner
+speaking quietly on the Pi (68%), and other voices over loud media.
 
 ## Decisions
 | ID | Decision | Why |
@@ -46,14 +52,14 @@ the playground (CT 110), data/:
 | W5 | **Near misses from every voice**, weight 8: the bank's `near_miss_core` (30) and `near_miss_doubled` (25: 小快小快, 小派小心, "Hey Pi Hey Pi" …); the owner's on the Pi ×5. **No tone-only variants** (小拍小拍). | What still woke spike 03; the owner's 小派小派 is often heard as 小拍, a tone apart: training that as "not it" would fight recall |
 | W6 | **Background under training clips: 75% of clips, -5 to +10 dB** (nominal: measured over the clip padded to 3.2 s, so ~0 to +15 dB over the word), from AudioSet, FMA music, DEMAND, MUSAN noise. **Never a source that is also a negative** (the owner's videos). | Spike 04 (the owner's videos under the word, also negatives) woke to videos 18 times an hour. Less mixing (5%: 04c; 30%: 04e; 50%: 04f) or a louder voice (0 to +15 dB: 04d) each lost recall over noise or on the owner's quiet takes, or woke for the other word back to back |
 | W7 | **The test set is fixed** (`testset.py`, v1, 5,257 clips): rendered once, only from `datasets/processed/test/` (test-only by where it lives). Each synthetic clip in one condition by its name, as a home has them: **40% quiet, 25% room noise** (the owner's held-out room, +15 to +20 dB), **25% a video, TV or meeting** (the owner's held-out videos or AliMeeting's eval meetings, +5 to +10 dB), **10% very noisy** (the same, 0 to +5 dB); the owner's held-out clips as recorded; near misses in the same mix. **Each clip is labelled for every word** (one word's clips are the other's "other wake word"). More test data makes v2, a superset: v1's clips render identically. | Mixing at test time with sound models had trained with flattered every model; a fixed, realistic mix of unheard sound makes models of any date comparable, and the other word's clips test each model for free |
-| W8 | **Models are compared at their own cutoff for at most 0.5 false wakes an hour** over the test-only streams (2.9 h: the owner's room and videos, AliMeeting test meetings, everyday speech of unheard voices), and deployed at it; with **certainty** beside recall: the peak score its word gets (median, 10th percentile) and the margin to its near misses. | Industry practice (recall at a fixed false-alarm rate); the cutoff is a dial. Certainty shows how much room a model has for audio no test has |
+| W8 | **Models are compared at their own cutoff**, with limits first: at most 0.5 false wakes an hour over the test-only streams (2.9 h: the owner's room and videos, AliMeeting test meetings, everyday speech of unheard voices) and **at most 2% of the owner's own ordinary lines**; then **the owner's voice first**, other voices second; near misses of the 小X小X kind are tolerated (an accent can make them the word). **Certainty** beside recall: the peak score each set gets (median, 10th percentile), and how high the owner's ordinary speech scores. | Industry practice (recall at a fixed false-alarm rate); the cutoff is a dial. The owner's own speech is what a panel at home hears most: 04b, chosen on the streams alone, woke on it (2026-11-19) |
 | W9 | **Training on the playground's CPU** (`train-run.sh`, ~12 min); only generating voices takes the GPU, speech-service stopped by hand (playground.md). | The model is tiny: 10,000 steps took 5.8 min on the GPU and about as long on the CPU |
 | W10 | **The data: `datasets/full/`** (as downloaded, recorded, generated; never edited), **`datasets/processed/`** (`recordings/`: the takes as labelled clips; `train/`: the only data training reads, `train.py` refuses anything else; `test/`: test-only), **`testset/`**, and a folder per spike for its own extra processing. A config lists exactly the sets it trains on. Out of git, the same on the Mac and the playground. | No test clip can reach training; any run can be repeated; voice recordings are personal |
 | W11 | **Recordings on the Pi's mic through a page** (`recording/pi.html`): it stops pi-server, records over SSH between beeps, copies each take to the Mac; `recording/label.py` splits, transcribes and labels every clip. | The same mic and processing as in use; every clip labelled, also for a TTS of the owner's voice later |
 
 ## The model in pi-server
-`PI_SERVER_WAKE_WORD` names a manifest: `models/xiao_pai_04b.json` (the default), whose `probability_cutoff` is 0.91;
-`models/hey_pi.json` switches back. A new model: its `.tflite` and `.json` into `models/`, the cutoff from its table's
+`PI_SERVER_WAKE_WORD` names a manifest: `models/xiao_pai_04f.json` (the default), whose `probability_cutoff` is 0.96;
+`models/xiao_pai_04b.json` (0.91) and `models/hey_pi.json` switch back. A new model: its `.tflite` and `.json` into `models/`, the cutoff from its table's
 last column, the setting, `infra/deployment/pi-server.sh`.
 
 ## Operating it
@@ -94,11 +100,11 @@ percentile); the margin is unheard voices' 10th percentile minus near misses' 90
 | 02 | 0.995 | 0.34 | 52 / 100% | 73 / 68 / 46 / 22% | 8 / 19 / 0% | 0 | 0.996 / 0.797 | −0.77 |
 | 03 | 0.985 | 0.34 | 68 / 86% | 83 / 81 / 57 / 20% | 5 / 16 / 0% | 13 | 0.996 / 0.971 | −0.12 |
 | 04 | 0.995 | 0 | 84 / 100% | 47 / 44 / 26 / 8% | 1 / 5 / 7% | 0 | 0.995 / 0.940 | −0.13 |
-| **04b (live)** | **0.910** | 0.34 | **92 / 100%** | **84 / 81 / 59 / 31%** | 7 / 16 / 13% | **0** | 0.985 / 0.789 | −0.33 |
+| 04b (first deployed) | 0.910 | 0.34 | **92 / 100%** | **84 / 81 / 59 / 31%** | 7 / 16 / 13% | **0** | 0.985 / 0.789 | −0.33 |
 | 04c | 0.800 | 0.34 | 92 / 100% | 91 / 81 / 51 / 26% | 7 / 14 / 7% | 95 | 0.990 / 0.815 | −0.58 |
 | 04d | 0.925 | 0 | 68 / 100% | 83 / 76 / 46 / 18% | 4 / 11 / 0% | 13 | 0.984 / 0.848 | −0.41 |
 | 04e | 0.945 | 0 | 84 / 90% | 66 / 50 / 28 / 5% | 2 / 5 / 0% | 0 | 0.967 / 0.668 | −0.58 |
-| 04f | 0.870 | 0.34 | 84 / 100% | 87 / 79 / 58 / 31% | 6 / 14 / 0% | 8.7 | 0.991 / 0.760 | −0.50 |
+| **04f (live at 0.96)** | 0.870 | 0.34 | 84 / 100% | 87 / 79 / 58 / 31% | 6 / 14 / 0% | 8.7 | 0.991 / 0.760 | −0.50 |
 
 No 小派小派 model wakes for any of "Hey Pi"'s 1,421 test clips; "Hey Pi" wakes for 0-5% of 小派小派's (at 0.995).
 
@@ -127,5 +133,7 @@ The owner on the Pi's mic (100 wake words quiet, 94 over a video, 62 near misses
 held out); every voice saying 25 doubled and lone-小派 lines (6,375 clips). Six runs, one change each from 04b:
 04 (+ the owner's videos as background, also negatives: woke to videos, needs 0.995), **04b**, 04c (background under
 5% of clips), 04d (the voice never quieter: 0 to +15 dB), 04e (30%, the voice louder), 04f (50%, -5 to +15 dB, the
-owner's videos at 5% of picks, kept off the negatives). **04b** hears the owner best, the most unheard voices over
-noise, and never the other word back to back. Decided: W5, W6; deployed at 0.91.
+owner's videos at 5% of picks, kept off the negatives). **04b** hears the owner best and the most unheard voices over
+noise at 0.91, and was deployed first; but it scores the owner's ordinary speech high (a tenth above 0.67) and woke on
+casual conversation, so the same day **04f at 0.96** replaced it: none of the owner's ordinary lines, no stream false
+wakes, 81% of the owner's takes. Decided: W5, W6, W8.
