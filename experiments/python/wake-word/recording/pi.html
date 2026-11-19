@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>小派小派 on the Pi</title>
+<style>
+  :root { --bg: #f6f5f2; --panel: #fff; --sunken: #f1efea; --text: #1d1b18; --muted: #77716a; --line: #e6e2db;
+          --accent: #4f46e5; --live: #dc2626; --good: #15803d; --warn: #b45309; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #121214; --panel: #1b1b1f; --sunken: #232328; --text: #f2f1ee; --muted: #a09d97;
+             --line: #2e2e34; --accent: #818cf8; --live: #f87171; --good: #4ade80; --warn: #fbbf24; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 22px 16px 48px; }
+  h1 { font-size: 20px; margin: 0 0 4px; } .sub { color: var(--muted); margin: 0 0 14px; }
+  .status { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding: 12px 14px; margin-bottom: 14px;
+            background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); margin-right: 6px; }
+  .dot.ok { background: var(--good); } .dot.warn { background: var(--warn); } .dot.live { background: var(--live); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .tab { min-width: 0; padding: 10px 16px; font-size: 15px; background: var(--panel); color: var(--text); border: 1px solid var(--line); }
+  .tab.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px; display: none; }
+  .card.on { display: block; }
+  .card h2 { margin: 0 0 6px; font-size: 17px; }
+  .card.live { border-color: var(--live); box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 18%, transparent); }
+  .row { display: flex; align-items: center; gap: 14px; margin: 12px 0; flex-wrap: wrap; }
+  button { font: inherit; font-weight: 600; font-size: 16px; padding: 12px 22px; border-radius: 12px; border: 0; cursor: pointer;
+           background: var(--accent); color: #fff; min-width: 150px; }
+  button.small { min-width: 0; padding: 6px 12px; font-size: 13px; }
+  button.stop { background: var(--live); }
+  button:disabled { opacity: .35; cursor: default; }
+  .timer { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .target { color: var(--muted); font-size: 13px; }
+  .word { font-size: 40px; font-weight: 700; letter-spacing: .05em; margin: 6px 0; }
+  ol { margin: 6px 0 0; padding-left: 22px; color: var(--muted); }
+  ol li span { color: var(--text); }
+  .lines { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 4px 18px; margin-top: 10px; font-size: 18px; }
+  .lines div small { color: var(--muted); font-size: 11px; margin-right: 6px; }
+  input[type=text] { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--sunken); color: var(--text); }
+  .saved { margin-top: 16px; font-size: 13px; color: var(--muted); }
+  .saved b { color: var(--good); } .err { color: var(--live); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>小派小派 · recording on the Pi</h1>
+  <p class="sub">Everything here records on the <b>Pi's own microphone</b>: stand where you'd talk to the panel. One beep
+    from the Pi: start. Press <b>Stop</b> when you're nearly done (two beeps). Each take is copied to the Mac.</p>
+
+  <div class="status">
+    <span><span class="dot" id="svcDot"></span><span id="svc">checking…</span></span>
+    <button class="small" id="svcBtn" disabled>…</button>
+    <span><span class="dot" id="recDot"></span><span id="rec">not recording</span></span>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+
+  <section class="card" id="card-wake">
+    <h2>The wake word, on the Pi's mic</h2>
+    <div class="word">小派小派</div>
+    <span class="target">about every 2 seconds, ~100 times in all, a quiet room</span>
+    <ol>
+      <li><span>×15 normal, 1 m in front of the Pi</span></li>
+      <li><span>×10 close (30 cm), quietly</span></li>
+      <li><span>×15 from across the room (3-4 m), normal voice</span></li>
+      <li><span>×10 from across the room, calling out</span></li>
+      <li><span>×10 from the side or behind the Pi, or a doorway</span></li>
+      <li><span>×10 fast, ×10 slow</span></li>
+      <li><span>×10 any way: sleepy, impatient, cheerful, questioning</span></li>
+      <li><span>×10 while doing something: walking past, sitting down, holding a cup</span></li>
+    </ol>
+    <div class="row"><button id="btn-wake">Start</button><span class="timer" id="t-wake">0:00</span><span class="target">target ~5:00</span></div>
+  </section>
+
+  <section class="card" id="card-wake-bg">
+    <h2>The wake word, with something playing</h2>
+    <div class="word">小派小派</div>
+    <span class="target">play short videos (or the TV, music) at your normal volume, 1-2 m from the Pi; ~50 times</span>
+    <ol>
+      <li><span>×20 normal, 1 m in front of the Pi</span></li>
+      <li><span>×15 from across the room</span></li>
+      <li><span>×15 calling out, as you would over the noise</span></li>
+    </ol>
+    <div class="row"><button id="btn-wake-bg">Start</button><span class="timer" id="t-wake-bg">0:00</span><span class="target">target ~3:00</span></div>
+  </section>
+
+  <section class="card" id="card-near">
+    <h2>Near misses: <b>not</b> the wake word</h2>
+    <span class="target">read <b>each line twice</b>, a second's pause between, 1 m from the Pi · about 3 minutes</span>
+    <div class="row"><button id="btn-near">Start</button><span class="timer" id="t-near">0:00</span><span class="target">target ~3:00</span></div>
+    <div class="lines" id="near"></div>
+  </section>
+
+  <section class="card" id="card-room">
+    <h2>Your room</h2>
+    <span class="target">Start, then live normally: talk, TV, short videos, cooking, the fan, for as long as you like (an hour
+      is great). <b>Don't say the wake word.</b> Saved every 5 minutes; Stop copies them all.</span>
+    <div class="row"><button id="btn-room">Start</button><span class="timer" id="t-room">0:00</span><span class="target">as long as you like</span></div>
+  </section>
+
+  <section class="card" id="card-family">
+    <h2>Someone else</h2>
+    <div class="word">小派小派</div>
+    <div class="row"><label class="target">their name (letters, for the file) <input type="text" id="who" placeholder="e.g. mom"></label></div>
+    <span class="target">~40 times: ×10 1 m in front, ×10 close and quiet, ×10 across the room, ×10 calling out</span>
+    <div class="row"><button id="btn-family">Start</button><span class="timer" id="t-family">0:00</span><span class="target">target ~2:00</span></div>
+  </section>
+
+  <div class="saved" id="saved"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const CARDS = [["wake", "1 · 小派小派"], ["wake-bg", "2 · with background"], ["near", "3 · near misses"], ["room", "4 · your room"], ["family", "5 · someone else"]];
+let active = null, svc = "unknown", started = 0, timer = null;
+
+for (const [k, label] of CARDS) {
+  const b = document.createElement("button"); b.className = "tab"; b.id = `tab-${k}`; b.textContent = label;
+  b.onclick = () => { if (!active) show(k); };
+  $("tabs").append(b);
+}
+function show(kind) {
+  for (const [k] of CARDS) { $(`card-${k}`).classList.toggle("on", k === kind); $(`tab-${k}`).classList.toggle("on", k === kind); }
+  try { localStorage.setItem("pi-tab", kind); } catch {}
+}
+show((() => { try { return localStorage.getItem("pi-tab") || "wake"; } catch { return "wake"; } })());
+
+(async () => {                                   // the core near misses, from the bank
+  const bank = await (await fetch("/bank")).json();
+  bank.near_miss_core.forEach((t, i) => { const d = document.createElement("div"); d.innerHTML = `<small>${i + 1}</small>`; d.append(t); $("near").append(d); });
+})();
+
+function note(html) { $("saved").innerHTML = html + "<br>" + $("saved").innerHTML; }
+
+async function post(url) {
+  const r = await fetch(url, { method: "POST" });
+  const j = await r.json();
+  if (!r.ok || j.error) throw new Error(j.error || r.status);
+  return j;
+}
+
+async function refresh() {
+  try {
+    const s = await (await fetch("/pi/status")).json();
+    if (s.error) throw new Error(s.error);
+    svc = s.pi_server;
+    const holds = svc === "active";
+    $("svcDot").className = "dot " + (holds ? "warn" : "ok");
+    $("svc").textContent = holds ? "pi-server is running: it holds the mic (Hey Pi works)" : "pi-server stopped: the mic is free (Hey Pi is off)";
+    $("svcBtn").textContent = holds ? "Stop pi-server" : "Start pi-server";
+    $("svcBtn").disabled = !!active;
+    $("recDot").className = "dot " + (s.recording ? "live" : "");
+    $("rec").textContent = s.recording ? `recording on the Pi: ${(s.bytes / 32000).toFixed(0)} s captured` : "not recording";
+    for (const [k] of CARDS) $(`btn-${k}`).disabled = holds || (active && active !== k);
+  } catch (e) { $("svc").textContent = `can't reach the Pi: ${e.message}`; $("svcDot").className = "dot"; }
+}
+$("svcBtn").onclick = async () => {
+  $("svcBtn").disabled = true;
+  try { await post(`/pi/service?action=${svc === "active" ? "stop" : "start"}`); } catch (e) { note(`<span class="err">${e.message}</span>`); }
+  refresh();
+};
+
+async function start(kind) {
+  const label = kind === "family" ? $("who").value.trim() : "";
+  if (kind === "family" && !label) { note('<span class="err">type their name first</span>'); return; }
+  try { await post(`/pi/start?kind=${kind}&label=${encodeURIComponent(label)}`); }
+  catch (e) { note(`<span class="err">${e.message}</span>`); return; }
+  active = kind; started = performance.now();
+  timer = setInterval(() => ($(`t-${kind}`).textContent = fmt((performance.now() - started) / 1000)), 250);
+  $(`card-${kind}`).classList.add("live");
+  const b = $(`btn-${kind}`); b.textContent = "Stop"; b.className = "stop";
+  document.querySelectorAll(".tab").forEach((t) => (t.disabled = true));
+  refresh();
+}
+
+async function stop() {
+  const kind = active;
+  clearInterval(timer);
+  $(`btn-${kind}`).disabled = true; $(`btn-${kind}`).textContent = "Copying…";
+  try {
+    const j = await post("/pi/stop");
+    for (const s of j.saved) note(`saved <b>${s.file}</b> (${s.seconds} s)`);
+  } catch (e) { note(`<span class="err">not saved: ${e.message}</span>`); }
+  $(`card-${kind}`).classList.remove("live");
+  const b = $(`btn-${kind}`); b.textContent = "Start again"; b.className = ""; b.disabled = false;
+  document.querySelectorAll(".tab").forEach((t) => (t.disabled = false));
+  active = null; refresh();
+}
+
+for (const [kind] of CARDS) $(`btn-${kind}`).onclick = () => (active ? stop() : start(kind));
+refresh(); setInterval(refresh, 2000);
+</script>
+</body>
+</html>
