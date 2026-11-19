@@ -1,8 +1,8 @@
 #!/bin/bash
-# A wake-word training run on the playground, then its evaluation; logs served at :8080.
-#   train-run.sh <run name> <config> <evaluate.py> [another test]   e.g. train-run.sh xiao_pai_03 config-xiao-pai-03.yaml spikes/03-many-voices/evaluate.py
+# A wake-word training run on the playground, then the common test (evaluate.py); logs served at :8080.
+#   train-run.sh <run name> <config>        e.g. train-run.sh xiao_pai_04b config-xiao-pai-04b.yaml
 #   GPU=1 train-run.sh …    on the card (speech-service stopped by hand: docs/playground.md); CPU otherwise
-RUN=$1; CONFIG=$2; EVAL=$3; EVAL2=$4
+RUN=$1; CONFIG=$2
 W=/srv/src/steven-universe/experiments/python/wake-word; E=/srv/experiments/wake-word; L=$E/logs
 export WORK=$E/work DATA=$E/data/xiao_pai OUT=$E/out/models
 export TF_CPP_MIN_LOG_LEVEL=1                          # TensorFlow's notices off
@@ -16,8 +16,7 @@ fi
 readable() { stdbuf -oL tr "\r" "\n" | grep --line-buffered -E "==>|positives:|Step [0-9]+ \(nonstreaming\)|best|Cutoff|AUC|Error|Traceback|clips\)" | grep --line-buffered -vE "oneDNN|cuda_executor|cuDNN"; }
 echo "$(date +%H:%M:%S) $RUN: training with $CONFIG on the $([ "$GPU" = 1 ] && echo GPU || echo CPU)" | tee $L/$RUN.log
 .venv/bin/python -u train.py $CONFIG 2>&1 | tee $L/$RUN.raw.log | readable >> $L/$RUN.log
-echo "$(date +%H:%M:%S) $RUN: evaluating $OUT/$RUN.json with $EVAL" >> $L/$RUN.log
+echo "$(date +%H:%M:%S) $RUN: the common test" >> $L/$RUN.log
 /opt/uv/bin/uv pip install -q -p .venv "pymicro-wakeword==2.5.0"
-.venv/bin/python -u $EVAL $OUT/$RUN.json $DATA 2>&1 | grep -vE "^INFO|XNNPACK" | tee $L/$RUN.eval.txt >> $L/$RUN.log
-[ -n "$EVAL2" ] && .venv/bin/python -u $EVAL2 $OUT/$RUN.json $DATA --held-out 2>&1 | grep -vE "^INFO|XNNPACK" | tee -a $L/$RUN.eval.txt >> $L/$RUN.log
+.venv/bin/python -u evaluate.py $E/data $OUT/$RUN.json 2>&1 | grep -vE "^INFO|XNNPACK|^scored" | tee $L/$RUN.eval.txt >> $L/$RUN.log
 echo "$(date +%H:%M:%S) $RUN: done" >> $L/$RUN.log

@@ -12,7 +12,7 @@ docs/specs/wake-word.md (W7-W8) and each spike's results/ use these tables. With
                 owner's short videos (15 held-out min), Mandarin meetings (AliMeeting's test set, 2 h), everyday
                 speech from the unheard voices (30 min), AudioSet sounds (35 min)
   recall        the model's own word from the 51 held-out synthetic voices (designed, cloned), clean and with
-                background at 10 and 5 dB; 小派小派 also from spike 01's two held-out voices and the owner (the Pi's
+                background at 10 and 5 dB (sound no model trained with: Mandarin meetings or the owner's videos); 小派小派 also from spike 01's two held-out voices and the owner (the Pi's
                 mic: quiet, a video playing; the Mac's). "Hey Pi" has no held-out owner clips (all 171 trained on)
   near misses   the model's own: the 51 voices' near misses (小派小派: the core 30 and the doubled 25; "Hey Pi":
                 phrases/hey_pi.yaml), spike 01's, the owner's on the Pi, the owner's other lines; 小派小派 also the
@@ -64,7 +64,11 @@ def glob(d: Path, pattern: str = "*.wav", part: slice = slice(None)) -> list[Pat
     return sorted(d.glob(pattern))[part]
 
 
-NOISE = glob(WORK / "audioset_16k", part=slice(0, 200))  # background for the recall tests; 200:400 is a stream
+# Background for the recall tests: sound no model trained with (training mixes AudioSet, FMA, DEMAND, MUSAN noise):
+# half the clips get people talking (AliMeeting's eval meetings, 4 h, never used), half the owner's held-out short
+# videos (15 min); each clip its own file and offset, from its name, so every model hears the same mix.
+NOISE = [glob(ROOT / "datasets/alimeeting/eval_far_ch0"), glob(EVAL / "video")]
+NOISE_VERSION = "held-out: alimeeting eval + owner's held-out videos"
 
 STREAMS = {                                               # every model, whatever its word
     "the owner's room, Pi mic (10 min held out)": glob(EVAL / "me-pi-room"),
@@ -121,11 +125,22 @@ def peak(model_path: Path, x: np.ndarray) -> float:
     return float(probabilities(model_path, np.concatenate([z, x, z])).max())
 
 
+def noise_for(name: str, length: int) -> np.ndarray:
+    """A stretch of held-out background for this clip: the same for every model, not near-silent."""
+    h = zlib.crc32(name.encode())
+    files = NOISE[h % len(NOISE)]
+    with wave.open(str(files[(h // 2) % len(files)])) as w:
+        total = w.getnframes()
+        for k in range(20):                                  # skip quiet stretches (a pause in the meeting)
+            w.setpos((h // 7 + k * 48_000) % max(1, total - length))
+            n = np.frombuffer(w.readframes(length), np.int16).astype(np.float32)
+            if len(n) and 20 * np.log10(np.sqrt((n ** 2).mean()) / 32768 + 1e-9) > -45:
+                break
+    return np.tile(n, length // max(1, len(n)) + 1)[:length]
+
+
 def mix(x: np.ndarray, name: str, snr_db: float) -> np.ndarray:
-    noise = read(NOISE[zlib.crc32(name.encode()) % len(NOISE)])            # the same noise for every model
-    if len(noise) < len(x):
-        noise = np.tile(noise, len(x) // len(noise) + 1)
-    n = noise[:len(x)]
+    n = noise_for(name, len(x))                                          # the same noise for every model
     return x + np.sqrt((x ** 2).mean() / max((n ** 2).mean(), 1e-9) / 10 ** (snr_db / 10)) * n
 
 
@@ -146,7 +161,7 @@ def score(model_path: Path) -> dict:
     word = json.loads(model_path.read_text())["wake_word"]
     tflite = model_path.with_suffix(".tflite")
     sets = {k: len(v) for part in ("recall", "near", "near_streams") for k, v in SUITES[word][part].items()}
-    sets |= {k: len(v) for k, v in STREAMS.items()}                    # new clips in a set: scored again
+    sets |= {k: len(v) for k, v in STREAMS.items()} | {"noise": NOISE_VERSION}   # new clips or noise: scored again
     key = hashlib.sha256(tflite.read_bytes() + json.dumps(sets, sort_keys=True).encode()).hexdigest()[:16]
     cache = CACHE / f"{model_path.stem}-{key}.json"
     if cache.exists():
