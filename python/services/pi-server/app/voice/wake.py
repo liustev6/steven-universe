@@ -12,7 +12,7 @@ STEP = 320                       # 10 ms of 16 kHz 16-bit audio, in bytes
 
 class WakeWord:
     """`feed(frame)` → True when the wake word ends in it. `model`: a built-in name (okay_nabu,
-    hey_jarvis, hey_mycroft, alexa) or a trained model's .json (a custom "hey pi")."""
+    hey_jarvis, hey_mycroft, alexa) or a trained model's .json (ours: 小派小派, "Hey Pi")."""
 
     def __init__(self, model: str):
         from pymicro_wakeword import MicroWakeWord, MicroWakeWordFeatures, Model

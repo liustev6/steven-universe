@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     # with the time at each session start; empty: left out (the time is then UTC)
     LOCATION: str = ""                           # city, country: e.g. "Seattle, United States"
     TIMEZONE: str = ""                           # an IANA name, e.g. "America/Los_Angeles"
-    WAKE_WORD: str = "models/hey_pi.json"        # our trained "Hey Pi" (experiments/python/wake-word); or a built-in name (hey_jarvis)
+    WAKE_WORD: str = "models/xiao_pai_04b.json"  # 小派小派, spike 04b at 0.91 (docs/specs/wake-word.md); models/hey_pi.json: "Hey Pi"
     LISTEN_WINDOW_SECONDS: float = 7.0           # a session waits this long for someone to speak (V9): room for a follow-up
     VOICE_EN: str = "ryan"                       # a voice session that starts in English speaks with this
     VOICE_ZH: str = "dylan"                      # ... in Chinese (mixed: its main language); kept all session
