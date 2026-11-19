@@ -31,8 +31,9 @@ ap.add_argument("--source", choices=["design", "clone"], required=True)
 ap.add_argument("--limit", type=int, default=0, help="only the first N voices (a speed test)")
 ap.add_argument("--exp", default="/exp", help="models/ and the reference clips under it; out/spike-03 written")
 ap.add_argument("--bank", default="/code/phrases/xiao_pai_bank.yaml")
-ap.add_argument("--batch", type=int, default=0, help="lines per call (default: 14 designed, 7 cloned: a clone's"
-                " reference voice goes with every line, and 14 ran out of the 8 GB)")
+ap.add_argument("--batch", type=int, default=0, help="lines per call (default: 8 designed, 4 cloned: a clone's"
+                " reference voice goes with every line)")
+MAX_CODES = 400        # ~32 s at 12.5 codes/s: a sample that never stops is cut there (one took the GPU's 8 GB)
 args = ap.parse_args()
 EXP = Path(args.exp)
 OUT = EXP / "out/spike-03"
@@ -124,15 +125,18 @@ def main():
         t = time.monotonic()
         lines = script(v["voice"])
         prompt = model.create_voice_clone_prompt(v["ref_audio"], v["ref_text"]) if args.source == "clone" else None
-        size = args.batch or (14 if args.source == "design" else 7)
+        size = args.batch or (8 if args.source == "design" else 4)
         for batch_start in range(0, len(lines), size):
             batch = lines[batch_start: batch_start + size]
             texts = [t_ for _, t_ in batch]
             langs = ["Chinese" if CJK.search(t_) else "English" for t_ in texts]
             if args.source == "design":
-                wavs, sr = model.generate_voice_design(text=texts, instruct=[v["instruct"]] * len(texts), language=langs)
+                wavs, sr = model.generate_voice_design(text=texts, instruct=[v["instruct"]] * len(texts), language=langs,
+                                                       max_new_tokens=MAX_CODES)
             else:
-                wavs, sr = model.generate_voice_clone(text=texts, language=langs, voice_clone_prompt=prompt * len(texts))
+                wavs, sr = model.generate_voice_clone(text=texts, language=langs, voice_clone_prompt=prompt * len(texts),
+                                                      max_new_tokens=MAX_CODES)
+            torch.cuda.empty_cache()                      # each batch's working memory back before the next
             for k, ((kind, text), wav) in enumerate(zip(batch, wavs), batch_start):
                 pcm = to16k(np.asarray(wav, dtype=np.float32).reshape(-1), sr)
                 path = folder / f"{v['voice']}-{kind}-{k:02d}.wav"
