@@ -11,7 +11,7 @@ import httpx
 
 from app.voice.agent import AgentClient, client_info
 from app.voice.assistant import State, VoiceAssistant, VoiceOptions, main_language
-from app.voice.speech import Heard, SpeechError
+from app.voice.speech import FLUSH, Heard, SpeechError
 from app.voice.spoken import SpokenText
 
 WAKE, SPEECH, QUIET = b"W" * 3200, b"S" * 3200, b"\0" * 3200
@@ -72,7 +72,7 @@ class Speech:
 
     def __init__(self, heard=("what's the weather",), fail=None, speak_error=None):
         self.heard, self.fail, self.speak_error = list(heard), fail, speak_error
-        self.utterances, self.spoken, self.voices, self.contexts = [], [], [], []
+        self.utterances, self.spoken, self.voices, self.contexts, self.flushes = [], [], [], [], []
 
     async def transcribe(self, frames, *, commit, silence_ms, language=None, context="", on_partial=None):
         self.contexts.append(context)
@@ -94,6 +94,9 @@ class Speech:
         async for text in texts:
             if self.speak_error:
                 raise self.speak_error
+            if text == FLUSH:                       # speech-service's flush: not text, a passage's end
+                self.flushes.append(len(self.spoken))
+                continue
             self.spoken.append(text)
             await on_audio(text.encode())
 
@@ -464,8 +467,10 @@ def test_a_search_answer_is_spoken_without_its_citation():
                                     "forecast0\ue201")))
         await r.frames(WAKE, QUIET, QUIET, QUIET, *VOICE, QUIET)
         await r.settle()
-        said = "".join(r.speech.spoken)
+        said = " ".join(r.speech.spoken)
         assert said.split() == ["Let", "me", "check.", "Cloudy,", "about", "10", "degrees."]
+        first = "".join(r.speech.spoken[:r.speech.flushes[0]])           # flushed at its message's end, before the search
+        assert first.split() == ["Let", "me", "check."]
         assert "turn0" not in "".join(r.ui.deltas) and "\ue200" not in said
     run(go())
 

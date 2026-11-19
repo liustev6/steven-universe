@@ -38,8 +38,8 @@ from typing import AsyncIterator, Callable, Optional, Protocol
 
 from app.voice.agent import AgentClient
 from app.voice.audio import AudioError, Mic, Speaker
+from app.voice.speech import FLUSH, SpeechClient
 from app.voice.spoken import SpokenText
-from app.voice.speech import SpeechClient
 
 logger = logging.getLogger(__name__)
 
@@ -365,7 +365,7 @@ class VoiceAssistant:
                             await self.ui.reply_delta(turn_id, said)
                     elif kind == "message.completed":
                         spoken.end()
-                        texts.put_nowait(" ")                          # a gap between text blocks
+                        texts.put_nowait(FLUSH)     # speak this message whole now: a search may come before the next
                     elif kind == "turn.completed":
                         agent_done = True
                         mark("agent_done")

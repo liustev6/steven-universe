@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 CONTEXT_CHARS = 1000                     # speech-service's limit for a session's context
+FLUSH = "\x00flush"                      # in `speak`'s texts: the text so far is a whole passage (speech-service's flush)
 
 
 class SpeechError(Exception):
@@ -83,7 +84,8 @@ class SpeechClient:
 
     async def speak(self, texts: AsyncIterator[str], *, voice: str, language: Optional[str],
                     on_audio: Callable[[bytes], Awaitable[None]]) -> None:
-        """Stream a reply's text in as it's written; each audio packet to `on_audio` as it comes."""
+        """Stream a reply's text in as it's written; each audio packet to `on_audio` as it comes. A FLUSH among
+        the texts: what came before is spoken whole now (the agent's message ended; it may search next)."""
         params = {"voice": voice} | ({"language": language} if language else {})
         ws = await self._connect("speech", params)
         try:
@@ -92,7 +94,7 @@ class SpeechClient:
             async def feed() -> None:
                 await started.wait()
                 async for text in texts:
-                    await ws.send(json.dumps({"type": "text", "text": text}))
+                    await ws.send(json.dumps({"type": "flush"} if text == FLUSH else {"type": "text", "text": text}))
                 await ws.send(json.dumps({"type": "end"}))
 
             feeder = asyncio.create_task(feed())
