@@ -55,9 +55,9 @@ on a push to `main`; "by hand" = from the Mac with `infra/deployment/`.
 | [sandbox-runner](python/services/sandbox-runner/) | Runs agent sandboxes as pods under gVisor, behind the Proxmox firewall | VM 200 | Live since 2026-11-13 (CP2), pipeline | [sandbox-runner.md](docs/specs/agent-service/sandbox-runner.md) |
 | [agent-runtime](python/libs/agent-runtime/) (library) | What runs inside every sandbox pod: the agent on the Codex SDK | sandbox pods on VM 200 | Live since 2026-11-12 (CP1) | [agent-runtime.md](docs/specs/agent-service/agent-runtime.md) |
 | [speech-service](python/services/speech-service/) | Streamed text-to-speech (Qwen3-TTS 1.7B) and speech-to-text (Qwen3-ASR 0.6B), both kept loaded on the GPU | CT 108 (RTX 5060, 8 GB) | Live since 2026-11-18, pipeline | [speech-service.md](docs/specs/speech-service.md) |
-| [pi-server](python/services/pi-server/) | The Pi's local service: Hey Pi's WebSocket, the voice turn (mic → speech-to-text → agent → speech), the "Hey Pi" wake word | Raspberry Pi 5 | Live (voice turn and wake word since 2026-11-18); dashboard data still mocked; by hand (`infra/deployment/pi-server.sh`) | [voice-path.md](docs/specs/voice-path.md) |
+| [pi-server](python/services/pi-server/) | The Pi's local service: Hey Pi's WebSocket, the voice turn (mic → speech-to-text → agent → speech), the wake word (小派小派) | Raspberry Pi 5 | Live (voice turn and wake word since 2026-11-18); dashboard data still mocked; by hand (`infra/deployment/pi-server.sh`) | [voice-path.md](docs/specs/voice-path.md) |
 | [Hey Pi](dart/apps/hey-pi/) (Flutter) | The panel's touch UI; talks only to pi-server | Raspberry Pi 5 | In progress: dashboard on pi-server's mock data; showing the voice assistant is CP4 4.14 | [flutter_ui.md](docs/specs/flutter_ui.md) |
-| [wake-word](experiments/python/wake-word/) | Trains the Pi's microWakeWord model: "Hey Pi" (live), 小派小派 (its replacement) | the playground (CT 110) | In progress: 小派小派's spike 04b beats "Hey Pi" offline; next, a trial on the Pi | [wake-word.md](docs/specs/wake-word.md) |
+| [wake-word](experiments/python/wake-word/) | Trains and tests the Pi's microWakeWord model: 小派小派 (live), "Hey Pi" (retired) | the playground (CT 110) | Live since 2026-11-19: model 04b at 0.91; a fixed test set for every model | [wake-word.md](docs/specs/wake-word.md) |
 | [web-gateway](python/services/web-gateway/) | The old API gateway | not running | Legacy: its routes are ported to api-service one at a time, then it's deleted | [api-service.md](docs/specs/api-service.md) "Migration" |
 | [stevenai-service](python/services/stevenai-service/) | RAG chatbot about me (FAISS, BGE embeddings) | not among pve01's guests in [boot.md](docs/specs/boot.md) | Legacy: retired by CP8 (knowledge in agent-service) | [tracker.md](docs/specs/agent-service/tracker.md) |
 | [gpu-server](python/services/gpu-server/) (+ [workers](python/workers/gpu-server/)) | Session-based GPU task service | not deployed | Archived 2026-11-17: the GPU serves only speech; a GPU service will be redesigned when the lab has several GPUs | its [README](python/services/gpu-server/README.md) |
@@ -82,8 +82,8 @@ the voice part of CP4 is planned step by step in [voice-path.md](docs/specs/voic
 | 9 | outside access (the phone through api-service) and operations (alerts, load test) | Planned |
 
 **Where CP4 is now:** speech-service is live (4.1–4.6); on the Pi, the voice turn, the wake word and
-the voice session are done (4.8–4.12). Next: 4.12b replaces "Hey Pi" with 小派小派
-([wake-word.md](docs/specs/wake-word.md): fewer false wakes, trained on the playground), then 4.13 barge-in, 4.14 Hey Pi shows the assistant, 4.15 protocol B in
+the voice session are done (4.8–4.12). 4.12b's wake word is 小派小派 since 2026-11-19
+([wake-word.md](docs/specs/wake-word.md)). Next: 4.13 barge-in, 4.14 Hey Pi shows the assistant, 4.15 protocol B in
 shared-schemas and the agent's latency levers.
 
 ## Docs and deploys
