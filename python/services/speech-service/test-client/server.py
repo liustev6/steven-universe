@@ -130,6 +130,25 @@ class AgentError(Exception):
     pass
 
 
+class Spoken:
+    """The agent's text → what to say, as it streams (pi-server's app/voice/spoken.py): web search
+    answers carry inline citations (U+E200 cite U+E202 id U+E201) and a model may slip in markdown."""
+
+    def __init__(self) -> None:
+        self.inside = False
+
+    def feed(self, text: str) -> str:
+        out = []
+        for ch in text:
+            if self.inside:
+                self.inside = ch != "\ue201"
+            elif ch == "\ue200":
+                self.inside = True
+            elif ch not in "*`" and not "\ue000" <= ch <= "\uf8ff":
+                out.append(ch)
+        return "".join(out)
+
+
 class Agent:
     """One conversation with agent-service (profile pi), as speech-test-client: its live session."""
 
@@ -217,7 +236,8 @@ async def voice(ws: WebSocket):
             await problem("agent", e)
 
     async def listen():
-        nonlocal stt, reply
+        nonlocal stt, reply, committed
+        committed = False
         params = {"turn_detection": "server", "silence_ms": q.get("silence_ms", "700")}
         if q.get("stt_language"):
             params["language"] = q["stt_language"]
@@ -274,14 +294,17 @@ async def voice(ws: WebSocket):
                     feeder.cancel()
 
         speaker = asyncio.create_task(speak())
+        spoken = Spoken()
         try:
             async for event in agent.turn(text):
                 await send({"from": "agent", **event})
                 kind = event.get("type")
                 if kind == "message.delta" and event.get("text"):
                     mark("first_text")
-                    texts.put_nowait({"type": "text", "text": event["text"]})
+                    if said := spoken.feed(event["text"]):
+                        texts.put_nowait({"type": "text", "text": said})
                 elif kind == "message.completed":
+                    spoken.inside = False
                     texts.put_nowait({"type": "text", "text": " "})   # a gap between text blocks
                 elif kind == "turn.completed":
                     mark("agent_done")
@@ -307,6 +330,7 @@ async def voice(ws: WebSocket):
             await agent.cancel()
         reply = None
 
+    committed = False                      # this turn's commit sent: speech-service takes no audio after it
     spawn(claim())
     try:
         while True:
@@ -314,7 +338,7 @@ async def voice(ws: WebSocket):
             if message["type"] == "websocket.disconnect":
                 break
             if message.get("bytes") is not None:
-                if stt is not None:
+                if stt is not None and not committed:
                     with contextlib.suppress(Exception):
                         await stt.send(message["bytes"])
                 continue
@@ -322,6 +346,7 @@ async def voice(ws: WebSocket):
             if kind == "listen" and stt is None:
                 spawn(listen())
             elif kind == "commit" and stt is not None:
+                committed = True
                 with contextlib.suppress(Exception):
                     await stt.send(json.dumps({"type": "commit"}))
             elif kind == "cancel":
