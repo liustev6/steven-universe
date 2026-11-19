@@ -1,5 +1,5 @@
-"""The common test: every wake-word model on the same held-out audio, each with its own table of the same rows (what
-it was tested on) and columns (cutoffs), as pi-server runs it (pymicro-wakeword, streaming, its 5-frame average).
+"""The common test: every wake-word model on the same test set, each with its own table of the same rows (what it was
+tested on) and columns (cutoffs), scored as pi-server runs it (pymicro-wakeword, streaming, its 5-frame average).
 docs/specs/wake-word.md (W7-W8) and each spike's results/ use these tables. With any venv that has pymicro-wakeword
 (the trainer's on the playground):
 
@@ -7,49 +7,46 @@ docs/specs/wake-word.md (W7-W8) and each spike's results/ use these tables. With
 
 `--out results` writes each table into its spike's folder too (results/<spike>/test-<model>.txt).
 
+  the test set  testset.py: fixed, rendered once, never trained on (TESTSET=v1): the unheard voices' clips each in one
+                listening condition (40% quiet, 25% room noise, 25% a video, TV or meeting, 10% very noisy; test-only
+                background), the owner's held-out clips as recorded; the same mix for near misses
   false wakes   per hour, the same streams for every model whatever its word, each played as one stream (a wake,
-                then 1 s before another counts): the owner's room on the Pi's mic (the 10 held-out min), the
-                owner's short videos (15 held-out min), Mandarin meetings (AliMeeting's test set, 2 h), everyday
-                speech from the unheard voices (30 min), AudioSet sounds (35 min)
-  recall        the model's own word from the 51 held-out synthetic voices (designed, cloned), clean and with
-                background at 10 and 5 dB (sound no model trained with: Mandarin meetings or the owner's videos); 小派小派 also from spike 01's two held-out voices and the owner (the Pi's
-                mic: quiet, a video playing; the Mac's). "Hey Pi" has no held-out owner clips (all 171 trained on)
-  near misses   the model's own: the 51 voices' near misses (小派小派: the core 30 and the doubled 25; "Hey Pi":
-                phrases/hey_pi.yaml), spike 01's, the owner's on the Pi, the owner's other lines; 小派小派 also the
-                owner's "Hey Pi"s played back to back (false wakes per hour)
-
-Certainty: the peak score each set gets (median, and the 10th percentile: its weakest tenth), and its near misses
-(median, 90th percentile); a model that scores its word at 0.99 is surer than one that barely passes 0.91, with
-more margin for a mic, voice or room no test has. The margin: the unheard voices' 10th percentile minus the near
-misses' 90th.
+                then 1 s before another counts), all test-only: the owner's room on the Pi's mic (10 held-out min),
+                the owner's short videos (15 held-out min), Mandarin meetings (AliMeeting's test set, 2 h), everyday
+                speech from the unheard voices (30 min); 小派小派 also the owner's "Hey Pi"s played back to back
+  recall        its word's test-set clips by set, then the unheard voices together by condition
+  near misses   the same, for its near misses
+  certainty     the peak score each set gets (median, and the 10th percentile: its weakest tenth), and its near
+                misses' (median, 90th percentile); a model that scores its word at 0.99 is surer than one that barely
+                passes 0.91, with more margin for a mic, voice or room no test has. The margin: the unheard voices'
+                10th percentile minus the near misses' 90th
 
 The last column is industry practice for comparing models: the model at its lowest cutoff with at most TARGET false
-wakes an hour over all the streams together (3.5 h). Scores are cached in WORK/evaluate/ (by the model file's hash
-and the sets' sizes), so a rerun only scores what's new.
+wakes an hour over all the streams together. Scores are cached in WORK/evaluate/ (by the model's hash, the test set's
+version and the streams), so a rerun only scores what's new.
 """
 
-import collections
 import hashlib
 import json
 import os
 import sys
 import wave
-import zlib
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
 
-ROOT = Path(sys.argv[1])                                  # the data root: xiao_pai/, datasets/, positives/
+ROOT = Path(sys.argv[1])                                  # the data root: testset/, xiao_pai/, datasets/, positives/
 MODELS = [Path(m) for m in sys.argv[2:] if m.endswith(".json")]
-DATA = ROOT / "xiao_pai"
-EVAL = DATA / "eval"
+EVAL = ROOT / "xiao_pai/eval"
+TESTSET = ROOT / "testset" / os.environ.get("TESTSET", "v1")
 HERE = Path(__file__).resolve().parent
 WORK = Path(os.environ.get("WORK", HERE / "work"))
 CACHE = WORK / "evaluate"
 TARGET = 0.5                                              # false wakes an hour at the comparison point
 GRID = np.round(np.arange(0.50, 0.9951, 0.005), 3)
 CUTOFFS = (0.80, 0.90, 0.95, 0.97, 0.99)
+CONDITIONS = ("quiet", "room noise", "video, TV or meeting", "very noisy")
 SPIKES = {"hey_pi": "00-hey-pi", "xiao_pai": "01-xiao-pai", "xiao_pai_02": "02-mandarin-noise",
           "xiao_pai_03": "03-many-voices"}                # and xiao_pai_04* → 04-pi-mic
 STEP = 160                                                # 10 ms at 16 kHz
@@ -60,47 +57,18 @@ def read(path: Path) -> np.ndarray:
         return np.frombuffer(w.readframes(w.getnframes()), np.int16).astype(np.float32)
 
 
-def glob(d: Path, pattern: str = "*.wav", part: slice = slice(None)) -> list[Path]:
-    return sorted(d.glob(pattern))[part]
+def glob(d: Path, pattern: str = "*.wav") -> list[Path]:
+    return sorted(d.glob(pattern))
 
 
-# Background for the recall tests: sound no model trained with (training mixes AudioSet, FMA, DEMAND, MUSAN noise):
-# half the clips get people talking (AliMeeting's eval meetings, 4 h, never used), half the owner's held-out short
-# videos (15 min); each clip its own file and offset, from its name, so every model hears the same mix.
-NOISE = [glob(ROOT / "datasets/alimeeting/eval_far_ch0"), glob(EVAL / "video")]
-NOISE_VERSION = "held-out: alimeeting eval + owner's held-out videos"
-
-STREAMS = {                                               # every model, whatever its word
+STREAMS = {                                               # every model, whatever its word; all test-only audio
     "the owner's room, Pi mic (10 min held out)": glob(EVAL / "me-pi-room"),
     "the owner's short videos (15 min held out)": glob(EVAL / "video"),
     "Mandarin meetings, AliMeeting test (2 h)": glob(ROOT / "datasets/alimeeting/test_far_ch0"),
     "everyday speech, unheard voices (30 min)": glob(EVAL / "speech") + glob(EVAL / "tts3-everyday"),
-    "AudioSet sounds (35 min)": glob(WORK / "audioset_16k", part=slice(200, 400)),
 }
-SUITES = {
-    "小派小派": {
-        "recall": {"51 unheard voices, designed": glob(EVAL / "tts3-positive", "d*.wav"),
-                   "51 unheard voices, cloned": glob(EVAL / "tts3-positive", "c*.wav"),
-                   "spike 01's 2 unheard voices": glob(EVAL / "positive"),
-                   "the owner, Pi mic, quiet": glob(EVAL / "me-pi-positive", "pi-wake-2*.wav"),
-                   "the owner, Pi mic, a video playing": glob(EVAL / "me-pi-positive", "pi-wake-bg-*.wav"),
-                   "the owner, Mac mic": glob(EVAL / "me-positive")},
-        "noisy": ("51 unheard voices, designed", "51 unheard voices, cloned", "spike 01's 2 unheard voices"),
-        "near": {"51 voices, core 30 (小胖小胖, 小怕小怕 …)": glob(EVAL / "tts3-near"),
-                 "51 voices, doubled 25 (小快小快, 小派小心 …)": glob(EVAL / "tts4-doubled"),
-                 "spike 01's near misses": glob(EVAL / "near_miss"),
-                 "the owner's near misses, Pi mic": glob(EVAL / "me-pi-near"),
-                 "the owner's other lines, Mac mic": glob(EVAL / "me-negative")},
-        "near_streams": {"the owner's 'Hey Pi's back to back (4 min)": glob(ROOT / "positives/me")},
-    },
-    "Hey Pi": {
-        "recall": {"51 unheard voices, designed": glob(EVAL / "heypi-positive", "d*.wav"),
-                   "51 unheard voices, cloned": glob(EVAL / "heypi-positive", "c*.wav")},
-        "noisy": ("51 unheard voices, designed", "51 unheard voices, cloned"),
-        "near": {"51 voices, Hey Pi's 18 (Hey pal, Apple pie …)": glob(EVAL / "heypi-near")},
-        "near_streams": {},
-    },
-}
+NEAR_STREAMS = {"小派小派": {"the owner's 'Hey Pi's back to back (4 min)": glob(ROOT / "positives/me")}, "Hey Pi": {}}
+MANIFEST = [json.loads(line) for line in open(TESTSET / "manifest.jsonl")]
 
 
 # ---- scoring ----------------------------------------------------------------------------------------------------
@@ -125,25 +93,6 @@ def peak(model_path: Path, x: np.ndarray) -> float:
     return float(probabilities(model_path, np.concatenate([z, x, z])).max())
 
 
-def noise_for(name: str, length: int) -> np.ndarray:
-    """A stretch of held-out background for this clip: the same for every model, not near-silent."""
-    h = zlib.crc32(name.encode())
-    files = NOISE[h % len(NOISE)]
-    with wave.open(str(files[(h // 2) % len(files)])) as w:
-        total = w.getnframes()
-        for k in range(20):                                  # skip quiet stretches (a pause in the meeting)
-            w.setpos((h // 7 + k * 48_000) % max(1, total - length))
-            n = np.frombuffer(w.readframes(length), np.int16).astype(np.float32)
-            if len(n) and 20 * np.log10(np.sqrt((n ** 2).mean()) / 32768 + 1e-9) > -45:
-                break
-    return np.tile(n, length // max(1, len(n)) + 1)[:length]
-
-
-def mix(x: np.ndarray, name: str, snr_db: float) -> np.ndarray:
-    n = noise_for(name, len(x))                                          # the same noise for every model
-    return x + np.sqrt((x ** 2).mean() / max((n ** 2).mean(), 1e-9) / 10 ** (snr_db / 10)) * n
-
-
 def wakes(p: np.ndarray, cutoff: float) -> int:
     n, last = 0, -10 ** 9
     for i in np.flatnonzero(p >= cutoff):
@@ -157,30 +106,23 @@ def stream(files: list[Path]) -> np.ndarray:
 
 
 def score(model_path: Path) -> dict:
-    """Every test for one model: peaks per clip, wakes per grid cutoff per stream (cached by the model's hash)."""
+    """Every test for one model: its word's test-set clips (a peak each), the streams (wakes per grid cutoff); cached
+    by the model's hash, the test set's version and the streams."""
     word = json.loads(model_path.read_text())["wake_word"]
     tflite = model_path.with_suffix(".tflite")
-    sets = {k: len(v) for part in ("recall", "near", "near_streams") for k, v in SUITES[word][part].items()}
-    sets |= {k: len(v) for k, v in STREAMS.items()} | {"noise": NOISE_VERSION}   # new clips or noise: scored again
-    key = hashlib.sha256(tflite.read_bytes() + json.dumps(sets, sort_keys=True).encode()).hexdigest()[:16]
+    clips = [m for m in MANIFEST if m["word"] == word]
+    streams = {**STREAMS, **NEAR_STREAMS[word]}
+    ident = {"testset": TESTSET.name, "clips": len(clips), "streams": {k: len(v) for k, v in streams.items()}}
+    key = hashlib.sha256(tflite.read_bytes() + json.dumps(ident, sort_keys=True).encode()).hexdigest()[:16]
     cache = CACHE / f"{model_path.stem}-{key}.json"
     if cache.exists():
         return json.loads(cache.read_text())
-    suite = SUITES[word]
-    out = {"model": model_path.stem, "word": word, "recall": {}, "near": {}, "streams": {}, "near_streams": {}}
-    for name, files in suite["recall"].items():
-        if not files:
-            continue
-        clips = [(f.name, read(f)) for f in files]
-        out["recall"][name] = [peak(model_path, x) for _, x in clips]
-        if name in suite["noisy"]:
-            for snr in (10, 5):
-                out["recall"][f"{name} + background {snr} dB"] = [peak(model_path, mix(x, n, snr)) for n, x in clips]
-    for name, files in suite["near"].items():
-        if files:
-            out["near"][name] = [peak(model_path, read(f)) for f in files]
-    for group, streams in (("streams", STREAMS), ("near_streams", suite["near_streams"])):
-        for name, files in streams.items():
+    out = {"model": model_path.stem, "word": word, "testset": TESTSET.name, "clips": [], "streams": {}, "near_streams": {}}
+    for m in clips:
+        out["clips"].append({"kind": m["kind"], "set": m["set"], "condition": m["condition"],
+                             "peak": peak(model_path, read(TESTSET / "audio" / m["clip"]))})
+    for group, named in (("streams", STREAMS), ("near_streams", NEAR_STREAMS[word])):
+        for name, files in named.items():
             if files:
                 x = stream(files)
                 p = probabilities(model_path, x)
@@ -209,7 +151,7 @@ def report(r: dict) -> str:
     rate = sum(s["wakes"][cols[-1]] for s in r["streams"].values()) / hours
     point = (f"{GRID[cols[-1]]:.3f}" if rate <= TARGET
              else f"never reached (at {GRID[cols[-1]]:.3f}, the highest tried: {rate:.2f} an hour)")
-    out = [f"{r['model']} ({r['word']}): the common test (evaluate.py), audio no model trained on",
+    out = [f"{r['model']} ({r['word']}): the common test (evaluate.py), test set {r['testset']} (testset.py): audio no model trained on",
            f"last column: its cutoff for at most {TARGET} false wakes an hour over all the streams: {point}"]
 
     def row(name: str, cells: list[str]) -> None:
@@ -227,12 +169,30 @@ def report(r: dict) -> str:
         row(name, per_hour(s))
     hours = sum(s["hours"] for s in r["streams"].values())
     row(f"all together ({hours:.1f} h)", [f"{sum(s['wakes'][i] for s in r['streams'].values()) / hours:.2f}" for i in cols])
-    out.append(f"\nRECALL: its word, share woken\n  {'':{w}s}{head}")
-    for name, v in r["recall"].items():
-        row(f"{name} ({len(v)})" if " + " not in name else f"  + {name.split(' + ')[-1]}", share(v))
-    out.append(f"\nNEAR MISSES: share that wakes it\n  {'':{w}s}{head}")
-    for name, v in r["near"].items():
+    def groups(kind: str) -> tuple[dict, dict]:
+        sets, conds = {}, {}
+        for c in r["clips"]:
+            if c["kind"] == kind:
+                sets.setdefault(c["set"], []).append(c["peak"])
+                if c["condition"] != "as recorded":
+                    conds.setdefault(c["condition"], []).append(c["peak"])
+        return sets, {k: conds[k] for k in CONDITIONS if k in conds}
+
+    recall, recall_by = groups("positive")
+    near, near_by = groups("near")
+    out.append(f"\nRECALL: its word, share woken (test set {r['testset']}: the unheard voices 40% quiet, 25% room noise, "
+               f"25% a video, TV or meeting, 10% very noisy; the owner as recorded)\n  {'':{w}s}{head}")
+    for name, v in recall.items():
         row(f"{name} ({len(v)})", share(v))
+    out.append("  the unheard voices together, by condition:")
+    for name, v in recall_by.items():
+        row(f"  {name} ({len(v)})", share(v))
+    out.append(f"\nNEAR MISSES: share that wakes it (the same mix)\n  {'':{w}s}{head}")
+    for name, v in near.items():
+        row(f"{name} ({len(v)})", share(v))
+    out.append("  the synthetic near misses together, by condition:")
+    for name, v in near_by.items():
+        row(f"  {name} ({len(v)})", share(v))
     for name, s in r["near_streams"].items():
         row(f"{name}, per hour", per_hour(s))
 
@@ -242,17 +202,17 @@ def report(r: dict) -> str:
     def rows3(title: str, qs: tuple, labels: tuple, sets: dict) -> None:
         out.append(f"\n{title}\n  {'':{w}s}" + "".join(f"{l:>8s}" for l in labels))
         for name, v in sets.items():
-            label = f"{name} ({len(v)})" if " + " not in name else f"  + {name.split(' + ')[-1]}"
+            label = f"{name} ({len(v)})"
             out.append(f"  {label:{w}s}" + "".join(f"{c:>8s}" for c in pct(v, qs)))
 
     rows3("CERTAINTY: the peak score its word gets (1.00 = sure; the higher, the more margin for audio no test has)",
-          (50, 25, 10), ("median", "p25", "p10"), r["recall"])
-    rows3("… and its near misses (the lower, the surer it isn't the word)", (50, 75, 90), ("median", "p75", "p90"), r["near"])
-    clean = [x for n, v in r["recall"].items() if " + " not in n and "owner" not in n for x in v]
-    near = [x for v in r["near"].values() for x in v]
-    if clean and near:
+          (50, 25, 10), ("median", "p25", "p10"), recall | {f"unheard voices, {k}": v for k, v in recall_by.items()})
+    rows3("… and its near misses (the lower, the surer it isn't the word)", (50, 75, 90), ("median", "p75", "p90"), near)
+    voices = [x for v in recall_by.values() for x in v]
+    misses = [x for v in near.values() for x in v]
+    if voices and misses:
         out.append(f"  {'margin: unheard voices p10 − near misses p90':{w}s}"
-                   f"{np.percentile(clean, 10) - np.percentile(near, 90):>8.3f}   (above 0: they don't overlap)")
+                   f"{np.percentile(voices, 10) - np.percentile(misses, 90):>8.3f}   (above 0: they don't overlap)")
     return "\n".join(out) + "\n"
 
 
