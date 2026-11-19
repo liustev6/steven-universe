@@ -1,0 +1,32 @@
+# Spike 04d (spikes/04-pi-mic): spike 04b with the voice always at least as loud as the background (0 to 15 dB,
+# was -5 to 10): the owner says the wake word over a video, not under one.
+run: xiao_pai_04d
+word: 小派小派
+wake_word: 小派小派
+model_name: xiao_pai_04d
+languages: [zh]
+piper_samples: 0
+own_voice_copies: 5
+own_voice_negative_copies: 5
+probability_cutoff: 0.97
+
+augmentation:
+  probabilities: {SevenBandParametricEQ: 0.1, TanhDistortion: 0.1, PitchShift: 0.1, BandStopFilter: 0.1,
+                  AddColorNoise: 0.1, AddBackgroundNoise: 0.75, Gain: 1.0, RIR: 0.5}
+  background_min_snr_db: 0               # the voice never quieter than the background
+  background_max_snr_db: 15
+  background_dirs:               # under the data root; besides AudioSet and FMA music
+    - datasets/demand
+    - datasets/musan/musan/noise
+
+extra_negatives:                 # under the data root
+  - {name: alimeeting, dir: xiao_pai_02/extra/alimeeting, weight: 10}
+  - {name: demand, dir: xiao_pai_02/extra/demand, weight: 3}
+  - {name: musan_noise, dir: xiao_pai_02/extra/musan_noise, weight: 3}
+  - {name: video, dir: xiao_pai/extra/video, weight: 8}
+  - {name: room, dir: xiao_pai/extra/me-pi-room, weight: 8}               # the owner's room on the Pi's mic
+
+training:
+  steps: 10000
+  negative_class_weight: 20
+  near_miss_weight: 8.0
