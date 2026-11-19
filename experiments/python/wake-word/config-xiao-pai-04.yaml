@@ -1,0 +1,38 @@
+# Spike 04 (spikes/04-pi-mic): spike 03 plus the owner on the Pi's own mic, the doubled near misses, and the
+# owner's short videos mixed under every positive. DATA=<root>/xiao_pai:
+#   positives: tts, tts3, me (the Mac's mic), me-pi (the Pi's: quiet and with a video playing); me* ×5
+#   negatives (near misses, weight 8): spike 03's, tts4-doubled (every training voice saying near_miss_doubled:
+#     小拜小拜, 小快小快, 小派小心, 我们家小派 …), me-pi-near (the owner's core near misses on the Pi, ×5)
+#   extra negatives: spike 03's plus me-pi-room (35 min of the owner's room through the Pi's mic)
+#   held out (eval/): spike 03's, tts4-doubled of the 51 held-out voices, every 4th Pi clip, the room's last 10 min
+run: xiao_pai_04
+word: 小派小派
+wake_word: 小派小派
+model_name: xiao_pai_04
+languages: [zh]
+piper_samples: 0
+own_voice_copies: 5
+own_voice_negative_copies: 5
+probability_cutoff: 0.97
+
+augmentation:
+  probabilities: {SevenBandParametricEQ: 0.1, TanhDistortion: 0.1, PitchShift: 0.1, BandStopFilter: 0.1,
+                  AddColorNoise: 0.1, AddBackgroundNoise: 0.75, Gain: 1.0, RIR: 0.5}
+  background_min_snr_db: -5
+  background_max_snr_db: 10
+  background_dirs:               # under the data root; besides AudioSet and FMA music
+    - datasets/demand
+    - datasets/musan/musan/noise
+    - xiao_pai/extra/video       # the owner's short videos (39 min, the training part) under the wake word
+
+extra_negatives:                 # under the data root
+  - {name: alimeeting, dir: xiao_pai_02/extra/alimeeting, weight: 10}
+  - {name: demand, dir: xiao_pai_02/extra/demand, weight: 3}
+  - {name: musan_noise, dir: xiao_pai_02/extra/musan_noise, weight: 3}
+  - {name: video, dir: xiao_pai/extra/video, weight: 8}
+  - {name: room, dir: xiao_pai/extra/me-pi-room, weight: 8}               # the owner's room on the Pi's mic
+
+training:
+  steps: 10000
+  negative_class_weight: 20
+  near_miss_weight: 8.0

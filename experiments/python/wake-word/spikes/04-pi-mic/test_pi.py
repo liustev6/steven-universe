@@ -1,13 +1,14 @@
 """Spike 04: a wake-word model on the owner's Pi-mic recordings (recording/pi.html), scored as pi-server runs it
 (spike 03's evaluate.py functions). With any venv that has pymicro-wakeword (pi-server's, on the Mac):
 
-    python spikes/04-pi-mic/test_pi.py out/xiao_pai_03.json [--held-out]
+    python spikes/04-pi-mic/test_pi.py out/xiao_pai_03.json [DATA] [--held-out]
 
 Without --held-out, every Pi take (for a model that trained on none of them: spike 03's); with it, only the sets
 sort_recordings.py held out (for a model trained on the rest). Prints each false wake in the room with its time.
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -16,13 +17,16 @@ import numpy as np
 HERE = Path(__file__).resolve().parents[2]
 EVAL = HERE / "spikes/03-many-voices/evaluate.py"
 held = "--held-out" in sys.argv
-model = next(a for a in sys.argv[1:] if not a.startswith("--"))
-sys.argv = [str(EVAL), model, str(HERE / "data/xiao_pai")]
+args = [a for a in sys.argv[1:] if not a.startswith("--")]
+model = args[0]
+if len(args) > 1:                                                     # train-run.sh passes the data folder
+    os.environ["DATA"] = args[1]
+DATA = Path(os.environ.get("DATA", HERE / "data/xiao_pai"))       # the playground: train-run.sh sets it
+sys.argv = [str(EVAL), model, str(DATA)]
 ns = {"__file__": str(EVAL)}
 exec(EVAL.read_text().split("rng = random.Random(1)")[0], ns)        # its functions, not its tests
 peak, read, probabilities, wakes, CUTOFFS = ns["peak"], ns["read"], ns["probabilities"], ns["wakes"], ns["CUTOFFS"]
 
-DATA = HERE / "data/xiao_pai"
 REC = DATA / "recordings"
 rows = [json.loads(line) for line in (REC / "transcripts.jsonl").read_text().splitlines() if line.strip()]
 clips = {k: [r for r in rows if r["take"].startswith("pi-") and r["kind"] == k] for k in ("wake", "wake-bg", "near")}
@@ -51,6 +55,17 @@ for r in clips["near"]:
     by.setdefault(r["text"], []).append(scores["near"][r["clip"]])
 for text, v in sorted(by.items(), key=lambda kv: -max(kv[1]))[:8]:
     print(f"    {text:20s} peaks {', '.join(f'{x:.2f}' for x in v)}")
+
+doubled = sorted((DATA / "eval/tts4-doubled").glob("*.wav"))
+if doubled:                                                            # gen_voices.py --lines doubled, held-out voices
+    lines = ns["BANK"]["near_miss_doubled"]
+    by = {}
+    for f in doubled:
+        by.setdefault(lines[int(f.stem.rsplit("-", 1)[1])], []).append(peak(read(f)))
+    print(f"\nDOUBLED NEAR MISSES, the 51 held-out voices: share that wakes it\n  {'':34s}" + "".join(f"{c:>8.2f}" for c in CUTOFFS))
+    line(f"all ({len(doubled)})", [x for v in by.values() for x in v])
+    for text, v in sorted(by.items(), key=lambda kv: -np.mean(kv[1]))[:8]:
+        line(f"  {text}", v)
 
 files = sorted((DATA / "eval/me-pi-room").glob("*.wav")) if held else sorted(REC.glob("pi-room-*.wav"))
 if files:

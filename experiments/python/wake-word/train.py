@@ -282,7 +282,9 @@ if __name__ == "__main__":
     positive = features("positive", positives, aug)
     near = None
     if (DATA / "negatives").exists():
-        near_dir = gather(RUN / "near_misses", [(p, 1) for p in sorted((DATA / "negatives").iterdir()) if p.is_dir()])
+        mine = CONFIG.get("own_voice_negative_copies", 1)   # your own near misses, weighted like your positives
+        near_dir = gather(RUN / "near_misses", [(p, mine if p.name.startswith("me") else 1)
+                                                for p in sorted((DATA / "negatives").iterdir()) if p.is_dir()])
         near = features("near_miss", near_dir, aug)
     extra = [(features(n["name"], ROOT / n["dir"], aug, repeat=n.get("repeat", 1)), float(n["weight"]))
              for n in CONFIG.get("extra_negatives", [])]
