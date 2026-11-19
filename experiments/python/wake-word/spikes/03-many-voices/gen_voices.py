@@ -1,5 +1,5 @@
-"""Spike 03: many voices saying 小派小派 and what isn't it, on CT 108's GPU (speech-service stopped: one model
-at a time fits). Two sources of voices, Qwen3-TTS 1.7B:
+"""Spike 03: many voices saying 小派小派 and what isn't it, on the playground's GPU (CT 110; speech-service on
+CT 108 stopped by hand meanwhile: docs/playground.md). Two sources of voices, Qwen3-TTS 1.7B:
   design  VoiceDesign: a voice from a description (gender, age, timbre, accent, manner), ~150 of them
   clone   Base: a voice cloned from a reference clip (AISHELL-3's speakers, refs.jsonl)
 Each voice says, in one batch per kind (one timbre): the wake word's 7 written forms twice (positive),
@@ -7,12 +7,14 @@ all 30 near_miss_core lines (always, every voice), and 12 everyday lines from th
 16-bit mono WAVs, silence trimmed to 150 ms; out/manifest.jsonl lists every clip. A voice already done
 is skipped (out/<voice>/done), so a rerun resumes.
 
-    docker run --rm --gpus all -v /var/lib/experiments:/exp --entrypoint python IMAGE \
-        /exp/code/gen_voices.py --source design|clone [--limit N]
+    docker run --rm --gpus all -v /srv/experiments/wake-word:/exp \
+        -v /srv/src/steven-universe/experiments/python/wake-word:/code:ro --entrypoint python SPEECH_BASE \
+        /code/spikes/03-many-voices/gen_voices.py --source design|clone [--limit N]
+
+/exp: models/ (VoiceDesign, Base), data/datasets/aishell3-refs/ (fetch_refs.py), out/spike-03/ (written).
 """
 
 import argparse
-import itertools
 import json
 import random
 import re
@@ -27,11 +29,13 @@ import yaml
 ap = argparse.ArgumentParser()
 ap.add_argument("--source", choices=["design", "clone"], required=True)
 ap.add_argument("--limit", type=int, default=0, help="only the first N voices (a speed test)")
-ap.add_argument("--exp", default="/exp")
+ap.add_argument("--exp", default="/exp", help="models/ and the reference clips under it; out/spike-03 written")
+ap.add_argument("--bank", default="/code/phrases/xiao_pai_bank.yaml")
 args = ap.parse_args()
 EXP = Path(args.exp)
-OUT = EXP / "out"
-BANK = yaml.safe_load(open(EXP / "code/xiao_pai_bank.yaml"))
+OUT = EXP / "out/spike-03"
+REFS = EXP / "data/datasets/aishell3-refs"
+BANK = yaml.safe_load(open(args.bank))
 WAKE = ["小派小派", "小派小派。", "小派小派！", "小派小派？", "小派，小派。", "小派，小派！", "小派小派，"]
 CJK = re.compile(r"[一-鿿]")
 
@@ -62,9 +66,9 @@ def designed() -> list[dict]:
 
 
 def cloned() -> list[dict]:
-    rows = [json.loads(line) for line in open(EXP / "refs/refs.jsonl")]
+    rows = [json.loads(line) for line in open(REFS / "refs.jsonl")]
     return [{"voice": f"c{r['speaker']}", "source": "clone", "gender": r.get("gender"), "age": r.get("age"),
-             "accent": r.get("accent"), "ref_audio": str(EXP / "refs" / f"{r['speaker']}.wav"), "ref_text": r["text"]}
+             "accent": r.get("accent"), "ref_audio": str(REFS / f"{r['speaker']}.wav"), "ref_text": r["text"]}
             for r in rows]
 
 
