@@ -1,0 +1,33 @@
+# Spike 04c (spikes/04-pi-mic): spike 04b with background sound mixed under 5% of the clips, not 75%. The Pi's
+# speakerphone suppresses most background itself, and the owner's 65 real wake words over a video show the model
+# what noisy sounds like on this mic; heavy mixing taught spike 04 to wake to video speech.
+run: xiao_pai_04c
+word: 小派小派
+wake_word: 小派小派
+model_name: xiao_pai_04c
+languages: [zh]
+piper_samples: 0
+own_voice_copies: 5
+own_voice_negative_copies: 5
+probability_cutoff: 0.97
+
+augmentation:
+  probabilities: {SevenBandParametricEQ: 0.1, TanhDistortion: 0.1, PitchShift: 0.1, BandStopFilter: 0.1,
+                  AddColorNoise: 0.1, AddBackgroundNoise: 0.05, Gain: 1.0, RIR: 0.5}
+  background_min_snr_db: -5
+  background_max_snr_db: 10
+  background_dirs:               # under the data root; besides AudioSet and FMA music
+    - datasets/demand
+    - datasets/musan/musan/noise
+
+extra_negatives:                 # under the data root
+  - {name: alimeeting, dir: xiao_pai_02/extra/alimeeting, weight: 10}
+  - {name: demand, dir: xiao_pai_02/extra/demand, weight: 3}
+  - {name: musan_noise, dir: xiao_pai_02/extra/musan_noise, weight: 3}
+  - {name: video, dir: xiao_pai/extra/video, weight: 8}
+  - {name: room, dir: xiao_pai/extra/me-pi-room, weight: 8}               # the owner's room on the Pi's mic
+
+training:
+  steps: 10000
+  negative_class_weight: 20
+  near_miss_weight: 8.0
