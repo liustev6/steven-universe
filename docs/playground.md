@@ -31,6 +31,11 @@ keeps that stable). Add `playground.lan.liustev6.ca` only if it starts serving p
   reviewed path (e.g. pi-server's `models/`), never by a service reading the playground.
 - **Downloaded models are pinned too:** each with a `REVISION.json` (repository and revision) next to it.
 
+## Watching a run
+Long jobs run in tmux on CT 110 (they survive a dropped SSH). Their logs, live in a browser:
+**http://192.168.50.119:8080** (`experiments/logserver.py`: each run's readable log and latest raw output,
+whether it's still running, the CPU), and TensorBoard's charts at **:6006** while a model trains.
+
 ## Layout
 ```
 experiments/python/<name>/          the code: scripts, configs, phrase sets, spikes/NN-<topic>/ (README, results)
