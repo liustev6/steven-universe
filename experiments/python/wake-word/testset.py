@@ -5,6 +5,10 @@ used for training or validation.
 
     python testset.py <data root>                 # → <data root>/testset/v1/: audio/ and manifest.jsonl
 
+It reads only datasets/processed/test/ (test-only, by where it lives: train.py refuses it). One pool of clips, each
+labelled for every wake word: 小派小派's clips are "positive" or "near" for 小派小派 and "other wake word" or "other" for
+"Hey Pi", and the reverse; the owner's other lines are "other" for both.
+
 Each synthetic clip (a voice no model trained on) gets one listening condition, fixed by its name, in the share a home
 has; its background comes only from test-only sound:
 
@@ -27,7 +31,7 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(sys.argv[1])
-EVAL = ROOT / "xiao_pai/eval"
+TE = ROOT / "datasets/processed/test"
 VERSION = "v1"
 OUT = ROOT / "testset" / VERSION
 
@@ -38,25 +42,26 @@ CONDITIONS = [  # (name, share in %, background pool, dB range: the voice over t
     ("very noisy", 10, "media", (0, 5)),
 ]
 POOLS = {
-    "room": [sorted((EVAL / "me-pi-room").glob("*.wav"))],
-    "media": [sorted((EVAL / "video").glob("*.wav")), sorted((ROOT / "datasets/alimeeting/eval_far_ch0").glob("*.wav"))],
+    "room": [sorted((TE / "room-me-pi").glob("*.wav"))],
+    "media": [sorted((TE / "video-me").glob("*.wav")), sorted((TE / "alimeeting-eval").glob("*.wav"))],
 }
+WORDS = ("小派小派", "Hey Pi")
 # (word, kind, set name, folder, pattern, synthetic: mixed by condition; else the owner's, as recorded)
 SOURCES = [
-    ("小派小派", "positive", "51 unheard voices, designed", EVAL / "tts3-positive", "d*.wav", True),
-    ("小派小派", "positive", "51 unheard voices, cloned", EVAL / "tts3-positive", "c*.wav", True),
-    ("小派小派", "positive", "spike 01's 2 unheard voices", EVAL / "positive", "*.wav", True),
-    ("小派小派", "positive", "the owner, Pi mic, quiet", EVAL / "me-pi-positive", "pi-wake-2*.wav", False),
-    ("小派小派", "positive", "the owner, Pi mic, a video playing", EVAL / "me-pi-positive", "pi-wake-bg-*.wav", False),
-    ("小派小派", "positive", "the owner, Mac mic", EVAL / "me-positive", "*.wav", False),
-    ("小派小派", "near", "51 voices, core 30 (小胖小胖, 小怕小怕 …)", EVAL / "tts3-near", "*.wav", True),
-    ("小派小派", "near", "51 voices, doubled 25 (小快小快, 小派小心 …)", EVAL / "tts4-doubled", "*.wav", True),
-    ("小派小派", "near", "spike 01's near misses", EVAL / "near_miss", "*.wav", True),
-    ("小派小派", "near", "the owner's near misses, Pi mic", EVAL / "me-pi-near", "*.wav", False),
-    ("小派小派", "near", "the owner's other lines, Mac mic", EVAL / "me-negative", "*.wav", False),
-    ("Hey Pi", "positive", "51 unheard voices, designed", EVAL / "heypi-positive", "d*.wav", True),
-    ("Hey Pi", "positive", "51 unheard voices, cloned", EVAL / "heypi-positive", "c*.wav", True),
-    ("Hey Pi", "near", "51 voices, Hey Pi's 18 (Hey pal, Apple pie …)", EVAL / "heypi-near", "*.wav", True),
+    ("小派小派", "positive", "51 unheard voices, designed", TE / "xiaopai-tts-03", "d*.wav", True),
+    ("小派小派", "positive", "51 unheard voices, cloned", TE / "xiaopai-tts-03", "c*.wav", True),
+    ("小派小派", "positive", "spike 01's 2 unheard voices", TE / "xiaopai-tts-01", "*.wav", True),
+    ("小派小派", "positive", "the owner, Pi mic, quiet", TE / "xiaopai-me-pi", "pi-wake-2*.wav", False),
+    ("小派小派", "positive", "the owner, Pi mic, a video playing", TE / "xiaopai-me-pi", "pi-wake-bg-*.wav", False),
+    ("小派小派", "positive", "the owner, Mac mic", TE / "xiaopai-me-mac", "*.wav", False),
+    ("小派小派", "near", "51 voices, core 30 (小胖小胖, 小怕小怕 …)", TE / "xiaopai-tts-03-near", "*.wav", True),
+    ("小派小派", "near", "51 voices, doubled 25 (小快小快, 小派小心 …)", TE / "xiaopai-tts-04-doubled", "*.wav", True),
+    ("小派小派", "near", "spike 01's near misses", TE / "xiaopai-tts-01-near", "*.wav", True),
+    ("小派小派", "near", "the owner's near misses, Pi mic", TE / "xiaopai-me-pi-near", "*.wav", False),
+    ("小派小派", "near", "the owner's other lines, Mac mic", TE / "speech-me-mac", "*.wav", False),
+    ("Hey Pi", "positive", "51 unheard voices, designed", TE / "heypi-tts-03", "d*.wav", True),
+    ("Hey Pi", "positive", "51 unheard voices, cloned", TE / "heypi-tts-03", "c*.wav", True),
+    ("Hey Pi", "near", "51 voices, Hey Pi's 18 (Hey pal, Apple pie …)", TE / "heypi-tts-03-near", "*.wav", True),
 ]
 
 
@@ -98,7 +103,11 @@ def main():
         for src in sorted(folder.glob(pattern)):
             key = f"{word}/{kind}/{src.name}"
             x = read(src)
-            row = {"word": word, "kind": kind, "set": set_name, "source": str(src.relative_to(ROOT))}
+            other = "other" if kind == "near" or set_name.startswith("the owner's other") else "other wake word"
+            labels = {w: (kind if w == word else other) for w in WORDS}
+            if set_name.startswith("the owner's other"):           # the owner's other lines: nobody's wake word
+                labels = {w: ("near" if w == word else "other") for w in WORDS}
+            row = {"word": word, "kind": kind, "labels": labels, "set": set_name, "source": str(src.relative_to(ROOT))}
             if synthetic:
                 cond, pool, snr = condition(key)
                 if pool:

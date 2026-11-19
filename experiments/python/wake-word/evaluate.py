@@ -13,7 +13,7 @@ docs/specs/wake-word.md (W7-W8) and each spike's results/ use these tables. With
   false wakes   per hour, the same streams for every model whatever its word, each played as one stream (a wake,
                 then 1 s before another counts), all test-only: the owner's room on the Pi's mic (10 held-out min),
                 the owner's short videos (15 held-out min), Mandarin meetings (AliMeeting's test set, 2 h), everyday
-                speech from the unheard voices (30 min); 小派小派 also the owner's "Hey Pi"s played back to back
+                speech from the unheard voices (30 min); and the other wake word said back to back (test-only)
   recall        its word's test-set clips by set, then the unheard voices together by condition
   near misses   the same, for its near misses
   certainty     the peak score each set gets (median, and the 10th percentile: its weakest tenth), and its near
@@ -36,9 +36,9 @@ from pathlib import Path
 
 import numpy as np
 
-ROOT = Path(sys.argv[1])                                  # the data root: testset/, xiao_pai/, datasets/, positives/
+ROOT = Path(sys.argv[1])                                  # the data root: testset/, datasets/
 MODELS = [Path(m) for m in sys.argv[2:] if m.endswith(".json")]
-EVAL = ROOT / "xiao_pai/eval"
+TE = ROOT / "datasets/processed/test"                     # test-only (train.py refuses it)
 TESTSET = ROOT / "testset" / os.environ.get("TESTSET", "v1")
 HERE = Path(__file__).resolve().parent
 WORK = Path(os.environ.get("WORK", HERE / "work"))
@@ -62,12 +62,15 @@ def glob(d: Path, pattern: str = "*.wav") -> list[Path]:
 
 
 STREAMS = {                                               # every model, whatever its word; all test-only audio
-    "the owner's room, Pi mic (10 min held out)": glob(EVAL / "me-pi-room"),
-    "the owner's short videos (15 min held out)": glob(EVAL / "video"),
-    "Mandarin meetings, AliMeeting test (2 h)": glob(ROOT / "datasets/alimeeting/test_far_ch0"),
-    "everyday speech, unheard voices (30 min)": glob(EVAL / "speech") + glob(EVAL / "tts3-everyday"),
+    "the owner's room, Pi mic (10 min held out)": glob(TE / "room-me-pi"),
+    "the owner's short videos (15 min held out)": glob(TE / "video-me"),
+    "Mandarin meetings, AliMeeting test (2 h)": glob(TE / "alimeeting-test"),
+    "everyday speech, unheard voices (30 min)": glob(TE / "speech-tts-01") + glob(TE / "speech-tts-03"),
 }
-NEAR_STREAMS = {"小派小派": {"the owner's 'Hey Pi's back to back (4 min)": glob(ROOT / "positives/me")}, "Hey Pi": {}}
+NEAR_STREAMS = {  # the other wake word said back to back (0.5 s apart): "…Pi. Hey Pi…" doubles a syllable, as 小派小派 does
+    "小派小派": {"'Hey Pi' back to back, 51 unheard voices": glob(TE / "heypi-tts-03")},
+    "Hey Pi": {"'小派小派' back to back, 51 unheard voices": glob(TE / "xiaopai-tts-03")},
+}
 MANIFEST = [json.loads(line) for line in open(TESTSET / "manifest.jsonl")]
 
 
@@ -110,16 +113,17 @@ def score(model_path: Path) -> dict:
     by the model's hash, the test set's version and the streams."""
     word = json.loads(model_path.read_text())["wake_word"]
     tflite = model_path.with_suffix(".tflite")
-    clips = [m for m in MANIFEST if m["word"] == word]
+    clips = [m for m in MANIFEST if m["labels"].get(word)]
     streams = {**STREAMS, **NEAR_STREAMS[word]}
-    ident = {"testset": TESTSET.name, "clips": len(clips), "streams": {k: len(v) for k, v in streams.items()}}
+    ident = {"testset": TESTSET.name, "clips": len(clips), "labels": "per word",
+             "streams": {k: len(v) for k, v in streams.items()}}
     key = hashlib.sha256(tflite.read_bytes() + json.dumps(ident, sort_keys=True).encode()).hexdigest()[:16]
     cache = CACHE / f"{model_path.stem}-{key}.json"
     if cache.exists():
         return json.loads(cache.read_text())
     out = {"model": model_path.stem, "word": word, "testset": TESTSET.name, "clips": [], "streams": {}, "near_streams": {}}
     for m in clips:
-        out["clips"].append({"kind": m["kind"], "set": m["set"], "condition": m["condition"],
+        out["clips"].append({"kind": m["labels"][word], "set": m["set"], "word": m["word"], "condition": m["condition"],
                              "peak": peak(model_path, read(TESTSET / "audio" / m["clip"]))})
     for group, named in (("streams", STREAMS), ("near_streams", NEAR_STREAMS[word])):
         for name, files in named.items():
@@ -195,6 +199,14 @@ def report(r: dict) -> str:
         row(f"  {name} ({len(v)})", share(v))
     for name, s in r["near_streams"].items():
         row(f"{name}, per hour", per_hour(s))
+    others = {}
+    for c in r["clips"]:
+        if c["kind"] in ("other wake word", "other"):
+            others.setdefault(f"{c['word']}: {c['set']}", []).append(c["peak"])
+    if others:
+        out.append(f"\nTHE OTHER WAKE WORD'S CLIPS: share that wakes it (its word and its near misses)\n  {'':{w}s}{head}")
+        for name, v in others.items():
+            row(f"{name} ({len(v)})", share(v))
 
     def pct(values, qs) -> list[str]:
         return [f"{np.percentile(values, q):.3f}" for q in qs]

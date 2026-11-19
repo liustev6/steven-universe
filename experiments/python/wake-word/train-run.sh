@@ -4,7 +4,7 @@
 #   GPU=1 train-run.sh …    on the card (speech-service stopped by hand: docs/playground.md); CPU otherwise
 RUN=$1; CONFIG=$2
 W=/srv/src/steven-universe/experiments/python/wake-word; E=/srv/experiments/wake-word; L=$E/logs
-export WORK=$E/work DATA=$E/data/xiao_pai OUT=$E/out/models
+export WORK=$E/work DATA=$E/data OUT=$E/out/models
 export TF_CPP_MIN_LOG_LEVEL=1                          # TensorFlow's notices off
 cd $W
 if [ "$GPU" = 1 ]; then                                # tensorflow[and-cuda]'s libraries; cuSOLVER isn't found otherwise

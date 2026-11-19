@@ -1,6 +1,6 @@
 """Split a recording session into one clip per utterance.
 
-    python segment.py data/hey-pi-session-1.wav data/positives/me
+    python segment.py data/datasets/full/recordings/hey-pi-session-1.wav data/datasets/processed/train/heypi-me-pi
     python segment.py TAKE.wav OUT --auto --max 2.5      # a mic with a noise floor (the Mac's); a longer word
 
 The Pi's speakerphone gates its mic: between utterances the audio is (near) digital silence, so an

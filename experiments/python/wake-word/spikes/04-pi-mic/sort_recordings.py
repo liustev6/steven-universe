@@ -1,7 +1,7 @@
 """Spike 04: the Pi-mic takes (recording/pi.html), once labelled (recording/label.py), sorted into the sets train.py
 and evaluate.py read. Rerun as takes arrive: each run rebuilds the me-pi sets from transcripts.jsonl.
 
-    python spikes/04-pi-mic/sort_recordings.py              # data/xiao_pai/recordings → data/xiao_pai/{positives,negatives,eval}
+    python spikes/04-pi-mic/sort_recordings.py   # data/datasets/processed/recordings → data/datasets/processed/{train,test}
 
   wake, wake-bg   your wake word on the Pi's mic (quiet; a video playing) → positives/me-pi, every 4th clip of each
                   take held out → eval/me-pi-positive. In wake-bg, a clip speech-to-text didn't hear as 小X小X-like
@@ -20,12 +20,13 @@ from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parents[2]
-DATA = HERE / "data/xiao_pai"
-REC = DATA / "recordings"
-OUT = {k: DATA / v for k, v in {
-    "pos": "positives/me-pi", "pos_eval": "eval/me-pi-positive", "family": "eval/pi-family-positive",
-    "near": "negatives/me-pi-near", "near_eval": "eval/me-pi-near",
-    "room": "extra/me-pi-room", "room_eval": "eval/me-pi-room"}.items()}
+DATA = HERE / "data/datasets"
+REC = DATA / "processed/recordings"                       # the takes' clips and transcripts.jsonl (recording/label.py)
+TAKES = DATA / "full/recordings"                          # the takes, whole (the room's 5-minute files)
+OUT = {k: DATA / "processed" / v for k, v in {
+    "pos": "train/xiaopai-me-pi", "pos_eval": "test/xiaopai-me-pi", "family": "test/xiaopai-family-pi",
+    "near": "train/xiaopai-me-pi-near", "near_eval": "test/xiaopai-me-pi-near",
+    "room": "train/room-me-pi-3s", "room_eval": "test/room-me-pi"}.items()}
 HOLD_OUT = 4                                               # every 4th clip of a take
 
 
@@ -68,7 +69,7 @@ for take, clips in sorted(by_take.items()):
 import soundfile  # noqa: E402
 
 rooms: dict[str, list[Path]] = {}
-for p in sorted(REC.glob("pi-room-*.wav")):
+for p in sorted(TAKES.glob("pi-room-*.wav")):
     rooms.setdefault(re.sub(r"-\d{2}$", "", p.stem), []).append(p)   # arecord's split: take-01.wav, take-02.wav…
 for files in rooms.values():
     files = sorted(files)

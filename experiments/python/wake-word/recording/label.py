@@ -1,6 +1,6 @@
-"""Your recordings, labelled: each take in data/xiao_pai/recordings split into utterances (segment.py), each
+"""Your recordings, labelled: each take in data/datasets/full/recordings split into utterances (segment.py), each
 utterance through speech-to-text (speech-service, through its test client), all of it in one manifest,
-data/xiao_pai/recordings/transcripts.jsonl (the Mac's takes, mac-*, and the Pi's, pi-*): clip, take, start and end in the take, duration, kind, what was
+data/datasets/processed/recordings/transcripts.jsonl, the clips beside it in clips/<take>/ (the Mac's takes, mac-*, and the Pi's, pi-*): clip, take, start and end in the take, duration, kind, what was
 said, the language heard, and where the label came from. For the wake word now; for training a voice of your
 own later (audio with its text). Run with speech-service's venv, its test client running:
 
@@ -31,8 +31,9 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 from segment import read, save, split  # noqa: E402
 
-RECORDINGS = HERE.parent / "data/xiao_pai/recordings"
-MANIFEST = RECORDINGS / "transcripts.jsonl"
+RECORDINGS = HERE.parent / "data/datasets/full/recordings"           # the takes, whole
+PROCESSED = HERE.parent / "data/datasets/processed/recordings"         # their clips and the labels
+MANIFEST = PROCESSED / "transcripts.jsonl"
 CLIENT = "ws://localhost:8765"
 KINDS = {  # take name → (kind, longest utterance in s, the language speech-to-text is told, intended text)
     "mac-wake-": ("wake", 2.5, "Chinese", "小派小派"),
@@ -101,14 +102,14 @@ async def main():
                 print(f"{take.name}: {kind_name}, listed whole ({len(x) / 16000:.0f} s)")
                 continue
             name, longest, language, intended = kind
-            clips_dir = RECORDINGS / "clips" / take.stem
+            clips_dir = PROCESSED / "clips" / take.stem
             clips_dir.mkdir(parents=True, exist_ok=True)
             spans = split(x, auto=True, longest=longest, log=lambda *_: None)
             for k, (lo, hi) in enumerate(spans, 1):
                 clip = clips_dir / f"{take.stem}-{k:03d}.wav"
                 save(clip, x[lo:hi])
                 asr, heard_language = await hear(x[lo:hi].tobytes(), language)
-                row = {"clip": str(clip.relative_to(RECORDINGS)), "take": take.name, "start": round(lo / 16000, 2),
+                row = {"clip": str(clip.relative_to(PROCESSED)), "take": take.name, "start": round(lo / 16000, 2),
                        "end": round(hi / 16000, 2), "duration": round((hi - lo) / 16000, 2), "kind": name,
                        "asr": asr, "language": heard_language}
                 if intended:

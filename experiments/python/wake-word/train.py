@@ -2,21 +2,21 @@
 in our own container (Dockerfile here), on our own hardware. Each step is skipped when its output exists, so
 a rerun resumes, and the downloads (~6 GB) are fetched once into the cache.
 
-    python train.py config.yaml        (in the trainer image: /work the cache, /data our clips, /out the model)
+    DATA=data python train.py config-xiao-pai-04b.yaml      (WORK the cache, DATA the data root, OUT the model)
 
-A config with `run: NAME` keeps that run's positives, features and trained model in /work/runs/NAME (the
-downloads stay shared), so a second wake word doesn't overwrite the first; `piper_samples: 0` trains on our
-own clips only (Piper's voices are English: a Chinese word has none). `extra_negatives` adds negative sets of
-our own (folders of clips: Mandarin conversation, household noise), each with its sampling weight, and
-`augmentation.background_dirs` adds background sound mixed into every clip. Both are folders under the data
-root (DATA's parent: data/ here, /srv/experiments/wake-word/data on the playground), so one config runs on both.
+A config with `run: NAME` keeps that run's positives, features and trained model in WORK/runs/NAME (the
+downloads stay shared); `piper_samples: 0` trains on our own clips only (Piper's voices are English: a Chinese word
+has none). The config lists exactly what it trains on, as folders under the data root (data/ here,
+/srv/experiments/wake-word/data on the playground, so one config runs on both): `positives` and `near_misses`
+(each with `copies`, a weight), `extra_negatives` (folders of clips with a sampling weight: Mandarin conversation,
+household noise) and `augmentation.background_dirs` (sound mixed under clips). **Only datasets/processed/train/ and
+a spike's own folder (00/, 01/ …) may be named**: datasets/processed/test/ is the test set's, never trained on.
 
 Steps, as microWakeWord's notebook (kahrendt/microWakeWord, notebooks/basic_training_notebook.ipynb):
   1. Piper samples of the word (Piper's ONNX LibriTTS voice through piper-tts: 904 speakers)
   2. augmentation audio: MIT room impulse responses, an AudioSet part, the Free Music Archive (xs)
-  3. the positives: Piper's and ours (/data/positives/*; your own, `me`, weighted by copies), augmented
-     into features (training, validation, testing)
-  4. our near misses (/data/negatives/*) the same way, as a negative feature set
+  3. the positives: Piper's and the config's `positives`, augmented into features (training, validation, testing)
+  4. the config's `near_misses` the same way, as a negative feature set
   5. microWakeWord's negative features (speech, dinner party, no speech)
   6. training (model_train_eval: MixedNet), converted to a quantized streaming model
   7. the model and its manifest (the fields pymicro-wakeword reads) into /out
@@ -39,8 +39,18 @@ import yaml
 CONFIG = yaml.safe_load(open(sys.argv[1] if len(sys.argv) > 1 else "config.yaml"))
 WORK, DATA, OUT = Path(os.environ.get("WORK", "/work")), Path(os.environ.get("DATA", "/data")), Path(os.environ.get("OUT", "/out"))
 RUN = WORK / "runs" / CONFIG["run"] if CONFIG.get("run") else WORK       # this run's own files
-ROOT = DATA.parent                                                      # extra sets and backgrounds: under it
 T0 = time.monotonic()
+
+
+def trainable(folder: str) -> Path:
+    """A folder the config names, under the data root: only training data (processed/train, a spike's folder)."""
+    import re
+    if not (folder.startswith("datasets/processed/train/") or re.match(r"\d\d/", folder)):
+        sys.exit(f"{folder}: training reads only datasets/processed/train/ and a spike's folder (00/, 01/ …)")
+    path = DATA / folder
+    if not path.is_dir():
+        sys.exit(f"{folder}: not found under {DATA}")
+    return path
 
 
 def step(name: str) -> None:
@@ -155,7 +165,7 @@ def augmenter():
     from microwakeword.audio.augmentation import Augmentation
 
     a = CONFIG["augmentation"]
-    backgrounds = [str(WORK / "fma_16k"), str(WORK / "audioset_16k")] + [str(ROOT / d) for d in a.get("background_dirs", [])]
+    backgrounds = [str(WORK / "fma_16k"), str(WORK / "audioset_16k")] + [str(trainable(d)) for d in a.get("background_dirs", [])]
     return Augmentation(augmentation_duration_s=3.2, augmentation_probabilities=a["probabilities"],
                         impulse_paths=[str(WORK / "mit_rirs")],
                         background_paths=backgrounds,
@@ -273,20 +283,17 @@ if __name__ == "__main__":
     piper = piper_samples()
     augmentation_audio()
     aug = augmenter()
-    ours = sorted(p for p in (DATA / "positives").iterdir() if p.is_dir())
+    ours = [(trainable(p["dir"]), int(p.get("copies", 1))) for p in CONFIG["positives"]]
     RUN.mkdir(parents=True, exist_ok=True)
-    positives = gather(RUN / "positives", ([(piper, 1)] if piper else [])
-                       + [(p, CONFIG["own_voice_copies"] if p.name.startswith("me") else 1) for p in ours])
-    print(f"   positives: {len(list(positives.glob('*.wav')))} clips ({', '.join(p.name for p in ours)}"
+    positives = gather(RUN / "positives", ([(piper, 1)] if piper else []) + ours)
+    print(f"   positives: {len(list(positives.glob('*.wav')))} clips ({', '.join(p.name for p, _ in ours)}"
           f"{' + Piper' if piper else ''})")
     positive = features("positive", positives, aug)
     near = None
-    if (DATA / "negatives").exists():
-        mine = CONFIG.get("own_voice_negative_copies", 1)   # your own near misses, weighted like your positives
-        near_dir = gather(RUN / "near_misses", [(p, mine if p.name.startswith("me") else 1)
-                                                for p in sorted((DATA / "negatives").iterdir()) if p.is_dir()])
+    if CONFIG.get("near_misses"):
+        near_dir = gather(RUN / "near_misses", [(trainable(n["dir"]), int(n.get("copies", 1))) for n in CONFIG["near_misses"]])
         near = features("near_miss", near_dir, aug)
-    extra = [(features(n["name"], ROOT / n["dir"], aug, repeat=n.get("repeat", 1)), float(n["weight"]))
+    extra = [(features(n["name"], trainable(n["dir"]), aug, repeat=n.get("repeat", 1)), float(n["weight"]))
              for n in CONFIG.get("extra_negatives", [])]
     negatives = negative_datasets()
     train(positive, near, negatives, extra)

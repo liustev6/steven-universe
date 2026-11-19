@@ -1,4 +1,4 @@
-# Spike 03 (spikes/03-many-voices): spike 02 plus many voices and the owner's voice. DATA=<root>/xiao_pai:
+# Spike 03 (spikes/03-many-voices): spike 02 plus many voices and the owner's voice. data: the lists below:
 #   positives: tts (spike 01's 5 voices), tts3 (204 designed and cloned voices, cleaned), me (the owner, ×5)
 #   negatives (near misses, weight 5): tts-near, tts-speech, tts3-near (every voice's 30 core near misses),
 #     tts3-everyday, me-zh, me-en (the owner's Chinese and English)
@@ -10,8 +10,20 @@ wake_word: 小派小派
 model_name: xiao_pai_03
 languages: [zh]
 piper_samples: 0
-own_voice_copies: 5
 probability_cutoff: 0.97
+
+# what it trains on: folders under the data root (train.py reads only datasets/processed/train/ and NN/)
+positives:
+  - {dir: datasets/processed/train/xiaopai-tts-01} # spike 01: our TTS's 5 usable voices, cleaned (1,345)
+  - {dir: datasets/processed/train/xiaopai-tts-03} # spike 03: 204 designed and cloned voices, cleaned (2,624)
+  - {dir: datasets/processed/train/xiaopai-me-mac, copies: 5}   # the owner on the Mac's mic (31), ×5
+near_misses:
+  - {dir: datasets/processed/train/xiaopai-tts-01-near} # 22 near misses ×5 voices (770)
+  - {dir: datasets/processed/train/speech-tts-01}       # everyday Chinese (420)
+  - {dir: datasets/processed/train/xiaopai-tts-03-near} # every voice's 30 core near misses (6,120)
+  - {dir: datasets/processed/train/speech-tts-03}       # everyday lines (2,448)
+  - {dir: datasets/processed/train/speech-me-mac-zh}    # the owner's Chinese lines (127)
+  - {dir: datasets/processed/train/speech-me-mac-en}    # the owner's English (103)
 
 augmentation:
   probabilities: {SevenBandParametricEQ: 0.1, TanhDistortion: 0.1, PitchShift: 0.1, BandStopFilter: 0.1,
@@ -19,14 +31,14 @@ augmentation:
   background_min_snr_db: -5
   background_max_snr_db: 10
   background_dirs:               # under the data root; besides AudioSet and FMA music
-    - datasets/demand
-    - datasets/musan/musan/noise
+    - datasets/processed/train/demand
+    - datasets/processed/train/musan-noise
 
 extra_negatives:                 # under the data root
-  - {name: alimeeting, dir: xiao_pai_02/extra/alimeeting, weight: 10}     # 36 h of Mandarin meetings, far-field
-  - {name: demand, dir: xiao_pai_02/extra/demand, weight: 3}
-  - {name: musan_noise, dir: xiao_pai_02/extra/musan_noise, weight: 3}
-  - {name: video, dir: xiao_pai/extra/video, weight: 8}                   # 39 min of short videos playing: what set off false wakes
+  - {name: alimeeting, dir: datasets/processed/train/alimeeting-train-3s, weight: 10}     # 36 h of Mandarin meetings, far-field
+  - {name: demand, dir: datasets/processed/train/demand-3s, weight: 3}
+  - {name: musan_noise, dir: datasets/processed/train/musan-noise-3s, weight: 3}
+  - {name: video, dir: datasets/processed/train/video-me-3s, weight: 8}                   # 39 min of short videos playing: what set off false wakes
 
 training:
   steps: 10000

@@ -5,8 +5,8 @@ generates, are all American English; these are our 9 voices, Chinese-accented on
 around the Pi sound, and the only source for a Chinese wake word.
 
     cd python/services/speech-service && .venv/bin/python test-client/server.py &
-    python tts_samples.py phrases/hey_pi.yaml positive data/positives/tts --runs 5
-    python tts_samples.py phrases/hey_pi.yaml near_miss data/negatives/tts --runs 5
+    python tts_samples.py phrases/hey_pi.yaml positive data/datasets/processed/train/heypi-tts --runs 5
+    python tts_samples.py phrases/hey_pi.yaml near_miss data/datasets/processed/train/heypi-tts-near --runs 5
 
 16 kHz 16-bit mono WAVs (the notebook's format), the silence trimmed to 150 ms at each end; named
 `{voice}-{phrase}-{run}.wav`, and a file already there is kept (a rerun resumes).

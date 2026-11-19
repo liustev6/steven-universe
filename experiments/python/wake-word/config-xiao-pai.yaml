@@ -1,13 +1,19 @@
 # Training 小派小派 (train.py; spike 01, results/01-xiao-pai): our TTS's voices only, no Piper (its
-# voices are English), no recordings yet. Data: DATA=data/xiao_pai (tts_samples.py, phrases/xiao_pai.yaml).
+# voices are English), no recordings yet. Data: data: the lists below (tts_samples.py, phrases/xiao_pai.yaml).
 run: xiao_pai                    # work/runs/xiao_pai: its own features and model, "Hey Pi"'s kept
 word: 小派小派
 wake_word: 小派小派               # the manifest's name
 model_name: xiao_pai
 languages: [zh]
 piper_samples: 0
-own_voice_copies: 5              # data/xiao_pai/positives/me, when there are recordings
 probability_cutoff: 0.95
+
+# what it trains on: folders under the data root (train.py reads only datasets/processed/train/ and NN/)
+positives:
+  - {dir: datasets/processed/train/xiaopai-tts-01} # spike 01: our TTS's 5 usable voices, cleaned (1,345)
+near_misses:
+  - {dir: datasets/processed/train/xiaopai-tts-01-near} # 22 near misses ×5 voices (770)
+  - {dir: datasets/processed/train/speech-tts-01}       # everyday Chinese (420)
 
 augmentation:                    # as "Hey Pi" (config.yaml): the notebook's
   probabilities: {SevenBandParametricEQ: 0.1, TanhDistortion: 0.1, PitchShift: 0.1, BandStopFilter: 0.1,
@@ -18,4 +24,4 @@ augmentation:                    # as "Hey Pi" (config.yaml): the notebook's
 training:
   steps: 10000
   negative_class_weight: 20
-  near_miss_weight: 5.0          # data/xiao_pai/negatives/*: the near misses and everyday Chinese speech
+  near_miss_weight: 5.0          # near_misses below

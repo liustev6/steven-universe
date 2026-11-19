@@ -1,8 +1,8 @@
 """Spike 02: one channel of AliMeeting's far-field array, from the archive as it streams (no 73 GB unpack):
 each meeting's 8-channel recording → its first channel, 16 kHz mono 16-bit, one WAV per meeting.
 
-    .venv/bin/python spikes/02-mandarin-noise/extract_alimeeting.py data/datasets/alimeeting/Train_Ali_far.tar.gz \
-        data/datasets/alimeeting/train_far_ch0
+    .venv/bin/python spikes/02-mandarin-noise/extract_alimeeting.py Train_Ali_far.tar.gz \
+        data/datasets/full/alimeeting/train_far_ch0
 """
 
 import io

@@ -1,8 +1,8 @@
 """Spike 02: long recordings → short negative clips for train.py (16 kHz mono 16-bit WAVs), up to a cap of
 hours, taken evenly across every recording (every k-th clip of each), near-silence skipped.
 
-    .venv/bin/python spikes/02-mandarin-noise/cut_clips.py 'data/datasets/alimeeting/train_far_ch0/*.wav' \
-        data/xiao_pai_02/negatives/alimeeting --seconds 3 --hours 40
+    .venv/bin/python spikes/02-mandarin-noise/cut_clips.py 'data/datasets/full/alimeeting/train_far_ch0/*.wav' \
+        data/datasets/processed/train/alimeeting-train-3s --seconds 3 --hours 40
 """
 
 import argparse

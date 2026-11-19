@@ -11,9 +11,10 @@ is skipped (out/<voice>/done), so a rerun resumes.
         -v /srv/src/steven-universe/experiments/python/wake-word:/code:ro --entrypoint python SPEECH_BASE \
         /code/spikes/03-many-voices/gen_voices.py --source design|clone [--limit N]
 
-/exp: models/ (VoiceDesign, Base), data/datasets/aishell3-refs/ (fetch_refs.py), out/spike-03/ (written).
+/exp: models/ (VoiceDesign, Base), data/datasets/full/aishell3-refs/ (fetch_refs.py); written to
+data/datasets/full/generated/<--out>/.
 Spike 04: `--lines doubled --out spike-04`: the same voices, each saying the bank's near_miss_doubled once.
-The benchmark (benchmark.py): `--lines heypi --out heypi-eval --voices-from /exp/data/xiao_pai/eval/tts3-positive`:
+The common test (evaluate.py): `--lines heypi --out heypi-test --voices-from /exp/data/datasets/processed/test/xiaopai-tts-03`:
 the 51 held-out voices say "Hey Pi" and its near misses, so "Hey Pi" is tested on the voices 小派小派 is.
 """
 
@@ -32,21 +33,21 @@ import yaml
 ap = argparse.ArgumentParser()
 ap.add_argument("--source", choices=["design", "clone"], required=True)
 ap.add_argument("--limit", type=int, default=0, help="only the first N voices (a speed test)")
-ap.add_argument("--exp", default="/exp", help="models/ and the reference clips under it; out/spike-03 written")
+ap.add_argument("--exp", default="/exp", help="models/ and data/ under it")
 ap.add_argument("--bank", default="/code/phrases/xiao_pai_bank.yaml")
 ap.add_argument("--lines", choices=["spike03", "doubled", "heypi"], default="spike03",
                 help="what each voice says: spike 03's script; (spike 04) the bank's near_miss_doubled once each; "
                      "(the benchmark) \"Hey Pi\" in its 6 forms twice and its 18 near misses (phrases/hey_pi.yaml)")
 ap.add_argument("--voices-from", default="", help="only the voices with clips in this folder (e.g. the held-out "
-                "voices: /exp/data/xiao_pai/eval/tts3-positive)")
-ap.add_argument("--out", default="spike-03", help="under /exp/out")
+                "voices: /exp/data/datasets/processed/test/xiaopai-tts-03)")
+ap.add_argument("--out", default="spike-03", help="under data/datasets/full/generated")
 ap.add_argument("--batch", type=int, default=0, help="lines per call (default: 8 designed, 4 cloned: a clone's"
                 " reference voice goes with every line)")
 MAX_CODES = 400        # ~32 s at 12.5 codes/s: a sample that never stops is cut there (one took the GPU's 8 GB)
 args = ap.parse_args()
 EXP = Path(args.exp)
-OUT = EXP / "out" / args.out
-REFS = EXP / "data/datasets/aishell3-refs"
+OUT = EXP / "data/datasets/full/generated" / args.out
+REFS = EXP / "data/datasets/full/aishell3-refs"
 BANK = yaml.safe_load(open(args.bank))
 WAKE = ["小派小派", "小派小派。", "小派小派！", "小派小派？", "小派，小派。", "小派，小派！", "小派小派，"]
 CJK = re.compile(r"[一-鿿]")

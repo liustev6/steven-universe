@@ -1,4 +1,4 @@
-"""The recording pages on localhost; every take is a 16 kHz 16-bit mono WAV in data/xiao_pai/recordings/ (not in
+"""The recording pages on localhost; every take is a 16 kHz 16-bit mono WAV in data/datasets/full/recordings/ (not in
 git: voice recordings are personal).
 
   /      the Mac's mic, in the browser (index.html): the wake word; Chinese and English lines that aren't it
@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlparse
 import yaml
 
 HERE = Path(__file__).parent
-OUT = HERE.parent / "data/xiao_pai/recordings"
+OUT = HERE.parent / "data/datasets/full/recordings"
 PORT = 8770
 PI = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "pi"]
 PI_DIR = "wake-word"                                    # ~/wake-word on the Pi: start.wav, end.wav, the takes

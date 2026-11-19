@@ -3,8 +3,16 @@ word: hey pie                    # what Piper says (phonetic spellings work bett
 wake_word: Hey Pi                # the manifest's name
 model_name: hey_pi
 piper_samples: 2000
-own_voice_copies: 5              # data/positives/me, weighted: the real voice and the real microphone
 probability_cutoff: 0.95         # tuned on the Pi (higher: fewer false wakes, more misses)
+
+# what it trains on: folders under the data root (train.py reads only datasets/processed/train/ and NN/)
+positives:
+  - {dir: datasets/processed/train/heypi-me-pi, copies: 5}   # the owner's 171 on the Pi's mic, ×5: the real voice and microphone
+  - {dir: datasets/processed/train/heypi-tts}        # speech-service's 9 voices (270)
+  - {dir: datasets/processed/train/heypi-tts-female} # a second run of the female voices (240)
+near_misses:
+  - {dir: datasets/processed/train/heypi-tts-near}        # hey, pie, happy, bye, 嗨, 拜拜 … (810)
+  - {dir: datasets/processed/train/heypi-tts-female-near} # (720)
 
 augmentation:                    # the notebook's
   probabilities: {SevenBandParametricEQ: 0.1, TanhDistortion: 0.1, PitchShift: 0.1, BandStopFilter: 0.1,
@@ -15,4 +23,4 @@ augmentation:                    # the notebook's
 training:
   steps: 10000
   negative_class_weight: 20      # the notebook's; higher: fewer false wakes ("Hey Pi" is short)
-  near_miss_weight: 5.0          # data/negatives/* ("hey", "pie", "happy", "bye", "嗨", "拜拜", ...)
+  near_miss_weight: 5.0          # near_misses below

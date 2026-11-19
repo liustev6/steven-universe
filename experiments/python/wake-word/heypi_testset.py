@@ -1,10 +1,10 @@
 """"Hey Pi"'s sets in the common test (evaluate.py): the 51 held-out voices' clips (gen_voices.py --lines heypi
---out heypi-eval) into eval/heypi-positive and eval/heypi-near. Each positive goes through speech-to-text first, as
+--out heypi-test) into datasets/processed/test/heypi-tts-03 and heypi-tts-03-near (set-asides: 00/rejected). Each positive goes through speech-to-text first, as
 the 小派小派 test clips did (spike 01's check_clips.py): a take not heard as "hey" + "pi" (any spelling) is set aside,
 since a voice that can't say it isn't a miss of the model's. Run on the Mac with speech-service's venv, its test
 client running:
 
-    ../../../python/services/speech-service/.venv/bin/python heypi_testset.py data/xiao_pai_04/heypi-eval data/xiao_pai
+    ../../../python/services/speech-service/.venv/bin/python heypi_testset.py data/datasets/full/generated/heypi-test data
 """
 
 import asyncio
@@ -39,7 +39,8 @@ async def hear(pcm: bytes) -> str:
 
 
 async def main():
-    pos, near, aside = DATA / "eval/heypi-positive", DATA / "eval/heypi-near", DATA / "rejected/heypi-positive"
+    t = DATA / "datasets/processed/test"
+    pos, near, aside = t / "heypi-tts-03", t / "heypi-tts-03-near", DATA / "00/rejected"
     for d in (pos, near, aside):
         shutil.rmtree(d, ignore_errors=True)
         d.mkdir(parents=True)

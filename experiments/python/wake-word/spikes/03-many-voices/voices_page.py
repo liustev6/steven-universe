@@ -1,8 +1,8 @@
-"""Spike 03: a local listening page for the generated voices (data/xiao_pai_03/spike-03/index.html): each voice
+"""Spike 03: a local listening page for the generated voices (data/datasets/full/generated/spike-03/index.html): each voice
 with who it is (a designed voice's description; a cloned voice's speaker and its AISHELL-3 reference
 recording), then what it said, by kind. Audio loads on play.
 
-    .venv/bin/python spikes/03-many-voices/voices_page.py data/xiao_pai_03/spike-03
+    .venv/bin/python spikes/03-many-voices/voices_page.py data/datasets/full/generated/spike-03
 """
 
 import collections
@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
-refs_dir = Path("data/datasets/aishell3-refs")
+refs_dir = Path("data/datasets/full/aishell3-refs")
 rows = {}
 for line in open(root / "manifest.jsonl"):
     r = json.loads(line)

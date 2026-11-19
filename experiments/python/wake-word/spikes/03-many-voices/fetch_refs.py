@@ -2,7 +2,7 @@
 (Qwen3-TTS Base): one clean read sentence of 10-16 characters (about 3-5 s) per speaker, fetched alone from
 the Hugging Face copy (no 19 GB archive), with its text and the speaker's age group, gender and accent.
 
-    .venv/bin/python spikes/03-many-voices/fetch_refs.py data/datasets/aishell3-refs
+    .venv/bin/python spikes/03-many-voices/fetch_refs.py data/datasets/full/aishell3-refs
 """
 
 import json

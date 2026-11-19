@@ -1,58 +1,72 @@
-# wake-word: training "Hey Pi"
+# wake-word: training the Pi's wake word
 
-Hey Pi's own wake word (docs/specs/voice-path.md, V9 and 4.12b), a microWakeWord model like the
-built-in `hey_jarvis` that pi-server runs today (`app/voice/wake.py`, `PI_SERVER_WAKE_WORD`).
+The Pi's own wake word ([docs/specs/wake-word.md](../../../docs/specs/wake-word.md)): microWakeWord models that pi-server
+runs (`app/voice/wake.py`, `PI_SERVER_WAKE_WORD`). "Hey Pi" is live (spike 00); 小派小派 replaces it (spikes 01-04).
+Training runs on the playground (CT 110, docs/playground.md), its voices generated there on the GPU.
 
 | File | What |
 |---|---|
-| `train.py`, `config.yaml` | **the trainer, on our own hardware** (this Mac first): microWakeWord's notebook as one resumable script, its settings in git |
-| `train_hey_pi.ipynb` | the same as a Colab notebook (T4); a fallback: it hung at its installs on 2026-11-18 |
-| `segment.py` | a recording session on the Pi → one clip per "Hey Pi" |
-| `tts_samples.py`, `phrases/` | samples from speech-service's 9 voices, through the live service: a phrase set's positives, near misses or everyday speech |
-| `config-xiao-pai*.yaml`, `spikes/` | 小派小派, a Chinese wake word: each spike's config and its own scripts (spikes 01-04) |
-| `results/` | each spike's write-up and raw results (00: "Hey Pi"; 01-04: 小派小派); the decisions: docs/specs/wake-word.md |
-| `recording/` | the recording pages: the Mac's mic (`/`) and the Pi's (`/pi`), and `label.py` (every clip transcribed and labelled) |
-| `train-run.sh` | a training run on the playground (CT 110), then its tests; logs at :8080 (`GPU=1` for the card) |
-| `data/` (not in git) | the clips: `positives/me`, `positives/tts`, `negatives/tts`; voice recordings are personal and stay local |
+| `train.py` | **the trainer**: microWakeWord's notebook as one resumable script; reads only what a config lists |
+| `config-hey-pi.yaml`, `config-xiao-pai*.yaml` | each spike's settings and **exactly the sets it trains on** (01, 02, 03, 04, 04b–04f) |
+| `train-run.sh` | a run on the playground, then the common test; logs at :8080 (`GPU=1` for the card) |
+| `testset.py` | **the test set** (v1): fixed, rendered once from test-only sound, each clip labelled for every word |
+| `evaluate.py` | **the common test**: every model on the test set, one table each (`results/<spike>/test-<model>.txt`) |
+| `recording/` | the recording pages, the Mac's mic (`/`) and the Pi's (`/pi`); `label.py` splits and transcribes every take |
+| `segment.py`, `tts_samples.py`, `phrases/` | splitting a take into clips; speech-service's 9 voices saying a phrase set; the phrases |
+| `heypi_testset.py` | "Hey Pi"'s test clips from the 51 held-out voices, checked by speech-to-text |
+| `spikes/NN-*/` | each spike's own scripts (generating voices, cutting datasets, sorting recordings) |
+| `results/NN-*/` | each spike's write-up and its model's table in the common test |
+
+## The data (`data/`, not in git; the same on the Mac and the playground)
+Voice recordings are personal and generated audio is GBs: both stay out of git, on the Mac and in
+`/srv/experiments/wake-word/data` on the playground, kept in step.
+
+```
+data/
+├── datasets/
+│   ├── full/                 as downloaded, recorded or generated; never edited
+│   │   ├── alimeeting/       Mandarin meetings, far-field channel 0: train / test / eval
+│   │   ├── demand/  musan/noise/  aishell3-refs/
+│   │   ├── recordings/       every take of yours, whole: hey-pi-session-*, mac-*, pi-* (wake, near, room)
+│   │   └── generated/        every TTS run: heypi-tts (9 voices), spike-01, spike-03 (255 voices), spike-04, heypi-test
+│   └── processed/            broken down from full/
+│       ├── recordings/       your takes split into clips (clips/<take>/) and labelled (transcripts.jsonl)
+│       ├── train/            THE ONLY DATA TRAINING READS (train.py refuses anything else)
+│       └── test/             test-only: held-out voices, your held-out clips, room and videos, AliMeeting test + eval
+├── testset/v1/               the test set: audio/ and manifest.jsonl, rendered from processed/test/ only
+└── 00/ 01/ 03/ 04/           a spike's own extra processing: set-asides (rejected/), 03's held-out voices,
+                              04's video background / negative split
+```
+
+Set names say what they are: `xiaopai-` and `heypi-` for a word's own clips, `speech-` for everyday speech, the
+source after it (`tts-01`: spike 01's voices; `tts-03`: spike 03's 255; `me-pi`, `me-mac`: you, on that mic), and
+`-near` for near misses, `-3s` for audio cut into 3-second clips.
 
 ## Steps
-1. **Your voice, on the Pi's own mic** (pi-server is stopped meanwhile: it holds the mic). Between a
-   beep and two beeps, say "Hey Pi" about every 2 s: close, ~1 m, across the room; quiet, normal, loud;
-   casual and calling out; "嘿 Pi" too. Then split it:
+1. **Record** (the Pi's mic; the page stops pi-server and starts it again): `.venv/bin/python recording/server.py`,
+   then http://localhost:8770/pi. Takes land in `data/datasets/full/recordings/`. Then `recording/label.py`
+   (speech-service's venv, its test client running) and `spikes/04-pi-mic/sort_recordings.py` (every 4th clip,
+   and the last quarter of the room, to `processed/test/`).
+2. **Voices** (a GPU window: speech-service stopped by hand, docs/playground.md): `spikes/03-many-voices/gen_voices.py`
+   in speech-service's base image on CT 110 (`--lines`, `--out`); then the spike's sorter into train/ and test/.
+3. **Train and test** (CT 110, in tmux): `./train-run.sh <run> config-<…>.yaml`. The model lands in
+   `/srv/experiments/wake-word/out/models/`; copy it to the Mac's `out/`.
+4. **The common test** for any set of models: `python evaluate.py <data root> out/<model>.json … --out results`.
+   A new test-set version (more test-only data) is a superset: `testset.py` renders v1's clips identically.
+5. **On the Pi:** the `.tflite` and `.json` into `python/services/pi-server/models/`, `PI_SERVER_WAKE_WORD`, a deploy.
 
-       scp pi:wake-word/hey-pi-session-1.wav data/
-       python segment.py data/hey-pi-session-1.wav data/positives/me
+**Setting up the trainer** (once per machine; ~7 GB of downloads into `work/`):
 
-2. **speech-service's voices and the near misses** (the test client running):
+    uv venv -p 3.10 .venv
+    uv pip install -p .venv 'pymicro-features==2.0.2' 'piper-tts==1.8.0' 'datasets==3.6.0' librosa scipy tqdm pyyaml soundfile \
+      'git+https://github.com/whatsnowplaying/audio-metadata@d4ebb238e6a401bb1a5aaaac60c9e2b3cb30929f'
+    git clone https://github.com/kahrendt/microWakeWord work/microWakeWord && git -C work/microWakeWord checkout 4665173
+    uv pip install -p .venv -e work/microWakeWord        # editable: its `audio` package has no __init__.py
+    mkdir -p work/piper-onnx && for f in en_US-libritts_r-medium.onnx en_US-libritts_r-medium.onnx.json; do
+      curl -sSLfo work/piper-onnx/$f https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/libritts_r/medium/$f; done
 
-       PY=../../../python/services/speech-service/.venv/bin/python
-       $PY tts_samples.py phrases/hey_pi.yaml positive data/positives/tts --runs 5
-       $PY tts_samples.py phrases/hey_pi.yaml near_miss data/negatives/tts --runs 5
-
-3. **Train** (on a Mac, Apple silicon; ~7 GB of downloads into `work/`, fetched once):
-
-       uv venv -p 3.10 .venv
-       uv pip install -p .venv 'pymicro-features==2.0.2' 'piper-tts==1.8.0' 'datasets==3.6.0' librosa scipy tqdm pyyaml soundfile \
-         'git+https://github.com/whatsnowplaying/audio-metadata@d4ebb238e6a401bb1a5aaaac60c9e2b3cb30929f'
-       git clone https://github.com/kahrendt/microWakeWord work/microWakeWord && git -C work/microWakeWord checkout 4665173
-       uv pip install -p .venv -e work/microWakeWord        # editable: its `audio` package has no __init__.py
-       mkdir -p work/piper-onnx && for f in en_US-libritts_r-medium.onnx en_US-libritts_r-medium.onnx.json; do
-         curl -sSLfo work/piper-onnx/$f https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/libritts_r/medium/$f; done
-       WORK=$PWD/work DATA=$PWD/data OUT=$PWD/out .venv/bin/python train.py config.yaml
-
-   It ends with `out/hey_pi.tflite` and `out/hey_pi.json`. Where it differs from the notebook, and why:
-   Piper's samples come from its **ONNX** voice through `piper-tts` (GPL-3.0, run locally; the notebook's
-   `.pt` model is a pickle that newer PyTorch rightly won't load), `pymicro-features` 2.0.2 from PyPI
-   (the notebook's macOS fork no longer compiles), `datasets` 3.6 (5.x needs torchcodec), and AudioSet
-   read from its Parquet shards with pyarrow (the `.tar` parts the notebook links to are gone).
-   The training itself takes ~8 min on an M-series Mac; the log, `work/train.log`, has each validation
-   round, and the quantized model's test at several cutoffs at its end.
-4. **On the Pi:** both files into `python/services/pi-server/models/` (pi-server's default wake word;
-   `infra/deployment/pi-server.sh` ships them), its `probability_cutoff` set from the test; then say
-   "Hey Pi" ~30 times at different distances (it should wake), and leave it through an evening of TV and
-   talk (it shouldn't); tune `probability_cutoff` in the `.json` (higher: fewer false wakes, more misses).
-   The first model's numbers: docs/specs/voice-path.md, 4.12b.
-
-**Notes.** "Hey Pi" is two syllables: short wake words wake by accident more easily than the built-in
-three- and four-syllable ones, hence the near misses and the evening test. The training data's licenses
-are mixed: the model is for non-commercial personal use.
+Where it differs from microWakeWord's notebook, and why: Piper's samples come from its **ONNX** voice through
+`piper-tts` (GPL-3.0, run locally; the notebook's `.pt` model is a pickle that newer PyTorch rightly won't load),
+`pymicro-features` 2.0.2 from PyPI (the notebook's macOS fork no longer compiles), `datasets` 3.6 (5.x needs
+torchcodec), and AudioSet read from its Parquet shards with pyarrow (the `.tar` parts the notebook links to are gone).
+The training data's licenses are mixed: the models are for non-commercial personal use.
