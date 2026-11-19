@@ -2,7 +2,7 @@
 小派, 校牌, 小排 are all the same sounds) is moved aside to `rejected/`, as a broken take. Run with
 speech-service's venv, its test client running:
 
-    ../../services/speech-service/.venv/bin/python spikes/01-xiao-pai/check_clips.py data/xiao_pai/positives/tts
+    ../../../python/services/speech-service/.venv/bin/python spikes/01-xiao-pai/check_clips.py data/xiao_pai/positives/tts
 """
 
 import asyncio

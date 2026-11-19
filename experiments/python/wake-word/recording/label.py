@@ -4,7 +4,7 @@ data/xiao_pai/recordings/transcripts.jsonl: clip, take, start and end in the tak
 said, the language heard, and where the label came from. For the wake word now; for training a voice of your
 own later (audio with its text). Run with speech-service's venv, its test client running:
 
-    ../../services/speech-service/.venv/bin/python recording/label.py
+    ../../../python/services/speech-service/.venv/bin/python recording/label.py
 
 A take already in the manifest is skipped (a rerun labels only new takes). Each clip gets speech-to-text's
 transcript (`asr`) and the closest line of the bank you read from (`match`, `match_score`: phrases/

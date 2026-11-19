@@ -22,7 +22,7 @@ built-in `hey_jarvis` that pi-server runs today (`app/voice/wake.py`, `PI_SERVER
 
 2. **speech-service's voices and the near misses** (the test client running):
 
-       PY=../../services/speech-service/.venv/bin/python
+       PY=../../../python/services/speech-service/.venv/bin/python
        $PY tts_samples.py phrases/hey_pi.yaml positive data/positives/tts --runs 5
        $PY tts_samples.py phrases/hey_pi.yaml near_miss data/negatives/tts --runs 5
 

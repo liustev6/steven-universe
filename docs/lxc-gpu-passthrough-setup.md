@@ -248,11 +248,44 @@ the card, a kernel, the result back: CUDA's unified memory end to end; built for
 compiled it for this card on the fly). The test images removed. The toolkit isn't held: it doesn't
 have to match the driver.
 
+## Part 3: a second container on the same card (CT 110, playground)
+The playground ([playground.md](playground.md)): experiments, spikes and model training, kept off
+production's containers. It gets the **same four device files** as CT 108: an LXC device is shared, not
+moved, so both containers see the RTX 5060. **VRAM isn't shared fairly**: speech-service holds ~7.7 of 8 GB,
+so GPU work here runs in a window with speech-service stopped (CPU work doesn't need one). Run in pve01's
+shell.
+
+### 1. The container and the GPU's device files
+Bigger than a service's (datasets, features, training): 12 cores, 32 GB, 500 GB. Not started at boot.
+```sh
+pct create 110 local:vztmpl/debian-13-standard_13.6-1_amd64.tar.zst \
+  --hostname playground --arch amd64 --ostype debian --unprivileged 1 \
+  --features nesting=1,keyctl=1 --cores 12 --memory 32768 --swap 4096 \
+  --rootfs local-lvm:500 --net0 name=eth0,bridge=vmbr0,ip=dhcp,type=veth \
+  --onboot 0 --timezone host --ssh-public-keys /root/.ssh/authorized_keys
+pct set 110 --dev0 /dev/nvidia0,mode=0666 --dev1 /dev/nvidiactl,mode=0666 \
+            --dev2 /dev/nvidia-uvm,mode=0666 --dev3 /dev/nvidia-uvm-tools,mode=0666
+pct start 110
+pct exec 110 -- ip -4 -o addr show eth0
+```
+
+### 2. The usual container setup, without the service parts
+[lxc-setup.md](lxc-setup.md) step 2 (a DHCP reservation; no DNS name: nothing serves from here), 3 (console),
+4 (packages and Docker), 5 (the SSH alias `playground`, through pve01 as `speech-host`). Not 6-7: no
+deploy wrapper (the deployer never deploys here), not in the boot order.
+
+### 3. NVIDIA's libraries and the Container Toolkit
+Part 2's steps 4 and 5 in CT 110's shell, unchanged: `nvidia-driver-cuda` at **620.70.06** (the host's
+module's version), held; `nvidia-persistenced` and `nvidia-powerd` masked; the toolkit with
+`no-cgroups = true`; `docker run --rm --gpus all nvidia/cuda:12.8.2-base-ubuntu24.04 nvidia-smi`.
+A driver update (below) now has two containers to update: CT 108 and CT 110.
+
 ## The chain, end to end
 ```
 pve01: kernel 7.0.14 + NVIDIA's module 620.70.06 (DKMS) ── /dev/nvidia0, nvidiactl, nvidia-uvm(-tools)
-  └─ CT 108 (unprivileged): dev0–dev3 (mode 0666) + NVIDIA's libraries 620.70.06 (held)
-       └─ Docker + NVIDIA Container Toolkit (no-cgroups) ── `gpus: all` ──▶ a container, as uid 10001
+  ├─ CT 108 (unprivileged): dev0–dev3 (mode 0666) + NVIDIA's libraries 620.70.06 (held)
+  │    └─ Docker + NVIDIA Container Toolkit (no-cgroups) ── `gpus: all` ──▶ speech-service, as uid 10001
+  └─ CT 110 playground: the same devices and libraries ── `gpus: all` ──▶ experiments (speech-service stopped)
 ```
 
 ## Updating later
@@ -266,7 +299,7 @@ reboot) and update the driver (below); NVIDIA usually supports a new kernel with
 libraries must move **together**, to the same version.
 1. pve01: `apt-mark unhold` the NVIDIA packages; `apt install nvidia-kernel-open-dkms=<v> nvidia-driver-cuda=<v>`;
    `dkms status` (built for every installed kernel); hold again (step 3c).
-2. Each GPU container (CT 108): the same `<v>` of `nvidia-driver-cuda` (step 4), held again.
+2. Each GPU container (CT 108, CT 110): the same `<v>` of `nvidia-driver-cuda` (step 4), held again.
 3. `./setup.sh reboot` (the new module loads at boot); `nvidia-smi` on pve01, in CT 108, and in a CUDA
    container (step 5).
 Until the reboot, the old module keeps running and the containers' new libraries don't match it: do

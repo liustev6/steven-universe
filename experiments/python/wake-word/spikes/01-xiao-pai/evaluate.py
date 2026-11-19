@@ -1,7 +1,7 @@
 """Spike 01: how well a wake-word model does on audio it never trained on, scored as pi-server runs it
 (pymicro-wakeword, streaming, its 5-frame average). Run with pi-server's venv:
 
-    ../../services/pi-server/.venv/bin/python spikes/01-xiao-pai/evaluate.py out/xiao_pai.json data/xiao_pai
+    ../../../python/services/pi-server/.venv/bin/python spikes/01-xiao-pai/evaluate.py out/xiao_pai.json data/xiao_pai
 
   recall       the held-out voices (never in training) saying the word: clean, and mixed with background
                sound (AudioSet clips) at 10 and 5 dB SNR, as a room would

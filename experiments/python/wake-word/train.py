@@ -258,7 +258,7 @@ def model() -> None:
     name = CONFIG["model_name"]
     OUT.mkdir(parents=True, exist_ok=True)
     shutil.copy(RUN / "trained/tflite_stream_state_internal_quant/stream_state_internal_quant.tflite", OUT / f"{name}.tflite")
-    manifest = {"type": "micro", "wake_word": CONFIG["wake_word"], "author": "steven-universe (python/features/wake-word)",
+    manifest = {"type": "micro", "wake_word": CONFIG["wake_word"], "author": "steven-universe (experiments/python/wake-word)",
                 "website": "https://github.com/kahrendt/microWakeWord", "model": f"{name}.tflite",
                 "trained_languages": CONFIG.get("languages", ["en"]), "version": 2,
                 "micro": {"probability_cutoff": CONFIG["probability_cutoff"], "feature_step_size": 10,
