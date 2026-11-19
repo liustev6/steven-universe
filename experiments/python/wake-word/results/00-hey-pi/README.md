@@ -8,6 +8,8 @@ it misses 24% at 0.4 false wakes an hour; it wakes for 99% of the owner's clips 
 use it wakes too easily: measured on 2026-11-19 against the same audio as 小派小派 (spike 04), **6.7 false wakes an
 hour in the owner's room and 35.5 in everyday Chinese speech** at 0.95. That's why the word is moving to 小派小派.
 
+**The common test:** `test-hey_pi.txt` here is this spike's model in evaluate.py, the same test every model takes (the spec's numbers). The tables below are from the spike's own test at the time.
+
 ## Setup
 - **Positives:** 171 of the owner's "Hey Pi"s on the Pi's mic (`segment.py`; ×5), 2,000 Piper clips (its LibriTTS
   model: 904 speakers), 510 from speech-service's 9 voices.

@@ -8,6 +8,8 @@ Mandarin home's false-wake rate look like?
 46% (cutoff 0.99 here, against spike 01 at 0.80), and in 2 h of Mandarin meetings it woke 0.5-1 times an hour
 at cutoffs 0.97-0.99. Near misses are its weak spot: 小爱小爱 and 小胖小胖.
 
+**The common test:** `test-xiao_pai_02.txt` here is this spike's model in evaluate.py, the same test every model takes (the spec's numbers). The tables below are from the spike's own test at the time.
+
 ## What changed from spike 01
 Same positives (1,345 cleaned TTS takes, 5 effective voices) and near misses, same training settings, plus:
 
@@ -67,6 +69,6 @@ sentence reached 0.95; the closest: 小作文 0.94, 爸爸 0.94, 换个台 0.92,
   (50% at 5 dB). Next: more near misses from more voices, speaker variety (spike 03, cloned voices), your
   recordings, and your room's own audio.
 
-Files: `results.txt` here (both models' evaluation output); the code in [spikes/02-mandarin-noise/](../../spikes/02-mandarin-noise/)
+Files: `test-xiao_pai_02.txt` here (the common test); the code in [spikes/02-mandarin-noise/](../../spikes/02-mandarin-noise/)
 (`extract_alimeeting.py`, `cut_clips.py`); the config
 `config-xiao-pai-02.yaml`; the model `out/xiao_pai_02.{tflite,json}`; the data in `data/` (not in git).

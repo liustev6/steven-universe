@@ -15,6 +15,8 @@ often as spike 03 did at 0.97. Its cost: unheard voices in loud background (5 dB
 for spike 03 at 0.97. Mixing background under only 5% of clips (04c) cuts that further (30-58%): the synthetic
 voices learn 小派小派 over noise from the mixing.
 
+**The common test:** `test-xiao_pai_04*.txt` here is this spike's model in evaluate.py, the same test every model takes (the spec's numbers). The tables below are from the spike's own test at the time.
+
 ## Setup
 - **Recordings on the Pi's mic** (`recording/pi.html`: the recording server drives the Pi over SSH, pi-server
   stopped meanwhile; `recording/label.py` splits and transcribes; `sort_recordings.py` sorts):
@@ -130,8 +132,7 @@ microWakeWord's own validation (recall with no false wakes on its ambient set): 
 **Next:** 04d and 04e's results; the chosen model on the Pi beside "Hey Pi" at its cutoff (~0.90 for 04b) for a
 day of real use.
 
-Files: `results-04.txt`, `results-04b.txt`, `results-04c.txt` here (each run's evaluation output: spike 03's
-tests, then `test_pi.py --held-out`); the code in
+Files: `test-xiao_pai_04*.txt` here (each run in the common test); the code in
 [spikes/04-pi-mic/](../../spikes/04-pi-mic/)
 (`sort_recordings.py`, `sort_voices.py`, `test_pi.py`), `recording/pi.html`, `recording/label.py`; the configs
 `config-xiao-pai-04*.yaml`; the models on the playground and the Mac (`out/xiao_pai_04*.{tflite,json}`); the data

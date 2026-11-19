@@ -1,7 +1,8 @@
 # Wake-word spikes: the results
 The measurements behind the wake word ([docs/specs/wake-word.md](../../../../docs/specs/wake-word.md): its decisions,
 and an appendix with each spike's core numbers). Each folder keeps the write-up (`README.md`: the question, how it
-ran, the results, what it says) and the raw output (`results*.txt`). The code is in [spikes/](../spikes/) (each
+ran, what it says) and its model's table in the common test (`test-<model>.txt`, from `evaluate.py`: the same rows
+and cutoffs for every model, so they compare side by side). The code is in [spikes/](../spikes/) (each
 spike's own scripts) and beside it (`train.py`, `train-run.sh`, `recording/`); the data (recordings, generated
 voices, models) is on the Mac and the playground, never in git.
 

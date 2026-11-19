@@ -9,6 +9,8 @@ false wakes in 15 held-out minutes of short videos at 0.95 and up, 1 an hour in 
 is near misses that double a close syllable (小怕小怕, 小潘小潘: about half wake it at 0.95) or contain a lone
 小派 (嘿小派, 叫小派: ~20%). The owner's 7 held-out wake words: 5 of 7 at 0.95 (too few to judge).
 
+**The common test:** `test-xiao_pai_03.txt` here is this spike's model in evaluate.py, the same test every model takes (the spec's numbers). The tables below are from the spike's own test at the time.
+
 ## Setup
 - **Voices** (`gen_voices.py`, on the playground's GPU, speech-service stopped for 1.5 h): Qwen3-TTS 1.7B
   **VoiceDesign**, 150 voices from descriptions spread over gender, five ages (children to elderly), timbre, eight
@@ -77,5 +79,5 @@ stream's wakes come the same way, where one sentence runs into the next.
 **Next:** near misses weighted higher and said by every voice in more forms (doubled 怕/潘/拍/白, lone 小派 in
 phrases); the owner's wake word recorded on the Pi; then a trial on the Pi beside "Hey Pi" at 0.97.
 
-Files: `results.txt` here (the evaluation's output and the model's own test); the code in
+Files: `test-xiao_pai_03.txt` here (the common test); the code in
 [spikes/03-many-voices/](../../spikes/03-many-voices/) (`gen_voices.py`, `fetch_refs.py`, `voices_page.py`, `evaluate.py`); the model on the playground (`/srv/experiments/wake-word/out/models/`).

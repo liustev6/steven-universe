@@ -18,6 +18,11 @@ docs/specs/wake-word.md (W7-W8) and each spike's results/ use these tables. With
                 phrases/hey_pi.yaml), spike 01's, the owner's on the Pi, the owner's other lines; 小派小派 also the
                 owner's "Hey Pi"s played back to back (false wakes per hour)
 
+Certainty: the peak score each set gets (median, and the 10th percentile: its weakest tenth), and its near misses
+(median, 90th percentile); a model that scores its word at 0.99 is surer than one that barely passes 0.91, with
+more margin for a mic, voice or room no test has. The margin: the unheard voices' 10th percentile minus the near
+misses' 90th.
+
 The last column is industry practice for comparing models: the model at its lowest cutoff with at most TARGET false
 wakes an hour over all the streams together (3.5 h). Scores are cached in WORK/evaluate/ (by the model file's hash
 and the sets' sizes), so a rerun only scores what's new.
@@ -215,6 +220,24 @@ def report(r: dict) -> str:
         row(f"{name} ({len(v)})", share(v))
     for name, s in r["near_streams"].items():
         row(f"{name}, per hour", per_hour(s))
+
+    def pct(values, qs) -> list[str]:
+        return [f"{np.percentile(values, q):.3f}" for q in qs]
+
+    def rows3(title: str, qs: tuple, labels: tuple, sets: dict) -> None:
+        out.append(f"\n{title}\n  {'':{w}s}" + "".join(f"{l:>8s}" for l in labels))
+        for name, v in sets.items():
+            label = f"{name} ({len(v)})" if " + " not in name else f"  + {name.split(' + ')[-1]}"
+            out.append(f"  {label:{w}s}" + "".join(f"{c:>8s}" for c in pct(v, qs)))
+
+    rows3("CERTAINTY: the peak score its word gets (1.00 = sure; the higher, the more margin for audio no test has)",
+          (50, 25, 10), ("median", "p25", "p10"), r["recall"])
+    rows3("… and its near misses (the lower, the surer it isn't the word)", (50, 75, 90), ("median", "p75", "p90"), r["near"])
+    clean = [x for n, v in r["recall"].items() if " + " not in n and "owner" not in n for x in v]
+    near = [x for v in r["near"].values() for x in v]
+    if clean and near:
+        out.append(f"  {'margin: unheard voices p10 − near misses p90':{w}s}"
+                   f"{np.percentile(clean, 10) - np.percentile(near, 90):>8.3f}   (above 0: they don't overlap)")
     return "\n".join(out) + "\n"
 
 

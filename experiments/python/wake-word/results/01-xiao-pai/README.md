@@ -8,6 +8,8 @@ English; no recordings yet), with microWakeWord's existing negative sets, and ho
 to generalise. The word itself looks like a good choice; the next step is speaker variety (your own
 recordings, and many more synthetic speakers), then Mandarin and household negatives (spike 02).
 
+**The common test:** `test-xiao_pai.txt` here is this spike's model in evaluate.py, the same test every model takes (the spec's numbers). The tables below are from the spike's own test at the time.
+
 ## Setup
 - **Positives:** 小派小派 in 7 written forms (小派小派, 小派，小派。, with ！？。), from 7 of the 9 voices, 40 sampled
   takes each: 1,960. **Two voices held out** (serena, uncle_fu): never in training, used only to test.
@@ -67,6 +69,6 @@ The false-wake sets are short (minutes, not hours): "0" means none seen, not a r
 - **Next:** spike 02 adds Mandarin conversation (AliMeeting) and household noise (DEMAND, MUSAN), with a
   Mandarin false-wake test of hours, not minutes; then speaker variety and your recordings.
 
-Files: `results.txt` here (the evaluation's output); the code in [spikes/01-xiao-pai/](../../spikes/01-xiao-pai/)
+Files: `test-xiao_pai.txt` here (the common test); the code in [spikes/01-xiao-pai/](../../spikes/01-xiao-pai/)
 (`check_clips.py`, `evaluate.py`); the data in
 `data/xiao_pai/` (not in git), the model `out/xiao_pai.{tflite,json}`.
