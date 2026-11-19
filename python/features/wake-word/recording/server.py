@@ -1,6 +1,7 @@
 """The recording page (recording/index.html) on localhost: it records your voice in the browser and this server
 saves each take as a 16 kHz 16-bit mono WAV in data/xiao_pai/recordings/ (not in git: voice recordings are
-personal). The not-the-wake-word card reads its lines from phrases/xiao_pai_bank.yaml.
+personal). Four kinds: the wake word; Chinese and English lines that aren't it (phrases/xiao_pai_bank.yaml,
+split by language, each take named with its lines); short videos playing nearby, a part every 5 minutes.
 
     .venv/bin/python recording/server.py            # then open http://localhost:8770
 """
@@ -41,7 +42,9 @@ class Handler(BaseHTTPRequestHandler):
         kind = q.get("kind", ["take"])[0]
         lines = q.get("lines", [""])[0]                       # "12-80": the bank's lines this take covers
         lines = f"-lines{lines}" if re.fullmatch(r"\d+-\d+", lines) else ""
-        if url.path != "/save" or kind not in ("wake", "negative"):
+        part = q.get("part", [""])[0]                        # short videos: saved a part every 5 minutes
+        lines += f"-part{int(part):02d}" if part.isdigit() else ""
+        if url.path != "/save" or kind not in ("wake", "zh", "en", "video"):
             return self.send_error(400)
         data = self.rfile.read(int(self.headers["Content-Length"]))
         if data[:4] != b"RIFF":

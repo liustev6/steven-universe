@@ -13,13 +13,17 @@
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif; }
-  .wrap { max-width: 980px; margin: 0 auto; padding: 22px 16px 48px; }
-  h1 { font-size: 20px; margin: 0 0 4px; } .sub { color: var(--muted); margin: 0 0 16px; }
-  .meter { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 22px 16px 48px; }
+  h1 { font-size: 20px; margin: 0 0 4px; } .sub { color: var(--muted); margin: 0 0 14px; }
+  .meter { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; margin-bottom: 14px; }
   .bar { flex: 1; max-width: 320px; height: 8px; background: var(--sunken); border-radius: 99px; overflow: hidden; }
   .bar i { display: block; height: 100%; width: 0; background: var(--good); transition: width .08s; }
-  .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px; }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .tab { min-width: 0; padding: 10px 16px; font-size: 15px; background: var(--panel); color: var(--text); border: 1px solid var(--line); }
+  .tab.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .tab small { opacity: .7; font-weight: 500; margin-left: 6px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px; display: none; }
+  .card.on { display: block; }
   .card h2 { margin: 0 0 6px; font-size: 17px; }
   .card.live { border-color: var(--live); box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 18%, transparent); }
   .row { display: flex; align-items: center; gap: 14px; margin: 12px 0; flex-wrap: wrap; }
@@ -32,10 +36,10 @@
   .word { font-size: 40px; font-weight: 700; letter-spacing: .05em; margin: 6px 0; }
   ol { margin: 6px 0 0; padding-left: 22px; color: var(--muted); }
   ol li span { color: var(--text); }
-  .bank { max-height: 60vh; overflow-y: auto; border-top: 1px solid var(--line); margin-top: 8px; padding-top: 4px; }
+  .bank { max-height: 62vh; overflow-y: auto; border-top: 1px solid var(--line); margin-top: 8px; padding-top: 4px; }
   .sec { margin: 14px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
   .sec b { color: var(--accent); }
-  .lines { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 2px 18px; }
+  .lines { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 2px 18px; }
   .ln { display: flex; gap: 8px; padding: 2px 6px; border-radius: 6px; cursor: pointer; font-size: 16px; }
   .ln:hover { background: var(--sunken); }
   .ln small { color: var(--muted); font-size: 11px; min-width: 32px; text-align: right; padding-top: 4px; font-variant-numeric: tabular-nums; }
@@ -50,79 +54,118 @@
 <body>
 <div class="wrap">
   <h1>小派小派 · recording</h1>
-  <p class="sub">One beep: start talking. Press <b>Stop</b> when you're nearly done (two beeps). Each take is saved on this Mac, never uploaded anywhere.</p>
+  <p class="sub">One beep: start. Press <b>Stop</b> when you're nearly done (two beeps). Takes are saved on this Mac only.</p>
   <div class="meter">mic <div class="bar"><i id="level"></i></div><span id="micState">not started</span></div>
 
-  <div class="grid">
-    <section class="card" id="card-wake">
-      <h2>1 · The wake word</h2>
-      <div class="word">小派小派</div>
-      <span class="target">about every 2 seconds, ~30 times, about a minute</span>
-      <ol>
-        <li><span>×6 normal, as if asking Pi something</span></li>
-        <li><span>×4 quietly</span></li>
-        <li><span>×4 loudly, calling across a room</span></li>
-        <li><span>×4 from 2–3 metres away</span></li>
-        <li><span>×4 fast, ×4 slow</span></li>
-        <li><span>×4 any way: sleepy, questioning, impatient, cheerful</span></li>
-      </ol>
-      <div class="row"><button id="btn-wake">Start</button><span class="timer" id="t-wake">0:00</span><span class="target">target ~1:00</span></div>
-    </section>
+  <div class="tabs" id="tabs"></div>
 
-    <section class="card" id="card-negative">
-      <h2>2 · Not the wake word</h2>
-      <span class="target">near misses: <b>twice each</b> · everyday lines: <b>once each</b> · a second's pause between · as long as you like (sessions of 5-10 min are easy)</span>
-      <div class="row">
-        <label class="target">start at line <input type="number" id="from" min="1" value="1"></label>
-        <button id="btn-negative">Start</button><span class="timer" id="t-negative">0:00</span>
-        <span class="target" id="progress"></span>
-      </div>
-      <span class="target">click a line to start there; when you stop, it asks the last line you read</span>
-      <div class="bank" id="bank"></div>
-    </section>
-  </div>
+  <section class="card" id="card-wake">
+    <h2>The wake word</h2>
+    <div class="word">小派小派</div>
+    <span class="target">about every 2 seconds, ~30 times, about a minute</span>
+    <ol>
+      <li><span>×6 normal, as if asking Pi something</span></li>
+      <li><span>×4 quietly</span></li>
+      <li><span>×4 loudly, calling across a room</span></li>
+      <li><span>×4 from 2–3 metres away</span></li>
+      <li><span>×4 fast, ×4 slow</span></li>
+      <li><span>×4 any way: sleepy, questioning, impatient, cheerful</span></li>
+    </ol>
+    <div class="row"><button id="btn-wake">Start</button><span class="timer" id="t-wake">0:00</span><span class="target">target ~1:00</span></div>
+  </section>
+
+  <section class="card" id="card-zh">
+    <h2>中文 · not the wake word</h2>
+    <span class="target">near misses: <b>twice each</b> · everyday lines: <b>once each</b> · a second's pause between · sessions of 5-10 min</span>
+    <div class="row">
+      <label class="target">start at line <input type="number" id="from-zh" min="1" value="1"></label>
+      <button id="btn-zh">Start</button><span class="timer" id="t-zh">0:00</span><span class="target" id="progress-zh"></span>
+    </div>
+    <span class="target">click a line to start there; when you stop, it asks the last line you read</span>
+    <div class="bank" id="bank-zh"></div>
+  </section>
+
+  <section class="card" id="card-en">
+    <h2>English · not the wake word</h2>
+    <span class="target">near misses: <b>twice each</b> · everyday lines: <b>once each</b> · a second's pause between · sessions of 5-10 min</span>
+    <div class="row">
+      <label class="target">start at line <input type="number" id="from-en" min="1" value="1"></label>
+      <button id="btn-en">Start</button><span class="timer" id="t-en">0:00</span><span class="target" id="progress-en"></span>
+    </div>
+    <span class="target">click a line to start there; when you stop, it asks the last line you read</span>
+    <div class="bank" id="bank-en"></div>
+  </section>
+
+  <section class="card" id="card-video">
+    <h2>Short videos playing</h2>
+    <span class="target">Start, then play short videos (抖音, TikTok, Reels…) near the Mac as you normally would, for as long as you like:
+      an hour is great. <b>Don't say the wake word.</b> Saved every 5 minutes as a part, so nothing is lost.</span>
+    <div class="row"><button id="btn-video">Start</button><span class="timer" id="t-video">0:00</span><span class="target" id="parts-video"></span></div>
+  </section>
+
   <div class="saved" id="saved"></div>
 </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
-// ---- the bank (phrases/xiao_pai_bank.yaml), numbered across sections; progress remembered in this browser ----
-const SECTIONS = [["near_miss_core", "Near misses · always · twice each"], ["near_miss_extra", "More near misses · twice each"],
-                  ["zh", "中文 · everyday · once each"], ["en", "English · everyday · once each"], ["mixed", "中英混合 · once each"]];
-let LINES = 0;
 const store = { get: (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
                 set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
-function markDone() {
-  const done = store.get("done", []);
-  document.querySelectorAll(".ln").forEach((el) => {
+const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const CJK = /[一-鿿]/;
+
+// ---- the cards, as tabs -------------------------------------------------------------------------------------
+const CARDS = [["wake", "1 · 小派小派"], ["zh", "2 · 中文"], ["en", "3 · English"], ["video", "4 · Short videos"]];
+function show(kind) {
+  for (const [k] of CARDS) { $(`card-${k}`).classList.toggle("on", k === kind); $(`tab-${k}`).classList.toggle("on", k === kind); }
+  store.set("tab", kind);
+}
+for (const [k, label] of CARDS) {
+  const b = document.createElement("button"); b.className = "tab"; b.id = `tab-${k}`; b.innerHTML = label;
+  b.onclick = () => { if (!rec) show(k); };
+  $("tabs").append(b);
+}
+show(store.get("tab", "wake"));
+
+// ---- the bank (phrases/xiao_pai_bank.yaml), split by language; each list numbered on its own ------------------
+const LISTS = { zh: [], en: [] };       // [{title, twice, lines: [text]}]
+function markDone(lang) {
+  const done = store.get(`done-${lang}`, []), from = +$(`from-${lang}`).value;
+  document.querySelectorAll(`#bank-${lang} .ln`).forEach((el) => {
     const n = +el.dataset.n;
     el.classList.toggle("done", done.some(([a, b]) => n >= a && n <= b));
-    el.classList.toggle("start", n === +$("from").value);
+    el.classList.toggle("start", n === from);
   });
   const count = new Set(done.flatMap(([a, b]) => Array.from({ length: b - a + 1 }, (_, i) => a + i))).size;
-  $("progress").textContent = `${count} of ${LINES} lines read`;
+  $(`progress-${lang}`).textContent = `${count} of ${LISTS[lang].total} lines read`;
 }
 (async () => {
   const bank = await (await fetch("/bank")).json();
-  let n = 0;
-  for (const [key, title] of SECTIONS) {
-    const sec = document.createElement("div"); sec.className = "sec";
-    sec.innerHTML = `${title} · <b>${(bank[key] || []).length}</b>`;
-    const grid = document.createElement("div"); grid.className = "lines";
-    for (const text of bank[key] || []) {
-      n++;
-      const el = document.createElement("div"); el.className = "ln"; el.dataset.n = n;
-      el.innerHTML = `<small>${n}</small><span></span>`; el.lastChild.textContent = text;
-      el.onclick = () => { $("from").value = el.dataset.n; markDone(); };
-      grid.append(el);
+  const near = [...bank.near_miss_core, ...bank.near_miss_extra];
+  LISTS.zh = [{ title: "近音 · near misses · twice each", lines: near.filter((t) => CJK.test(t)) },
+              { title: "日常 · everyday · once each", lines: bank.zh },
+              { title: "中英混合 · mixed · once each", lines: bank.mixed }];
+  LISTS.en = [{ title: "Near misses · twice each", lines: near.filter((t) => !CJK.test(t)) },
+              { title: "Everyday · once each", lines: bank.en }];
+  for (const lang of ["zh", "en"]) {
+    let n = 0;
+    for (const s of LISTS[lang]) {
+      const sec = document.createElement("div"); sec.className = "sec"; sec.innerHTML = `${s.title} · <b>${s.lines.length}</b>`;
+      const grid = document.createElement("div"); grid.className = "lines";
+      for (const text of s.lines) {
+        n++;
+        const el = document.createElement("div"); el.className = "ln"; el.dataset.n = n;
+        el.innerHTML = `<small>${n}</small><span></span>`; el.lastChild.textContent = text;
+        el.onclick = () => { $(`from-${lang}`).value = el.dataset.n; markDone(lang); };
+        grid.append(el);
+      }
+      $(`bank-${lang}`).append(sec, grid);
     }
-    $("bank").append(sec, grid);
+    LISTS[lang].total = n;
+    $(`from-${lang}`).max = n; $(`from-${lang}`).value = Math.min(n, store.get(`next-${lang}`, 1));
+    $(`from-${lang}`).oninput = () => markDone(lang);
+    $(`tab-${lang}`).innerHTML = `${CARDS.find(([k]) => k === lang)[1]}<small>${n}</small>`;
+    markDone(lang);
   }
-  LINES = n;
-  $("from").max = n; $("from").value = Math.min(n, store.get("next", 1));
-  $("from").oninput = markDone;
-  markDone();
-  document.querySelector(`.ln[data-n="${$("from").value}"]`)?.scrollIntoView({ block: "center" });
 })();
 
 // ---- the mic, at 16 kHz, unprocessed (no echo cancellation, noise suppression or auto gain) ------------------
@@ -130,7 +173,8 @@ const TAP = `class Tap extends AudioWorkletProcessor {
   process(inputs) { const ch = inputs[0][0]; if (ch) this.port.postMessage(ch.slice(0)); return true; }
 }
 registerProcessor("tap", Tap);`;
-let mic = null, rec = null;              // rec: {kind, chunks, started, timer}
+let mic = null, rec = null;              // rec: {kind, chunks, samples, started, timer, part}
+const PART_SAMPLES = 16000 * 300;        // short videos: a part every 5 minutes
 
 async function openMic() {
   if (mic) return mic;
@@ -143,7 +187,10 @@ async function openMic() {
     const f = e.data; let sum = 0;
     for (let i = 0; i < f.length; i++) sum += f[i] * f[i];
     $("level").style.width = `${Math.min(100, Math.sqrt(sum / f.length) * 400)}%`;
-    if (rec && rec.recording) rec.chunks.push(f);
+    if (rec && rec.recording) {
+      rec.chunks.push(f); rec.samples += f.length;
+      if (rec.kind === "video" && rec.samples >= PART_SAMPLES) savePart();
+    }
   };
   $("micState").textContent = `on · ${ctx.sampleRate} Hz`;
   mic = { ctx, stream };
@@ -173,16 +220,28 @@ function wav(chunks, rate) {               // float chunks → a 16-bit mono WAV
   return new Blob([buf], { type: "audio/wav" });
 }
 
-const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+async function upload(kind, chunks, extra = "") {
+  try {
+    const res = await fetch(`/save?kind=${kind}${extra}`, { method: "POST", body: wav(chunks, mic.ctx.sampleRate) });
+    const j = await res.json();
+    $("saved").innerHTML = `saved <b>${j.file}</b> (${j.seconds} s)<br>` + $("saved").innerHTML;
+  } catch (e) { $("saved").innerHTML = `<span class="err">not saved: ${e}</span><br>` + $("saved").innerHTML; }
+}
+
+function savePart() {                      // short videos: hand this part to the server, keep recording
+  const chunks = rec.chunks; rec.chunks = []; rec.samples = 0; rec.part += 1;
+  $("parts-video").textContent = `${rec.part} part${rec.part > 1 ? "s" : ""} saved`;
+  upload("video", chunks, `&part=${rec.part}`);
+}
 
 async function start(kind) {
   try { await openMic(); } catch (e) { $("micState").innerHTML = `<span class="err">mic blocked: ${e.message}</span>`; return; }
   await beep(1);
-  rec = { kind, chunks: [], recording: true, started: performance.now() };
-  rec.timer = setInterval(() => ($(`t-${kind}`).textContent = fmt((performance.now() - rec.started) / 1000)), 200);
+  rec = { kind, chunks: [], samples: 0, recording: true, started: performance.now(), part: 0 };
+  rec.timer = setInterval(() => ($(`t-${kind}`).textContent = fmt((performance.now() - rec.started) / 1000)), 250);
   $(`card-${kind}`).classList.add("live");
   const b = $(`btn-${kind}`); b.textContent = "Stop"; b.className = "stop";
-  $(`btn-${kind === "wake" ? "negative" : "wake"}`).disabled = true;
+  document.querySelectorAll(".tab").forEach((t) => (t.disabled = true));
 }
 
 async function stop() {
@@ -190,24 +249,22 @@ async function stop() {
   await beep(2);
   $(`card-${r.kind}`).classList.remove("live");
   const b = $(`btn-${r.kind}`); b.textContent = "Start again"; b.className = "";
-  $("btn-wake").disabled = $("btn-negative").disabled = false;
+  document.querySelectorAll(".tab").forEach((t) => (t.disabled = false));
   rec = null;
-  let lines = "";
-  if (r.kind === "negative") {                // which lines this take covers: asked, remembered for next time
-    const from = +$("from").value, said = prompt(`Last line you read? (started at ${from})`, String(from));
-    const to = Math.max(from, Math.min(LINES, parseInt(said) || from));
-    lines = `&lines=${from}-${to}`;
-    store.set("done", [...store.get("done", []), [from, to]]); store.set("next", Math.min(LINES, to + 1));
-    $("from").value = Math.min(LINES, to + 1); markDone();
+  let extra = "";
+  if (r.kind === "zh" || r.kind === "en") {  // which lines this take covers: asked, remembered for next time
+    const lang = r.kind, from = +$(`from-${lang}`).value, total = LISTS[lang].total;
+    const said = prompt(`Last line you read? (started at ${from})`, String(from));
+    const to = Math.max(from, Math.min(total, parseInt(said) || from));
+    extra = `&lines=${from}-${to}`;
+    store.set(`done-${lang}`, [...store.get(`done-${lang}`, []), [from, to]]); store.set(`next-${lang}`, Math.min(total, to + 1));
+    $(`from-${lang}`).value = Math.min(total, to + 1); markDone(lang);
   }
-  try {
-    const res = await fetch(`/save?kind=${r.kind}${lines}`, { method: "POST", body: wav(r.chunks, mic.ctx.sampleRate) });
-    const j = await res.json();
-    $("saved").innerHTML = `saved <b>${j.file}</b> (${j.seconds} s)<br>` + $("saved").innerHTML;
-  } catch (e) { $("saved").innerHTML = `<span class="err">not saved: ${e}</span><br>` + $("saved").innerHTML; }
+  if (r.kind === "video") extra = `&part=${r.part + 1}`;
+  if (r.chunks.length) await upload(r.kind, r.chunks, extra);
 }
 
-for (const kind of ["wake", "negative"]) $(`btn-${kind}`).onclick = () => (rec ? stop() : start(kind));
+for (const [kind] of CARDS) $(`btn-${kind}`).onclick = () => (rec ? stop() : start(kind));
 </script>
 </body>
 </html>
