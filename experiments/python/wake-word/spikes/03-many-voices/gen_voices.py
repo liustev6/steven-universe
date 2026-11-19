@@ -31,6 +31,8 @@ ap.add_argument("--source", choices=["design", "clone"], required=True)
 ap.add_argument("--limit", type=int, default=0, help="only the first N voices (a speed test)")
 ap.add_argument("--exp", default="/exp", help="models/ and the reference clips under it; out/spike-03 written")
 ap.add_argument("--bank", default="/code/phrases/xiao_pai_bank.yaml")
+ap.add_argument("--batch", type=int, default=0, help="lines per call (default: 14 designed, 7 cloned: a clone's"
+                " reference voice goes with every line, and 14 ran out of the 8 GB)")
 args = ap.parse_args()
 EXP = Path(args.exp)
 OUT = EXP / "out/spike-03"
@@ -122,8 +124,9 @@ def main():
         t = time.monotonic()
         lines = script(v["voice"])
         prompt = model.create_voice_clone_prompt(v["ref_audio"], v["ref_text"]) if args.source == "clone" else None
-        for batch_start in range(0, len(lines), 14):          # 14 at a time: fits beside the model
-            batch = lines[batch_start: batch_start + 14]
+        size = args.batch or (14 if args.source == "design" else 7)
+        for batch_start in range(0, len(lines), size):
+            batch = lines[batch_start: batch_start + size]
             texts = [t_ for _, t_ in batch]
             langs = ["Chinese" if CJK.search(t_) else "English" for t_ in texts]
             if args.source == "design":
