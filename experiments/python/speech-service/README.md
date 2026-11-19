@@ -12,6 +12,5 @@ from a spike whose write-up and numbers are in `docs/specs/speech-service-spikes
 `evenness.py` and `roundtrip.py` talk to the live (or dev) service through its test client; `trace_reply.py`
 imports the service's engine. On the playground, `run.sh` runs any of them in speech-base (production's stack)
 with the service's code at `/src` and production's pinned models (`run.sh models`, as a deploy fetches them):
-`run.sh check` (the imports, no GPU), `run.sh trace_reply.py …` (the GPU: speech-service stopped first). In
-the editor, the repository's `pyrightconfig.json` resolves `app` to speech-service's code for this folder. The service's own scripts (smoke test, e2e, its GPU tests'
+`run.sh check` (the imports, no GPU), `run.sh trace_reply.py …` (the GPU: speech-service stopped first). The service's own scripts (smoke test, e2e, its GPU tests'
 window) stay in `python/services/speech-service/scripts/`.
