@@ -13,6 +13,8 @@ is skipped (out/<voice>/done), so a rerun resumes.
 
 /exp: models/ (VoiceDesign, Base), data/datasets/aishell3-refs/ (fetch_refs.py), out/spike-03/ (written).
 Spike 04: `--lines doubled --out spike-04`: the same voices, each saying the bank's near_miss_doubled once.
+The benchmark (benchmark.py): `--lines heypi --out heypi-eval --voices-from /exp/data/xiao_pai/eval/tts3-positive`:
+the 51 held-out voices say "Hey Pi" and its near misses, so "Hey Pi" is tested on the voices 小派小派 is.
 """
 
 import argparse
@@ -32,8 +34,11 @@ ap.add_argument("--source", choices=["design", "clone"], required=True)
 ap.add_argument("--limit", type=int, default=0, help="only the first N voices (a speed test)")
 ap.add_argument("--exp", default="/exp", help="models/ and the reference clips under it; out/spike-03 written")
 ap.add_argument("--bank", default="/code/phrases/xiao_pai_bank.yaml")
-ap.add_argument("--lines", choices=["spike03", "doubled"], default="spike03",
-                help="what each voice says: spike 03's script, or (spike 04) the bank's near_miss_doubled once each")
+ap.add_argument("--lines", choices=["spike03", "doubled", "heypi"], default="spike03",
+                help="what each voice says: spike 03's script; (spike 04) the bank's near_miss_doubled once each; "
+                     "(the benchmark) \"Hey Pi\" in its 6 forms twice and its 18 near misses (phrases/hey_pi.yaml)")
+ap.add_argument("--voices-from", default="", help="only the voices with clips in this folder (e.g. the held-out "
+                "voices: /exp/data/xiao_pai/eval/tts3-positive)")
 ap.add_argument("--out", default="spike-03", help="under /exp/out")
 ap.add_argument("--batch", type=int, default=0, help="lines per call (default: 8 designed, 4 cloned: a clone's"
                 " reference voice goes with every line)")
@@ -83,6 +88,9 @@ def cloned() -> list[dict]:
 def script(voice: str) -> list[tuple[str, str]]:
     if args.lines == "doubled":
         return [("near_doubled", t) for t in BANK["near_miss_doubled"]]
+    if args.lines == "heypi":
+        hey = yaml.safe_load(open(Path(args.bank).with_name("hey_pi.yaml")))
+        return [("positive", t) for t in hey["positive"] * 2] + [("near", t) for t in hey["near_miss"]]
     rng = random.Random(voice)
     lines = [("positive", t) for t in WAKE * 2]
     lines += [("near_core", t) for t in BANK["near_miss_core"]]
@@ -118,6 +126,9 @@ def main():
                                           attn_implementation="sdpa")
     print(f"{name} loaded in {time.monotonic() - t0:.0f} s", flush=True)
     voices = designed() if args.source == "design" else cloned()
+    if args.voices_from:
+        keep = {p.name.split("-")[0] for p in Path(args.voices_from).glob("*.wav")}
+        voices = [v for v in voices if v["voice"] in keep]
     if args.limit:
         voices = voices[: args.limit]
     OUT.mkdir(parents=True, exist_ok=True)
