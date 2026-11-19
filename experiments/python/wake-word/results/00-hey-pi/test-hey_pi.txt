@@ -12,7 +12,27 @@ FALSE WAKES PER HOUR, each set as one stream
 
 RECALL: its word, share woken
                                                           0.80    0.90    0.95    0.97    0.99    ≤0.5/h
+  51 unheard voices, designed (287)                        87%     80%     77%     75%     67%       56%
+    + background 10 dB                                     81%     73%     68%     65%     56%       49%
+    + background 5 dB                                      72%     67%     61%     56%     45%       35%
+  51 unheard voices, cloned (216)                          93%     89%     85%     82%     67%       51%
+    + background 10 dB                                     84%     78%     69%     62%     46%       36%
+    + background 5 dB                                      72%     62%     55%     48%     32%       21%
 
 NEAR MISSES: share that wakes it
                                                           0.80    0.90    0.95    0.97    0.99    ≤0.5/h
+  51 voices, Hey Pi's 18 (Hey pal, Apple pie …) (918)      19%     15%     12%      9%      6%        4%
 
+CERTAINTY: the peak score its word gets (1.00 = sure; the higher, the more margin for audio no test has)
+                                                        median     p25     p10
+  51 unheard voices, designed (287)                      0.996   0.967   0.564
+    + background 10 dB                                   0.995   0.893   0.338
+    + background 5 dB                                    0.986   0.739   0.187
+  51 unheard voices, cloned (216)                        0.995   0.986   0.888
+    + background 10 dB                                   0.987   0.908   0.601
+    + background 5 dB                                    0.965   0.749   0.325
+
+… and its near misses (the lower, the surer it isn't the word)
+                                                        median     p75     p90
+  51 voices, Hey Pi's 18 (Hey pal, Apple pie …) (918)    0.111   0.629   0.965
+  margin: unheard voices p10 − near misses p90          -0.180   (above 0: they don't overlap)

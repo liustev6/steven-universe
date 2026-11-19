@@ -33,3 +33,27 @@ NEAR MISSES: share that wakes it
   the owner's near misses, Pi mic (15)                     20%      7%      7%      7%      0%        0%
   the owner's other lines, Mac mic (55)                     7%      7%      4%      0%      0%        0%
   the owner's 'Hey Pi's back to back (4 min), per hour   354.6   241.7   177.3   112.8    32.2      48.3
+
+CERTAINTY: the peak score its word gets (1.00 = sure; the higher, the more margin for audio no test has)
+                                                        median     p25     p10
+  51 unheard voices, designed (355)                      0.996   0.990   0.955
+    + background 10 dB                                   0.994   0.962   0.839
+    + background 5 dB                                    0.986   0.923   0.630
+  51 unheard voices, cloned (293)                        0.996   0.996   0.988
+    + background 10 dB                                   0.996   0.994   0.980
+    + background 5 dB                                    0.996   0.982   0.949
+  spike 01's 2 unheard voices (128)                      0.996   0.989   0.959
+    + background 10 dB                                   0.990   0.951   0.771
+    + background 5 dB                                    0.977   0.868   0.369
+  the owner, Pi mic, quiet (25)                          0.995   0.980   0.940
+  the owner, Pi mic, a video playing (21)                0.996   0.996   0.984
+  the owner, Mac mic (7)                                 0.973   0.952   0.921
+
+… and its near misses (the lower, the surer it isn't the word)
+                                                        median     p75     p90
+  51 voices, core 30 (小胖小胖, 小怕小怕 …) (1530)               0.195   0.751   0.964
+  51 voices, doubled 25 (小快小快, 小派小心 …) (1275)            0.748   0.969   0.996
+  spike 01's near misses (132)                           0.081   0.520   0.832
+  the owner's near misses, Pi mic (15)                   0.243   0.694   0.845
+  the owner's other lines, Mac mic (55)                  0.002   0.011   0.255
+  margin: unheard voices p10 − near misses p90          -0.018   (above 0: they don't overlap)
