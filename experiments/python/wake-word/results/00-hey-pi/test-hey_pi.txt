@@ -1,0 +1,18 @@
+hey_pi (Hey Pi): the common test (evaluate.py), audio no model trained on
+last column: its cutoff for at most 0.5 false wakes an hour over all the streams: never reached (at 0.995, the highest tried: 1.43 an hour)
+
+FALSE WAKES PER HOUR, each set as one stream
+                                                          0.80    0.90    0.95    0.97    0.99    ≤0.5/h
+  the owner's room, Pi mic (10 min held out)               6.1     0.0     0.0     0.0     0.0       0.0
+  the owner's short videos (15 min held out)               0.0     0.0     0.0     0.0     0.0       0.0
+  Mandarin meetings, AliMeeting test (2 h)                 7.5     3.0     2.0     1.0     0.5       0.5
+  everyday speech, unheard voices (30 min)                80.9    49.3    35.5    25.7    13.8       7.9
+  AudioSet sounds (35 min)                                 6.9     1.7     1.7     1.7     0.0       0.0
+  all together (3.5 h)                                   17.42    9.14    6.57    4.57    2.29      1.43
+
+RECALL: its word, share woken
+                                                          0.80    0.90    0.95    0.97    0.99    ≤0.5/h
+
+NEAR MISSES: share that wakes it
+                                                          0.80    0.90    0.95    0.97    0.99    ≤0.5/h
+

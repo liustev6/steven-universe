@@ -185,8 +185,12 @@ def report(r: dict) -> str:
     cols = [int(np.argmin(np.abs(GRID - c))) for c in CUTOFFS] + [operating_point(r)]
     head = "".join(f"{c:>8.2f}" for c in CUTOFFS) + f"{'≤' + str(TARGET) + '/h':>10s}"
     w = 52
+    hours = sum(s["hours"] for s in r["streams"].values())
+    rate = sum(s["wakes"][cols[-1]] for s in r["streams"].values()) / hours
+    point = (f"{GRID[cols[-1]]:.3f}" if rate <= TARGET
+             else f"never reached (at {GRID[cols[-1]]:.3f}, the highest tried: {rate:.2f} an hour)")
     out = [f"{r['model']} ({r['word']}): the common test (evaluate.py), audio no model trained on",
-           f"last column: its cutoff for at most {TARGET} false wakes an hour over all the streams: {GRID[cols[-1]]:.3f}"]
+           f"last column: its cutoff for at most {TARGET} false wakes an hour over all the streams: {point}"]
 
     def row(name: str, cells: list[str]) -> None:
         out.append(f"  {name:{w}s}" + "".join(f"{c:>8s}" for c in cells[:-1]) + f"{cells[-1]:>10s}")
