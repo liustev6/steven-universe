@@ -6,7 +6,9 @@ a rerun resumes, and the downloads (~6 GB) are fetched once into the cache.
 
 A config with `run: NAME` keeps that run's positives, features and trained model in /work/runs/NAME (the
 downloads stay shared), so a second wake word doesn't overwrite the first; `piper_samples: 0` trains on our
-own clips only (Piper's voices are English: a Chinese word has none).
+own clips only (Piper's voices are English: a Chinese word has none). `extra_negatives` adds negative sets of
+our own (folders of clips: Mandarin conversation, household noise), each with its sampling weight, and
+`augmentation.background_dirs` adds background sound mixed into every clip.
 
 Steps, as microWakeWord's notebook (kahrendt/microWakeWord, notebooks/basic_training_notebook.ipynb):
   1. Piper samples of the word (Piper's ONNX LibriTTS voice through piper-tts: 904 speakers)
@@ -151,16 +153,17 @@ def augmenter():
     from microwakeword.audio.augmentation import Augmentation
 
     a = CONFIG["augmentation"]
+    backgrounds = [str(WORK / "fma_16k"), str(WORK / "audioset_16k")] + [str(Path(d)) for d in a.get("background_dirs", [])]
     return Augmentation(augmentation_duration_s=3.2, augmentation_probabilities=a["probabilities"],
                         impulse_paths=[str(WORK / "mit_rirs")],
-                        background_paths=[str(WORK / "fma_16k"), str(WORK / "audioset_16k")],
+                        background_paths=backgrounds,
                         background_min_snr_db=a["background_min_snr_db"], background_max_snr_db=a["background_max_snr_db"],
                         min_jitter_s=0.195, max_jitter_s=0.205)
 
 
-def features(name: str, clips_dir: Path, aug) -> Path:
-    """Augmented spectrograms of a clip folder, split into training (sliding 10 frames, twice over),
-    validation, testing (as the streaming model sees them), as the notebook makes them."""
+def features(name: str, clips_dir: Path, aug, repeat: int = 2) -> Path:
+    """Augmented spectrograms of a clip folder, split into training (sliding 10 frames, `repeat` times over:
+    twice, as the notebook; once for a big negative set), validation, testing (as the streaming model sees them)."""
     from microwakeword.audio.clips import Clips
     from microwakeword.audio.spectrograms import SpectrogramGeneration
     from mmap_ninja.ragged import RaggedMmap
@@ -176,7 +179,7 @@ def features(name: str, clips_dir: Path, aug) -> Path:
     step(f"features: {name} ({len(list(clips_dir.glob('*.wav')))} clips)")
     clips = Clips(input_directory=str(clips_dir), file_pattern="*.wav", max_clip_duration_s=None,
                   remove_silence=False, random_split_seed=10, split_count=0.1)
-    for split, split_name, repeat, slide in (("training", "train", 2, 10), ("validation", "validation", 1, 10),
+    for split, split_name, repeat, slide in (("training", "train", repeat, 10), ("validation", "validation", 1, 10),
                                              ("testing", "test", 1, 1)):
         d = out / split
         d.mkdir(parents=True, exist_ok=True)
@@ -215,7 +218,7 @@ def negative_datasets() -> Path:
 
 
 # ---- 6-7. training, the model ------------------------------------------------------------------------------------
-def train(positive: Path, near: Path | None, negatives: Path) -> None:
+def train(positive: Path, near: Path | None, negatives: Path, extra: list[tuple[Path, float]] = ()) -> None:
     t = CONFIG["training"]
     feats = [{"features_dir": str(positive), "sampling_weight": 2.0, "penalty_weight": 1.0, "truth": True,
               "truncation_strategy": "truncate_start", "type": "mmap"}]
@@ -224,6 +227,9 @@ def train(positive: Path, near: Path | None, negatives: Path) -> None:
                       "truth": False, "truncation_strategy": "random", "type": "mmap"})
     for name, weight in (("speech", 10.0), ("dinner_party", 10.0), ("no_speech", 5.0)):
         feats.append({"features_dir": str(negatives / name), "sampling_weight": weight, "penalty_weight": 1.0,
+                      "truth": False, "truncation_strategy": "random", "type": "mmap"})
+    for features_dir, weight in extra:                       # our own negative sets (extra_negatives)
+        feats.append({"features_dir": str(features_dir), "sampling_weight": weight, "penalty_weight": 1.0,
                       "truth": False, "truncation_strategy": "random", "type": "mmap"})
     feats.append({"features_dir": str(negatives / "dinner_party_eval"), "sampling_weight": 0.0, "penalty_weight": 1.0,
                   "truth": False, "truncation_strategy": "split", "type": "mmap"})
@@ -276,7 +282,9 @@ if __name__ == "__main__":
     if (DATA / "negatives").exists():
         near_dir = gather(RUN / "near_misses", [(p, 1) for p in sorted((DATA / "negatives").iterdir()) if p.is_dir()])
         near = features("near_miss", near_dir, aug)
+    extra = [(features(n["name"], Path(n["dir"]), aug, repeat=n.get("repeat", 1)), float(n["weight"]))
+             for n in CONFIG.get("extra_negatives", [])]
     negatives = negative_datasets()
-    train(positive, near, negatives)
+    train(positive, near, negatives, extra)
     model()
     step("done")

@@ -1,0 +1,29 @@
+# Spike 02 (spikes/02-mandarin-noise): spike 01 (config-xiao-pai.yaml, the same positives and near misses,
+# DATA=data/xiao_pai) plus Mandarin conversation and household noise, as negatives and as background.
+run: xiao_pai_02                 # work/runs/xiao_pai_02: spike 01's run kept, to compare
+word: 小派小派
+wake_word: 小派小派
+model_name: xiao_pai_02
+languages: [zh]
+piper_samples: 0
+own_voice_copies: 5
+probability_cutoff: 0.95
+
+augmentation:
+  probabilities: {SevenBandParametricEQ: 0.1, TanhDistortion: 0.1, PitchShift: 0.1, BandStopFilter: 0.1,
+                  AddColorNoise: 0.1, AddBackgroundNoise: 0.75, Gain: 1.0, RIR: 0.5}
+  background_min_snr_db: -5
+  background_max_snr_db: 10
+  background_dirs:               # besides AudioSet and FMA music: a home's and a city's noise (DEMAND), noise (MUSAN)
+    - data/datasets/demand
+    - data/datasets/musan/musan/noise
+
+extra_negatives:                 # sampling weights as microWakeWord's own sets (speech 10, dinner party 10, no speech 5)
+  - {name: alimeeting, dir: data/xiao_pai_02/extra/alimeeting, weight: 10}     # 36 h of Mandarin meetings, far-field
+  - {name: demand, dir: data/xiao_pai_02/extra/demand, weight: 3}             # 3.2 h: kitchen, living room, washer, …
+  - {name: musan_noise, dir: data/xiao_pai_02/extra/musan_noise, weight: 3}   # MUSAN's noise, cut into clips
+
+training:
+  steps: 10000
+  negative_class_weight: 20
+  near_miss_weight: 5.0

@@ -6,8 +6,9 @@
   recall       the held-out voices (never in training) saying the word: clean, and mixed with background
                sound (AudioSet clips) at 10 and 5 dB SNR, as a room would
   near misses  the held-out voices' near misses: the share that wakes it
-  speech/h     everyday Chinese from the held-out voices, and your "Hey Pi" recordings (the Pi's mic), each
-               played as one stream: false wakes per hour (a wake, then 1 s before another counts)
+  speech/h     everyday Chinese from the held-out voices, your "Hey Pi" recordings (the Pi's mic), and (spike 02,
+               when there) 2 h of AliMeeting's test meetings, each played as one stream: false wakes per hour
+               (a wake, then 1 s before another counts)
 """
 
 import collections
@@ -110,11 +111,16 @@ if near:
 streams = {"Chinese speech (held-out)": sorted((DATA / "eval/speech").glob("*.wav")),
            "your 'Hey Pi' recordings": sorted((HERE / "data/positives/me").glob("*.wav")),
            "AudioSet sounds (200 clips)": sorted((HERE / "work/audioset_16k").glob("*.wav"))[200:400]}
+# spike 02: AliMeeting's test meetings (never trained on), one channel of the far-field array, 2 h of them
+meetings = sorted((HERE / "data/datasets/alimeeting/test_far_ch0").glob("*.wav"))
+if meetings:
+    streams["Mandarin meetings, far-field"] = meetings
 rows = []
 for name, files in streams.items():
     if not files:
         continue
     x = np.concatenate([np.concatenate([read(f), np.zeros(8000, np.float32)]) for f in files])
+    x = x[:16000 * 3600 * 2]                                     # at most 2 h of any one set
     p, hours = probabilities(x), len(x) / 16000 / 3600
     rows.append((f"{name} ({hours * 60:.0f} min)", [f"{wakes(p, c) / hours:.1f}" for c in CUTOFFS]))
 table("FALSE WAKES PER HOUR, as one continuous stream", rows)
