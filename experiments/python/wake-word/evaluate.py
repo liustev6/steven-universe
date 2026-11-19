@@ -1,13 +1,16 @@
-"""The wake-word benchmark: every model on the same held-out tests, side by side (docs/specs/wake-word.md, W7-W8).
-Each model is scored as pi-server runs it (pymicro-wakeword, streaming, its 5-frame average), on audio no model
-trained on, with pymicro-wakeword from any venv (the trainer's on the playground):
+"""The common test: every wake-word model on the same held-out audio, each with its own table of the same rows (what
+it was tested on) and columns (cutoffs), as pi-server runs it (pymicro-wakeword, streaming, its 5-frame average).
+docs/specs/wake-word.md (W7-W8) and each spike's results/ use these tables. With any venv that has pymicro-wakeword
+(the trainer's on the playground):
 
-    python benchmark.py <data root> out/hey_pi.json out/xiao_pai.json out/xiao_pai_02.json … > results/benchmark/results.txt
+    python evaluate.py <data root> out/xiao_pai_04b.json [more models …] [--out results]
 
-  false wakes   the same streams for every model, whatever its word, each played as one stream (a wake, then 1 s
-                before another counts): the owner's room on the Pi's mic (the 10 held-out min), the owner's short
-                videos (15 held-out min), Mandarin meetings (AliMeeting's test set, 2 h), everyday speech from the
-                unheard voices (30 min), AudioSet sounds (35 min)
+`--out results` writes each table into its spike's folder too (results/<spike>/test-<model>.txt).
+
+  false wakes   per hour, the same streams for every model whatever its word, each played as one stream (a wake,
+                then 1 s before another counts): the owner's room on the Pi's mic (the 10 held-out min), the
+                owner's short videos (15 held-out min), Mandarin meetings (AliMeeting's test set, 2 h), everyday
+                speech from the unheard voices (30 min), AudioSet sounds (35 min)
   recall        the model's own word from the 51 held-out synthetic voices (designed, cloned), clean and with
                 background at 10 and 5 dB; 小派小派 also from spike 01's two held-out voices and the owner (the Pi's
                 mic: quiet, a video playing; the Mac's). "Hey Pi" has no held-out owner clips (all 171 trained on)
@@ -15,9 +18,9 @@ trained on, with pymicro-wakeword from any venv (the trainer's on the playground
                 phrases/hey_pi.yaml), spike 01's, the owner's on the Pi, the owner's other lines; 小派小派 also the
                 owner's "Hey Pi"s played back to back (false wakes per hour)
 
-The comparison point is industry practice: each model's lowest cutoff at which the false-wake streams together
-(3.5 h) give at most TARGET false wakes an hour, and everything else at that cutoff; then a grid of fixed cutoffs.
-Per-model scores are cached in WORK/benchmark/ (by the model file's hash), so adding a model reruns only it.
+The last column is industry practice for comparing models: the model at its lowest cutoff with at most TARGET false
+wakes an hour over all the streams together (3.5 h). Scores are cached in WORK/evaluate/ (by the model file's hash
+and the sets' sizes), so a rerun only scores what's new.
 """
 
 import collections
@@ -33,15 +36,17 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(sys.argv[1])                                  # the data root: xiao_pai/, datasets/, positives/
-MODELS = [Path(m) for m in sys.argv[2:]]
+MODELS = [Path(m) for m in sys.argv[2:] if m.endswith(".json")]
 DATA = ROOT / "xiao_pai"
 EVAL = DATA / "eval"
 HERE = Path(__file__).resolve().parent
 WORK = Path(os.environ.get("WORK", HERE / "work"))
-CACHE = WORK / "benchmark"
+CACHE = WORK / "evaluate"
 TARGET = 0.5                                              # false wakes an hour at the comparison point
 GRID = np.round(np.arange(0.50, 0.9951, 0.005), 3)
-SHOWN = (0.90, 0.95, 0.97, 0.99)
+CUTOFFS = (0.80, 0.90, 0.95, 0.97, 0.99)
+SPIKES = {"hey_pi": "00-hey-pi", "xiao_pai": "01-xiao-pai", "xiao_pai_02": "02-mandarin-noise",
+          "xiao_pai_03": "03-many-voices"}                # and xiao_pai_04* → 04-pi-mic
 STEP = 160                                                # 10 ms at 16 kHz
 
 
@@ -167,10 +172,6 @@ def score(model_path: Path) -> dict:
 
 
 # ---- the tables -------------------------------------------------------------------------------------------------
-def at(cutoff: float) -> int:
-    return int(np.argmin(np.abs(GRID - cutoff)))
-
-
 def operating_point(r: dict) -> int:
     hours = sum(s["hours"] for s in r["streams"].values())
     for i in range(len(GRID)):
@@ -179,42 +180,49 @@ def operating_point(r: dict) -> int:
     return len(GRID) - 1
 
 
-def table(title: str, rows: list[tuple[str, list[str]]], names: list[str]) -> None:
-    w = max([38] + [len(n) + 1 for n, _ in rows])
-    print(f"\n{title}\n  {'':{w}s}" + "".join(f"{n:>14s}" for n in names))
-    for name, cells in rows:
-        print(f"  {name:{w}s}" + "".join(f"{c:>14s}" for c in cells))
+def report(r: dict) -> str:
+    """One model's table: a section per kind of test, a row per set, a column per cutoff, its comparison point last."""
+    cols = [int(np.argmin(np.abs(GRID - c))) for c in CUTOFFS] + [operating_point(r)]
+    head = "".join(f"{c:>8.2f}" for c in CUTOFFS) + f"{'≤' + str(TARGET) + '/h':>10s}"
+    w = 52
+    out = [f"{r['model']} ({r['word']}): the common test (evaluate.py), audio no model trained on",
+           f"last column: its cutoff for at most {TARGET} false wakes an hour over all the streams: {GRID[cols[-1]]:.3f}"]
 
+    def row(name: str, cells: list[str]) -> None:
+        out.append(f"  {name:{w}s}" + "".join(f"{c:>8s}" for c in cells[:-1]) + f"{cells[-1]:>10s}")
 
-def report(results: list[dict], index: list[int], label: str) -> None:
-    names = [r["model"] for r in results]
-    hours = [sum(s["hours"] for s in r["streams"].values()) for r in results]
-    rows = [("cutoff", [f"{GRID[i]:.3f}" for i in index]),
-            ("false wakes per hour, all streams", [f"{sum(s['wakes'][i] for s in r['streams'].values()) / h:.2f}"
-                                                  for r, i, h in zip(results, index, hours)])]
-    rows += [(f"  {s}", [f"{r['streams'][s]['wakes'][i] / r['streams'][s]['hours']:.1f}" if s in r["streams"] else "-"
-                         for r, i in zip(results, index)]) for s in STREAMS]
-    table(f"=== {label} ===\nFALSE WAKES (per hour; the same audio for every model)", rows, names)
-    recall_names = list(dict.fromkeys(k for r in results for k in r["recall"]))
-    table("RECALL: the model's own word, share woken",
-          [(n, [f"{np.mean(np.array(r['recall'][n]) >= GRID[i]):.0%}" if n in r["recall"] else "-"
-                for r, i in zip(results, index)]) for n in recall_names], names)
-    near_names = list(dict.fromkeys(k for r in results for k in r["near"]))
-    rows = [(n, [f"{np.mean(np.array(r['near'][n]) >= GRID[i]):.0%}" if n in r["near"] else "-"
-                 for r, i in zip(results, index)]) for n in near_names]
-    stream_names = list(dict.fromkeys(k for r in results for k in r["near_streams"]))
-    rows += [(f"{n} (per hour)", [f"{r['near_streams'][n]['wakes'][i] / r['near_streams'][n]['hours']:.1f}"
-                                  if n in r["near_streams"] else "-" for r, i in zip(results, index)]) for n in stream_names]
-    table("NEAR MISSES: the model's own, share that wakes it", rows, names)
+    def share(values) -> list[str]:
+        v = np.array(values)
+        return [f"{np.mean(v >= GRID[i]):.0%}" for i in cols]
+
+    def per_hour(s: dict) -> list[str]:
+        return [f"{s['wakes'][i] / s['hours']:.1f}" for i in cols]
+
+    out.append(f"\nFALSE WAKES PER HOUR, each set as one stream\n  {'':{w}s}{head}")
+    for name, s in r["streams"].items():
+        row(name, per_hour(s))
+    hours = sum(s["hours"] for s in r["streams"].values())
+    row(f"all together ({hours:.1f} h)", [f"{sum(s['wakes'][i] for s in r['streams'].values()) / hours:.2f}" for i in cols])
+    out.append(f"\nRECALL: its word, share woken\n  {'':{w}s}{head}")
+    for name, v in r["recall"].items():
+        row(f"{name} ({len(v)})" if " + " not in name else f"  + {name.split(' + ')[-1]}", share(v))
+    out.append(f"\nNEAR MISSES: share that wakes it\n  {'':{w}s}{head}")
+    for name, v in r["near"].items():
+        row(f"{name} ({len(v)})", share(v))
+    for name, s in r["near_streams"].items():
+        row(f"{name}, per hour", per_hour(s))
+    return "\n".join(out) + "\n"
 
 
 if __name__ == "__main__":
+    out_dir = Path(sys.argv[sys.argv.index("--out") + 1]) if "--out" in sys.argv else None
     with ProcessPoolExecutor(max_workers=min(len(MODELS), os.cpu_count() or 1)) as pool:
         results = list(pool.map(score, MODELS))
-    sizes = {k: len(v) for suite in SUITES.values() for part in ("recall", "near") for k, v in suite[part].items()}
-    print(f"Wake-word benchmark: {len(results)} models, the same held-out audio (benchmark.py). Clips per set: "
-          + ", ".join(f"{k} {v}" for k, v in sizes.items() if v))
-    report(results, [operating_point(r) for r in results],
-           f"EACH MODEL AT ITS OWN CUTOFF FOR AT MOST {TARGET} FALSE WAKES AN HOUR (the comparison point)")
-    for c in SHOWN:
-        report(results, [at(c)] * len(results), f"EVERY MODEL AT CUTOFF {c:.2f}")
+    for r in results:
+        text = report(r)
+        print(text)
+        if out_dir:
+            spike = SPIKES.get(r["model"], "04-pi-mic" if r["model"].startswith("xiao_pai_04") else None)
+            if spike:
+                (out_dir / spike).mkdir(parents=True, exist_ok=True)
+                (out_dir / spike / f"test-{r['model']}.txt").write_text(text)
