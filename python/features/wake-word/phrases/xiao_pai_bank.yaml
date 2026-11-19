@@ -1,0 +1,247 @@
+# 小派小派's question bank: what is NOT the wake word, for recordings (recording/, your voice) and for every
+# synthetic voice later (tts_samples.py; cloned and designed voices). Spikes 01-02 used phrases/xiao_pai.yaml.
+#
+#   near_miss_core   ALWAYS: every voice says all of these (read each twice). The closest sounds, other
+#                    assistants' names, a lone 小派.
+#   near_miss_extra  more sound-alikes and assistant names (read each twice when there's time)
+#   zh, en, mixed    everyday speech at home: questions to an assistant, family life, small talk (read once;
+#                    as many as you can). Words sharing 小派's sounds on purpose: 小时, 派出所, 拍照, 排队, 白天 …
+#
+# None of these contain 小派小派 itself.
+
+near_miss_core: [
+  "小派", "小拍", "小牌", "小排", "小派派", "派派", "小小派", "嘿小派", "小派你好", "小派呢",
+  "小派是谁", "叫小派", "小白小白", "小胖小胖", "小潘小潘", "小八小八", "小怕小怕", "小贝小贝", "小爱小爱", "小爱同学",
+  "小度小度", "小艺小艺", "天猫精灵", "小米小米", "苹果派", "蛋黄派", "派对", "晓得了", "Hey Pi", "Hey Siri",
+]
+
+near_miss_extra: [
+  "小白", "小白兔", "小白菜", "小排骨", "小牌子", "小拍子", "校牌", "晓派", "笑派", "小派送",
+  "外派", "派出所", "派送", "拍照", "排队", "拍拍", "排排坐", "派派派", "小P", "小屁孩",
+  "小宝小宝", "小宝贝", "小帅小帅", "小猫小猫", "小狗小狗", "小飞小飞", "小龙小龙", "小美小美", "小王小王", "小李小李",
+  "小张小张", "小雪小雪", "小雅小雅", "小艾小艾", "小冰小冰", "小布小布", "小欧小欧", "小V小V", "你好小度", "小度在家",
+  "小爱", "小度", "小艺", "小派来了", "小派过来", "小派听着", "小派别吵", "我是小派", "小派小", "派小派",
+  "拜拜拜拜", "爸爸爸爸", "白白胖胖", "小胖", "小潘", "小巴", "小八", "小怕", "晓雅", "小气",
+  "Hey Pie", "Hey Pi Pi", "Pi Pi", "pie pie", "bye bye", "hi hi", "Okay Pi", "Hey Google", "OK Google", "Alexa",
+  "Hey Jarvis", "Siri", "hey buddy", "hey pal", "happy happy", "puppy puppy", "papa", "Hey Bixby", "Cortana", "Hey there",
+]
+
+zh: [
+  # 问助手：天气、时间、日程
+  "今天天气怎么样", "明天会下雨吗", "这个周末天气好不好", "外面现在多少度", "今天要带伞吗", "晚上会不会降温",
+  "现在几点了", "今天星期几", "今天几号", "离过年还有几天", "下个月一号是星期几", "现在北京几点",
+  "帮我定一个十分钟的闹钟", "明天早上七点叫我起床", "提醒我下午三点开会", "取消明天的闹钟", "设一个五分钟的计时器",
+  "提醒我晚上给妈妈打电话", "我明天有什么安排", "把周五的会议改到下午", "下周二是什么节日", "今天日落是几点",
+  # 问助手：知识、计算、翻译
+  "一斤等于多少克", "三十七乘以二十八是多少", "一百美元换成人民币是多少", "珠穆朗玛峰有多高", "地球到月亮有多远",
+  "谁写的红楼梦", "长城有多长", "水的沸点是多少度", "一公里大概要走多久", "什么是人工智能",
+  "苹果用英文怎么说", "谢谢用日语怎么说", "这个字怎么读", "帮我翻译一下早上好", "成语一石二鸟是什么意思",
+  "番茄炒蛋怎么做", "红烧肉要炖多久", "感冒了吃什么好", "怎么去除衣服上的油渍", "绿萝多久浇一次水",
+  # 问助手：家里设备
+  "把客厅的灯打开", "把卧室的灯关了", "灯调暗一点", "灯再亮一点", "把空调调到二十六度",
+  "空调开成制冷模式", "打开电视", "把电视声音调小一点", "关掉所有的灯", "打开扫地机器人",
+  "窗帘拉上", "把窗帘打开一半", "热水器开了吗", "门锁好了吗", "把风扇关掉",
+  "播放一首周杰伦的歌", "来点轻音乐", "下一首", "暂停一下", "声音大一点", "声音小一点", "继续播放",
+  "播放今天的新闻", "讲个笑话", "讲个故事给孩子听", "放一首适合睡觉的歌", "把音乐关了",
+  # 家常
+  "我回来了", "你吃饭了吗", "晚饭吃什么", "今天想吃面条", "冰箱里还有鸡蛋吗", "我去买点菜",
+  "米饭煮好了吗", "汤有点咸", "这个菜太辣了", "帮我递一下筷子", "碗我来洗吧", "我先去洗个澡",
+  "衣服晾了吗", "垃圾该倒了", "地板好滑小心点", "钥匙放哪儿了", "我的手机呢", "充电器借我用一下",
+  "快递到了", "门口有人敲门", "谁按的门铃", "我出去一下马上回来", "路上注意安全", "到了给我发个消息",
+  "早点睡吧", "晚安", "早上好", "睡得好吗", "今天好累啊", "我有点饿了", "我有点困", "头有点疼",
+  "要不要喝点水", "给你倒杯茶", "咖啡还是茶", "我来泡壶茶", "水开了", "把窗户关上吧有点冷",
+  "暖气开了吗", "今天好热啊", "开会儿空调吧", "电费是不是该交了", "物业费交了吗", "网好像断了",
+  "路由器重启一下", "电视怎么没声音了", "遥控器在哪", "这个灯泡坏了", "水龙头在滴水", "马桶又堵了",
+  # 家人孩子
+  "宝宝睡着了吗", "作业写完了没有", "快去刷牙", "该睡觉了", "把玩具收起来", "不许在沙发上跳",
+  "今天在学校开心吗", "老师今天说什么了", "明天要带什么东西", "书包整理好了吗", "快点穿鞋要迟到了",
+  "周末带你去公园", "想不想去动物园", "我们去看电影吧", "妈妈马上就回来", "爸爸今天加班",
+  "奶奶打电话来了", "外婆身体还好吗", "过年回老家吗", "给爷爷打个视频", "姐姐什么时候回来",
+  "小时候我们住在这附近", "小孩子不能吃太多糖", "小朋友要有礼貌", "小区里新开了一家超市", "小心别摔着",
+  # 工作学习
+  "我今天要加班", "明天早上有个会", "这个报告写完了吗", "老板让我改方案", "下周要出差",
+  "电脑又死机了", "帮我看看这封邮件", "开会的链接发给我", "我在开会稍等一下", "晚点再聊",
+  "这个月好忙", "今年的计划还没做完", "考试考得怎么样", "这道题我不会做", "明天要交作业",
+  # 出门购物
+  "我们打车去吧", "地铁几点停运", "路上堵车了", "这个周末去哪玩", "要不要去爬山", "去超市买点水果",
+  "这件衣服多少钱", "能便宜一点吗", "可以刷卡吗", "排队的人太多了", "拍张照片吧", "帮我们拍一张合照",
+  "这家店的面包很好吃", "我们去吃火锅吧", "订个位子吧", "外卖还没到", "点个奶茶吧", "要不要加冰",
+  "派出所在哪里", "快递员说放在门口了", "这个包裹是谁的", "明天派送", "外派到上海三个月",
+  # 闲聊情绪
+  "太好了", "真的吗", "没问题", "好的好的", "等一下", "我知道了", "随便吧", "算了吧", "怎么了",
+  "你在干嘛", "你说什么", "我没听清楚", "再说一遍", "哈哈哈太好笑了", "真没意思", "我觉得可以",
+  "你觉得呢", "这样不太好吧", "别担心", "加油", "辛苦了", "谢谢你", "不客气", "对不起", "没关系",
+  "今天心情不错", "有点烦", "好无聊啊", "终于放假了", "明天见", "一会儿见", "拜拜", "回头再说",
+  # 电视节目片段
+  "欢迎收看今天的新闻联播", "下面播报天气预报", "本场比赛的比分是二比一", "广告之后马上回来",
+  "这一集太精彩了", "主角最后怎么样了", "这个综艺好好笑", "换个台吧", "这个电影我看过", "下一集什么时候更新",
+  # 数字、日期
+  "一二三四五", "六七八九十", "二零二六年十一月", "电话号码是一三八", "三点一四一五九", "一百二十块",
+  "第一第二第三", "五十五号", "十二点半", "七点四十五", "零下五度", "百分之八十",
+  # 与小派音近的日常词
+  "小时候", "小心点", "小声点", "小狗好可爱", "小猫在睡觉", "小区门口", "小学同学", "小吃街",
+  "白天", "白色的", "白菜", "拜年", "百货", "一百块", "排骨", "牌子", "拍手",
+  "派人去", "怕冷", "怕黑", "爬山", "盼望", "胖了",
+  "我有点怕", "别怕", "小派别", "这个派头", "打牌", "拍卖", "排练", "排球", "白白的", "百家",
+  # 更多问句
+  "附近有什么好吃的", "最近的加油站在哪", "医院几点开门", "银行周末上班吗", "药店在哪里",
+  "怎么去机场最快", "高铁票还有吗", "明天飞上海的航班", "酒店退房是几点", "护照过期了怎么办",
+  "今天股市怎么样", "比特币现在多少钱", "油价涨了吗", "最近有什么新闻", "世界杯什么时候开始",
+  "湖人昨天赢了吗", "今晚有什么比赛", "推荐一部电影", "推荐一本书", "最近流行什么歌",
+  "帮我查一下快递", "我的手机号是多少", "帮我打给老婆", "给老公发条消息说我晚点到", "微信有新消息吗",
+  "播放有声书", "读一下今天的日程", "今天空气质量怎么样", "紫外线强不强", "花粉多不多",
+  "猫咪可以吃葡萄吗", "狗狗一天喂几次", "鱼缸的水多久换一次", "多肉怎么养", "土豆发芽了还能吃吗",
+  "鸡蛋煮几分钟", "牛排几分熟好吃", "饺子要煮多久", "面条要不要过冷水", "米和水的比例是多少",
+  # 更多家常
+  "今天超市打折", "牛奶快过期了", "面包放冰箱吧", "水果洗了吗", "西瓜甜不甜", "这个苹果很脆",
+  "我去楼下取个快递", "楼上又在装修", "隔壁的狗一直在叫", "外面好吵", "风好大啊", "下雪了",
+  "雨停了吗", "出太阳了", "天黑了", "月亮好圆", "星星好多", "空气好新鲜",
+  "我把车停在楼下了", "车钥匙在门口", "油快没了", "该洗车了", "轮胎好像没气了", "停车场满了",
+  "我们家网速好慢", "手机快没电了", "电脑要更新了", "打印机没纸了", "电池在抽屉里", "剪刀放哪了",
+  "帮我找一下眼镜", "我的耳机呢", "钱包带了吗", "身份证放好了吗", "雨伞带上", "外套穿上",
+  "你今天穿得真好看", "头发剪短了", "最近瘦了", "该减肥了", "去跑步吗", "今天走了一万步",
+  "我去健身房了", "腰有点酸", "要不要去医院看看", "多喝热水", "早点休息", "别熬夜了",
+  "生日快乐", "新年快乐", "中秋节快乐", "恭喜发财", "周末愉快", "一路顺风",
+  "这个月的工资发了", "信用卡要还了", "房租该交了", "省着点花", "这个太贵了", "买一送一",
+  "朋友明天来家里吃饭", "要准备几个菜", "买点啤酒吧", "我来做红烧鱼", "你负责买水果", "几点到",
+  "家里来客人了", "请进请进", "随便坐", "喝点什么", "路上辛苦了", "吃好了吗", "再吃一点",
+  "我们一起打扫卫生吧", "你拖地我擦桌子", "被子晒一晒", "床单该换了", "衣柜太乱了", "这些旧衣服捐了吧",
+  "孩子发烧了", "量一下体温", "三十八度五", "吃点退烧药", "多喝水多休息", "明天请个假",
+  "猫又把杯子打翻了", "狗该遛了", "给猫换猫砂", "鱼死了一条", "花该浇水了", "阳台上的衣服收一下",
+  # 更多闲聊
+  "你最近怎么样", "好久不见", "最近忙什么呢", "有空一起吃饭", "下次再约", "替我问好",
+  "这个主意不错", "我同意", "我不同意", "再想想吧", "先这样吧", "就这么定了",
+  "哪里哪里", "过奖了", "不好意思", "麻烦你了", "打扰一下", "请问一下",
+  "你听说了吗", "真的假的", "不会吧", "太夸张了", "我也是", "我也觉得",
+  "快看快看", "那是什么", "好漂亮啊", "太可爱了", "吓我一跳", "差点忘了",
+  "我想想", "让我看看", "等我一下", "马上来", "来了来了", "知道啦",
+  # 句子更长的
+  "我觉得今天的会开得太久了，大家都有点累", "你下班的时候顺便去超市买一瓶酱油",
+  "这个周末我们要不要带孩子去海边玩一天", "明天早上八点之前一定要把报告发给老板",
+  "我刚才在路上看到一家新开的咖啡店，看起来不错", "如果明天下雨的话我们就改天再去吧",
+  "你把客厅的东西收拾一下，晚上有朋友要来", "最近天气变化太大了，大家都要注意身体",
+  "我们小区下周要停水一天，记得提前接点水", "这本书我看了一半，后面的故事越来越精彩",
+  "孩子说想学钢琴，你觉得怎么样", "我想把阳台改成一个小书房", "今年夏天我们去云南旅游吧",
+  "你帮我看看这个衣服配什么鞋子好看", "这个电视剧的演员演得特别好", "我订了明天晚上七点的餐厅",
+  "妈妈说下周末想来我们家住几天", "这个月的电费比上个月多了一百块", "我的手机屏幕摔裂了，要换一个",
+  "我们公司明年可能要搬到新的办公楼", "他说路上堵车，大概还要半个小时才到",
+  "今天在超市排了半个小时的队", "派出所打电话说丢的自行车找到了", "我们拍了很多照片，回头发给你",
+  "晚上吃完饭一起出去散散步吧", "你记不记得我们第一次见面是在哪里", "这家店的小笼包是我吃过最好吃的",
+  # 再多一些：早晚、厨房、周末、身体、天气、社交
+  "闹钟响了没听见", "再睡五分钟", "早饭吃包子还是油条", "豆浆热好了", "今天穿什么好", "外面风大戴个帽子",
+  "我送孩子上学去了", "下午我去接孩子", "幼儿园几点放学", "今天学校有家长会", "老师布置了手工作业", "这个月的兴趣班交钱了吗",
+  "锅里的水开了", "帮我把火关小一点", "盐放多了", "酱油用完了", "葱姜蒜都切好了", "这个鱼要清蒸",
+  "冰箱该除霜了", "微波炉加热两分钟", "烤箱预热到两百度", "饺子馅调好了", "我来包你来煮", "面粉放哪儿了",
+  "周末睡个懒觉", "下午去逛街吧", "去看看新开的商场", "带上相机", "公园里人好多", "我们找个地方坐一下",
+  "腿有点酸", "去按摩一下吧", "眼睛好干", "少看点手机", "牙有点疼", "约个牙医吧",
+  "今天雾霾好重", "空气净化器开一下", "湿度太低了", "加湿器加点水", "晚上有雷阵雨", "台风要来了",
+  "同事请我们吃饭", "周五公司团建", "下班一起去吃烧烤", "他今天生日我们买个蛋糕", "礼物包好了吗", "红包准备好了",
+  "我想换个新手机", "这个耳机音质不错", "笔记本电脑太重了", "平板借孩子玩一会儿", "电视换个大一点的", "冰箱该换了",
+  "你的快递到楼下了", "物业说明天停电", "电梯又坏了", "楼下停车位满了", "邻居送了一些水果", "楼道里的灯不亮了",
+  "今天的新闻你看了吗", "油价又涨了", "房价最近怎么样", "明年想换个工作", "学个新技能吧", "报个英语班",
+  "这个周日是母亲节", "给妈妈买束花", "端午节吃粽子", "元宵节吃汤圆", "清明节回去扫墓", "国庆节去哪玩",
+]
+
+en: [
+  # asking an assistant
+  "what's the weather like today", "is it going to rain tomorrow", "how cold is it outside", "do I need an umbrella",
+  "what time is it", "what day is it today", "what's the date", "how many days until Christmas",
+  "set a timer for ten minutes", "wake me up at seven", "remind me to call mom tonight", "cancel my alarm",
+  "what's on my calendar tomorrow", "move my meeting to three", "when does the sun set today",
+  "turn on the living room lights", "turn off the bedroom lights", "dim the lights", "make it brighter",
+  "set the thermostat to seventy two", "turn on the TV", "turn the volume down", "turn off all the lights",
+  "close the blinds", "is the front door locked", "start the vacuum", "turn off the fan",
+  "play some music", "play some jazz", "next song", "pause", "louder please", "a little quieter", "resume",
+  "play the news", "tell me a joke", "tell me a story", "play something relaxing", "stop the music",
+  "how many grams in a pound", "what's thirty seven times twenty eight", "how tall is Mount Everest",
+  "who wrote Hamlet", "how far is the moon", "what's the capital of Australia", "how do you say thank you in Japanese",
+  "how do I make pancakes", "how long do I boil an egg", "what should I eat for a cold", "how do I get a stain out",
+  "what's the traffic like", "how long to the airport", "when does the pharmacy open", "find a pizza place nearby",
+  "what's the score of the game", "did the Lakers win", "what's the stock market doing", "any news today",
+  "recommend a movie", "recommend a good book", "what's a popular song right now", "read my messages",
+  "call my wife", "text him I'm running late", "where's my package", "how's the air quality today",
+  # home life
+  "I'm home", "hey I'm back", "did you eat yet", "what's for dinner", "I'm starving", "dinner's ready",
+  "can you pass the salt", "this soup is great", "it's a bit too spicy", "I'll do the dishes", "I'm going to take a shower",
+  "where are my keys", "have you seen my phone", "can I borrow your charger", "the package is here",
+  "someone's at the door", "I'll be right back", "drive safe", "text me when you get there",
+  "good night", "good morning", "did you sleep well", "I'm so tired", "I'm a bit hungry", "I have a headache",
+  "want some water", "I'll make some tea", "coffee or tea", "the kettle's boiling", "close the window it's cold",
+  "it's so hot today", "let's turn on the AC", "the wifi is down again", "restart the router", "the TV has no sound",
+  "where's the remote", "this bulb is out", "the faucet is dripping", "the toilet's clogged again",
+  # family
+  "is the baby asleep", "did you finish your homework", "go brush your teeth", "time for bed", "put your toys away",
+  "no jumping on the couch", "how was school today", "what did your teacher say", "hurry up we're late",
+  "let's go to the park this weekend", "want to go to the zoo", "let's watch a movie", "mom will be back soon",
+  "grandma's on the phone", "are we going home for the holidays", "let's video call grandpa",
+  # work and errands
+  "I have to work late tonight", "I have a meeting in the morning", "my boss wants changes", "I'm traveling next week",
+  "my laptop froze again", "send me the meeting link", "I'm in a meeting hold on", "let's talk later",
+  "let's grab a taxi", "traffic is terrible", "where should we go this weekend", "let's go hiking",
+  "how much is this", "can you do a bit cheaper", "do you take cards", "the line is so long", "let's take a picture",
+  "this bakery is so good", "let's get hot pot", "let's make a reservation", "the delivery isn't here yet",
+  # small talk
+  "that's great", "really", "no problem", "okay okay", "hold on", "got it", "whatever", "never mind", "what's wrong",
+  "what are you doing", "what did you say", "I didn't catch that", "say that again", "that's hilarious",
+  "what do you think", "don't worry", "you got this", "thank you", "you're welcome", "sorry", "it's okay",
+  "I'm in a good mood today", "I'm so bored", "finally the weekend", "see you tomorrow", "see you later", "bye",
+  "hello", "hi there", "hey guys", "what's up", "how are you", "long time no see", "how's it going",
+  "hey you", "hey honey", "hi sweetie", "hey dad", "hey mom", "okay let's go",
+  # sounds close to Pi
+  "apple pie", "pumpkin pie", "pie chart", "pi is three point one four", "pay the bill", "happy birthday",
+  "buy a new one", "spy movie", "sky is blue", "hey Paul", "hey Pat", "hey bae",
+  "pay attention", "the price is high", "I'll pass", "pass the pie", "piano lesson", "a pair of shoes",
+  "the pizza's here", "pick it up", "the puppy's cute", "paper towels", "the party's tonight", "pine trees",
+  # TV fragments
+  "welcome back to the show", "and now the weather", "the score is two to one", "we'll be right back after this",
+  "breaking news tonight", "previously on", "stay tuned", "coming up next", "in other news",
+  # longer
+  "I think the meeting today went on way too long", "can you grab some milk on your way home",
+  "should we take the kids to the beach this weekend", "I need to send the report before eight tomorrow",
+  "there's a new coffee shop down the street that looks nice", "if it rains tomorrow let's go another day",
+  "can you tidy up the living room our friends are coming tonight", "the weather has been so weird lately",
+  "they're shutting off the water next week so we should store some", "I'm halfway through this book and it's getting good",
+  "the kid wants to learn piano what do you think", "let's go to Yunnan this summer", "which shoes go with this jacket",
+  "I booked a table for seven tomorrow night", "mom wants to stay with us next weekend", "the power bill went up again",
+  "my phone screen cracked I need a new one", "he's stuck in traffic and will be half an hour late",
+  "we waited in line for thirty minutes at the store", "we took a lot of pictures I'll send them to you",
+  "let's go for a walk after dinner", "do you remember where we first met", "this place has the best dumplings in town",
+  # numbers
+  "one two three four five", "six seven eight nine ten", "twenty twenty six", "my number is four two five",
+  "three fourteen", "a hundred and twenty dollars", "first second third", "half past twelve", "seven forty five",
+  # more: mornings, kitchen, weekends, health, weather, social
+  "five more minutes", "what do you want for breakfast", "the toast is burning", "coffee's ready", "what should I wear today",
+  "I'm taking the kids to school", "I'll pick them up at three", "there's a parent teacher meeting today", "the homework is due Friday",
+  "turn the heat down a bit", "we're out of soy sauce", "can you chop the onions", "preheat the oven to four hundred",
+  "the fridge needs cleaning", "microwave it for two minutes", "let's make dumplings tonight", "where's the flour",
+  "let's sleep in this weekend", "let's go to the mall", "bring the camera", "the park is so crowded", "let's sit down for a bit",
+  "my legs are sore", "my eyes are so dry", "put your phone down", "my tooth hurts", "I should see a dentist",
+  "the air is really bad today", "turn on the air purifier", "there's a thunderstorm tonight", "a typhoon is coming",
+  "my coworker invited us to dinner", "we have a team event on Friday", "it's his birthday let's get a cake", "is the gift wrapped",
+  "I want a new phone", "these headphones sound great", "my laptop is too heavy", "let the kids use the tablet for a bit",
+  "the elevator is broken again", "the parking lot is full", "the neighbor brought us some fruit", "the hallway light is out",
+  "did you see the news today", "gas prices went up again", "I want to change jobs next year", "maybe I'll learn a new skill",
+  "Mother's Day is this Sunday", "let's get mom some flowers", "where should we go for the holidays", "happy new year",
+]
+
+mixed: [
+  "帮我 set 一个 timer", "今天的 meeting 改到几点了", "这个 deadline 太赶了", "我们 weekend 去哪玩",
+  "把 TV 关一下", "Wi-Fi 密码是多少", "我在 Costco 买了很多东西", "你 email 收到了吗",
+  "这个 project 做完了吗", "我明天 work from home", "他是我们的 manager", "下午有个 call",
+  "帮我 check 一下 schedule", "我 order 了外卖", "这个 app 很好用", "手机要 update 了",
+  "我们去 Starbucks 吧", "要一杯 latte", "今天好 busy", "这个 idea 不错", "OK 没问题",
+  "我 forget 了", "你 sure 吗", "这个 size 太小了", "有没有 discount", "我去 gym 了",
+  "today 好累", "明天 see you", "bye bye 拜拜", "thank you 谢谢", "sorry 我来晚了",
+  "Hey 你在干嘛", "hi 你好", "OK 我知道了", "so 我们怎么办", "anyway 先这样",
+  "帮我 play 一首歌", "volume 小一点", "把 AC 开了", "light 关掉", "下一首 next",
+  "这个 party 几点开始", "我们 take 一张照片", "pie 是什么口味的", "apple pie 好吃吗", "拍个 selfie",
+  "小朋友们 let's go", "小 case", "小 trick", "小 tips", "小心 careful",
+  "我在 Amazon 上买的", "这个 brand 很贵", "包裹 delivery 了吗", "Uber 到了吗", "我在 airport",
+  "flight 延误了", "hotel 订好了", "这个 restaurant 很有名", "我们 share 一下", "AA 吧",
+  "老板说要 overtime", "这个 report 写得不错", "PPT 做完了吗", "presentation 准备好了吗", "我有个 question",
+  "孩子的 homework 写了吗", "明天要 test", "他考了 A", "去 swimming", "piano 课几点",
+  "宝宝 good night", "早上 good morning", "妈妈 love you", "爸爸 come on", "加油 you can do it",
+  "这个 movie 好看", "Netflix 有新剧", "YouTube 上看的", "我在刷 TikTok", "发个 WeChat 给我",
+  "下雨了 bring umbrella", "外面 so cold", "今天 sunny", "温度多少 degree", "要不要 jacket",
+  "我 feel 不太好", "有点 headache", "去看 doctor 吧", "吃点 medicine", "早点 sleep",
+]

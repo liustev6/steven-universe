@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>小派小派 recording</title>
+<style>
+  :root { --bg: #f6f5f2; --panel: #fff; --sunken: #f1efea; --text: #1d1b18; --muted: #77716a; --line: #e6e2db;
+          --accent: #4f46e5; --live: #dc2626; --good: #15803d; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #121214; --panel: #1b1b1f; --sunken: #232328; --text: #f2f1ee; --muted: #a09d97;
+             --line: #2e2e34; --accent: #818cf8; --live: #f87171; --good: #4ade80; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 22px 16px 48px; }
+  h1 { font-size: 20px; margin: 0 0 4px; } .sub { color: var(--muted); margin: 0 0 16px; }
+  .meter { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  .bar { flex: 1; max-width: 320px; height: 8px; background: var(--sunken); border-radius: 99px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--good); transition: width .08s; }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px; }
+  .card h2 { margin: 0 0 6px; font-size: 17px; }
+  .card.live { border-color: var(--live); box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 18%, transparent); }
+  .row { display: flex; align-items: center; gap: 14px; margin: 12px 0; flex-wrap: wrap; }
+  button { font: inherit; font-weight: 600; font-size: 16px; padding: 12px 22px; border-radius: 12px; border: 0; cursor: pointer;
+           background: var(--accent); color: #fff; min-width: 150px; }
+  button.stop { background: var(--live); }
+  button:disabled { opacity: .35; cursor: default; }
+  .timer { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .target { color: var(--muted); font-size: 13px; }
+  .word { font-size: 40px; font-weight: 700; letter-spacing: .05em; margin: 6px 0; }
+  ol { margin: 6px 0 0; padding-left: 22px; color: var(--muted); }
+  ol li span { color: var(--text); }
+  .bank { max-height: 60vh; overflow-y: auto; border-top: 1px solid var(--line); margin-top: 8px; padding-top: 4px; }
+  .sec { margin: 14px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .sec b { color: var(--accent); }
+  .lines { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 2px 18px; }
+  .ln { display: flex; gap: 8px; padding: 2px 6px; border-radius: 6px; cursor: pointer; font-size: 16px; }
+  .ln:hover { background: var(--sunken); }
+  .ln small { color: var(--muted); font-size: 11px; min-width: 32px; text-align: right; padding-top: 4px; font-variant-numeric: tabular-nums; }
+  .ln.start { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  .ln.done span { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 50%, transparent); }
+  input[type=number] { font: inherit; width: 84px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--sunken); color: var(--text); }
+  .saved { margin-top: 16px; font-size: 13px; color: var(--muted); }
+  .saved b { color: var(--good); }
+  .err { color: var(--live); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>小派小派 · recording</h1>
+  <p class="sub">One beep: start talking. Press <b>Stop</b> when you're nearly done (two beeps). Each take is saved on this Mac, never uploaded anywhere.</p>
+  <div class="meter">mic <div class="bar"><i id="level"></i></div><span id="micState">not started</span></div>
+
+  <div class="grid">
+    <section class="card" id="card-wake">
+      <h2>1 · The wake word</h2>
+      <div class="word">小派小派</div>
+      <span class="target">about every 2 seconds, ~30 times, about a minute</span>
+      <ol>
+        <li><span>×6 normal, as if asking Pi something</span></li>
+        <li><span>×4 quietly</span></li>
+        <li><span>×4 loudly, calling across a room</span></li>
+        <li><span>×4 from 2–3 metres away</span></li>
+        <li><span>×4 fast, ×4 slow</span></li>
+        <li><span>×4 any way: sleepy, questioning, impatient, cheerful</span></li>
+      </ol>
+      <div class="row"><button id="btn-wake">Start</button><span class="timer" id="t-wake">0:00</span><span class="target">target ~1:00</span></div>
+    </section>
+
+    <section class="card" id="card-negative">
+      <h2>2 · Not the wake word</h2>
+      <span class="target">near misses: <b>twice each</b> · everyday lines: <b>once each</b> · a second's pause between · as long as you like (sessions of 5-10 min are easy)</span>
+      <div class="row">
+        <label class="target">start at line <input type="number" id="from" min="1" value="1"></label>
+        <button id="btn-negative">Start</button><span class="timer" id="t-negative">0:00</span>
+        <span class="target" id="progress"></span>
+      </div>
+      <span class="target">click a line to start there; when you stop, it asks the last line you read</span>
+      <div class="bank" id="bank"></div>
+    </section>
+  </div>
+  <div class="saved" id="saved"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+// ---- the bank (phrases/xiao_pai_bank.yaml), numbered across sections; progress remembered in this browser ----
+const SECTIONS = [["near_miss_core", "Near misses · always · twice each"], ["near_miss_extra", "More near misses · twice each"],
+                  ["zh", "中文 · everyday · once each"], ["en", "English · everyday · once each"], ["mixed", "中英混合 · once each"]];
+let LINES = 0;
+const store = { get: (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+                set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+function markDone() {
+  const done = store.get("done", []);
+  document.querySelectorAll(".ln").forEach((el) => {
+    const n = +el.dataset.n;
+    el.classList.toggle("done", done.some(([a, b]) => n >= a && n <= b));
+    el.classList.toggle("start", n === +$("from").value);
+  });
+  const count = new Set(done.flatMap(([a, b]) => Array.from({ length: b - a + 1 }, (_, i) => a + i))).size;
+  $("progress").textContent = `${count} of ${LINES} lines read`;
+}
+(async () => {
+  const bank = await (await fetch("/bank")).json();
+  let n = 0;
+  for (const [key, title] of SECTIONS) {
+    const sec = document.createElement("div"); sec.className = "sec";
+    sec.innerHTML = `${title} · <b>${(bank[key] || []).length}</b>`;
+    const grid = document.createElement("div"); grid.className = "lines";
+    for (const text of bank[key] || []) {
+      n++;
+      const el = document.createElement("div"); el.className = "ln"; el.dataset.n = n;
+      el.innerHTML = `<small>${n}</small><span></span>`; el.lastChild.textContent = text;
+      el.onclick = () => { $("from").value = el.dataset.n; markDone(); };
+      grid.append(el);
+    }
+    $("bank").append(sec, grid);
+  }
+  LINES = n;
+  $("from").max = n; $("from").value = Math.min(n, store.get("next", 1));
+  $("from").oninput = markDone;
+  markDone();
+  document.querySelector(`.ln[data-n="${$("from").value}"]`)?.scrollIntoView({ block: "center" });
+})();
+
+// ---- the mic, at 16 kHz, unprocessed (no echo cancellation, noise suppression or auto gain) ------------------
+const TAP = `class Tap extends AudioWorkletProcessor {
+  process(inputs) { const ch = inputs[0][0]; if (ch) this.port.postMessage(ch.slice(0)); return true; }
+}
+registerProcessor("tap", Tap);`;
+let mic = null, rec = null;              // rec: {kind, chunks, started, timer}
+
+async function openMic() {
+  if (mic) return mic;
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+  const ctx = new AudioContext({ sampleRate: 16000 });
+  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([TAP], { type: "application/javascript" })));
+  const src = ctx.createMediaStreamSource(stream), node = new AudioWorkletNode(ctx, "tap"), mute = ctx.createGain();
+  mute.gain.value = 0; src.connect(node); node.connect(mute); mute.connect(ctx.destination);
+  node.port.onmessage = (e) => {
+    const f = e.data; let sum = 0;
+    for (let i = 0; i < f.length; i++) sum += f[i] * f[i];
+    $("level").style.width = `${Math.min(100, Math.sqrt(sum / f.length) * 400)}%`;
+    if (rec && rec.recording) rec.chunks.push(f);
+  };
+  $("micState").textContent = `on · ${ctx.sampleRate} Hz`;
+  mic = { ctx, stream };
+  return mic;
+}
+
+function beep(times) {                     // one beep: start; two: stop
+  const c = mic.ctx;
+  return new Promise((done) => {
+    for (let i = 0; i < times; i++) {
+      const o = c.createOscillator(), g = c.createGain(), t = c.currentTime + i * 0.25;
+      o.frequency.value = 880; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18); o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.2);
+    }
+    setTimeout(done, times * 250 + 100);
+  });
+}
+
+function wav(chunks, rate) {               // float chunks → a 16-bit mono WAV
+  const n = chunks.reduce((s, c) => s + c.length, 0), buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  const str = (o, s) => [...s].forEach((ch, i) => v.setUint8(o + i, ch.charCodeAt(0)));
+  str(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); str(8, "WAVE"); str(12, "fmt "); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, "data"); v.setUint32(40, n * 2, true);
+  let o = 44;
+  for (const c of chunks) for (let i = 0; i < c.length; i++, o += 2) v.setInt16(o, Math.max(-1, Math.min(1, c[i])) * 32767, true);
+  return new Blob([buf], { type: "audio/wav" });
+}
+
+const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+async function start(kind) {
+  try { await openMic(); } catch (e) { $("micState").innerHTML = `<span class="err">mic blocked: ${e.message}</span>`; return; }
+  await beep(1);
+  rec = { kind, chunks: [], recording: true, started: performance.now() };
+  rec.timer = setInterval(() => ($(`t-${kind}`).textContent = fmt((performance.now() - rec.started) / 1000)), 200);
+  $(`card-${kind}`).classList.add("live");
+  const b = $(`btn-${kind}`); b.textContent = "Stop"; b.className = "stop";
+  $(`btn-${kind === "wake" ? "negative" : "wake"}`).disabled = true;
+}
+
+async function stop() {
+  const r = rec; r.recording = false; clearInterval(r.timer);
+  await beep(2);
+  $(`card-${r.kind}`).classList.remove("live");
+  const b = $(`btn-${r.kind}`); b.textContent = "Start again"; b.className = "";
+  $("btn-wake").disabled = $("btn-negative").disabled = false;
+  rec = null;
+  let lines = "";
+  if (r.kind === "negative") {                // which lines this take covers: asked, remembered for next time
+    const from = +$("from").value, said = prompt(`Last line you read? (started at ${from})`, String(from));
+    const to = Math.max(from, Math.min(LINES, parseInt(said) || from));
+    lines = `&lines=${from}-${to}`;
+    store.set("done", [...store.get("done", []), [from, to]]); store.set("next", Math.min(LINES, to + 1));
+    $("from").value = Math.min(LINES, to + 1); markDone();
+  }
+  try {
+    const res = await fetch(`/save?kind=${r.kind}${lines}`, { method: "POST", body: wav(r.chunks, mic.ctx.sampleRate) });
+    const j = await res.json();
+    $("saved").innerHTML = `saved <b>${j.file}</b> (${j.seconds} s)<br>` + $("saved").innerHTML;
+  } catch (e) { $("saved").innerHTML = `<span class="err">not saved: ${e}</span><br>` + $("saved").innerHTML; }
+}
+
+for (const kind of ["wake", "negative"]) $(`btn-${kind}`).onclick = () => (rec ? stop() : start(kind));
+</script>
+</body>
+</html>
