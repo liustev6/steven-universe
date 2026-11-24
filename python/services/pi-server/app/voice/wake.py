@@ -23,6 +23,7 @@ class WakeWord:
         self.model = self._load()
         self.name = getattr(self.model, "wake_word", model)
         self._features = MicroWakeWordFeatures()
+        self.peak = 0.0                      # its highest score since set to 0 (the assistant: per reply)
 
     def feed(self, frame: bytes) -> bool:
         heard = False
@@ -30,6 +31,9 @@ class WakeWord:
             for features in self._features.process_streaming(frame[i:i + STEP]):
                 if self.model.process_streaming(features):
                     heard = True
+                p = getattr(self.model, "_probabilities", None)    # the score the cutoff is checked against
+                if p and len(p) >= self.model.sliding_window_size:
+                    self.peak = max(self.peak, sum(p) / len(p))
         return heard
 
     def reset(self) -> None:

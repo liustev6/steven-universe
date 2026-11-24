@@ -36,7 +36,7 @@ class UI:
 
 class Wake:
     def __init__(self):
-        self.resets = 0
+        self.resets, self.peak = 0, 0.0
 
     def feed(self, frame):
         return frame == WAKE
@@ -221,13 +221,45 @@ def test_the_wake_word_itself_does_not_start_a_turn():
     run(go())
 
 
-def test_the_mic_is_ignored_while_replying():
+def test_speech_over_the_reply_is_ignored():
     async def go():
         r = Rig(agent=Agent(hang=True))
         await r.frames(WAKE, QUIET, QUIET, QUIET, *VOICE, QUIET)
         assert r.va.state is State.REPLYING
-        await r.frames(SPEECH, WAKE, SPEECH, QUIET)
+        await r.frames(SPEECH, SPEECH, QUIET)
         assert len(r.speech.utterances) == 1 and r.va.state is State.REPLYING
+    run(go())
+
+
+def test_the_wake_word_over_the_reply_barges_in():
+    """It stops the reply (speaker, speech), interrupts the agent's turn still writing, keeps the session
+    (its agent session not released) and listens for what comes next: a new turn, a follow-up."""
+    async def go():
+        r = Rig(speech=Speech(heard=("what's the weather", "and tomorrow?")), agent=Agent(hang=True))
+        await r.frames(WAKE, QUIET, QUIET, QUIET, *VOICE, QUIET)
+        assert r.va.state is State.REPLYING
+        await r.frames(WAKE)
+        assert r.speaker.stopped and r.agent.cancelled == 1 and r.agent.ended == 0
+        assert r.va.state is State.WAITING and r.ui.woke == 2 and r.wake.resets >= 2
+        r.agent.hang = False
+        await r.frames(QUIET, QUIET, QUIET, *VOICE, QUIET)
+        await r.settle()
+        assert r.agent.asked == ["what's the weather", "and tomorrow?"]  # the barge-in's own turn
+    run(go())
+
+
+def test_a_barge_in_after_the_agent_finished_doesnt_interrupt_it():
+    """The agent's turn complete, its audio still playing: the speaker stops; nothing to interrupt."""
+    async def go():
+        r = Rig()
+        gate = asyncio.Event()
+        r.speaker.write = lambda pcm: gate.wait()                     # the reply's audio still playing
+        await r.frames(WAKE, QUIET, QUIET, QUIET, *VOICE, QUIET)
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert r.va.state is State.REPLYING
+        await r.frames(WAKE)
+        assert r.speaker.stopped and r.agent.cancelled == 0 and r.va.state is State.WAITING
     run(go())
 
 

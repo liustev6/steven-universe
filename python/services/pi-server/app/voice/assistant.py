@@ -15,8 +15,10 @@
     at most `max_turn` seconds (15): at the cap, the session's first turn (asked with the wake word
     or push-to-talk) is sent as heard; a follow-up is dropped and the session ends, as one that
     long is noise (a fan, a TV) that never fell silent, not someone talking to Hey Pi
-  - replying: the agent's text, as it's written, into speech, to the speaker; the mic is ignored
-    (half duplex, V6), then waiting again
+  - replying: the agent's text, as it's written, into speech, to the speaker, then waiting again.
+    Only the wake word listens meanwhile (V6): heard over the reply, it's a barge-in: the reply stops
+    at once (the speaker, the speech; the agent's turn interrupted, which agent-service ignores for a
+    turn already complete) and the session waits for what the user says next
 Hey Pi sees `listening` for the whole session between turns, `thinking` and `speaking` in a turn,
 `idle` when it ends (V7), and the screen wakes at the wake word. Push-to-talk and the debug endpoints
 use the same session (`listen`, `commit`, `say`, `cancel`). A hop that fails ends that turn, logged;
@@ -151,7 +153,8 @@ class VoiceAssistant:
             self._frames.put_nowait(frame)
             if self.clock() >= self._listen_until and not self._commit.is_set():
                 self._at_the_cap()
-        # REPLYING: the mic is ignored (half duplex)
+        elif self.state is State.REPLYING and self.wake.feed(frame):   # only the wake word: barge-in (V6)
+            await self._barge_in()
 
     # ---- the session -------------------------------------------------------------------------------
     async def _open(self) -> None:
@@ -261,6 +264,14 @@ class VoiceAssistant:
             logger.error("turn %s failed: %s: %s", turn_id, type(e).__name__, e)
         await self._wait(holdoff=HOLDOFF_SECONDS)
 
+    async def _barge_in(self) -> None:
+        """The wake word over the reply: it stops now, and the session listens for what comes next."""
+        logger.info("turn %s: barge-in (the wake word over the reply, %.2f)", self.turn_id, self.wake.peak)
+        self.wake.reset()
+        await self._stop_turn()            # the reply's own cleanup: speaker stopped, speech and agent cancelled
+        await self.ui.awake()
+        await self._wait(holdoff=HOLDOFF_SECONDS)
+
     def _voice(self, text: str, heard: str = "") -> str:
         """The session's voice: decided by its first turn's main language (Chinese: dylan, English:
         ryan), then kept for every turn of the session, whatever language a later turn is in."""
@@ -320,6 +331,7 @@ class VoiceAssistant:
             timings.setdefault(name, round((self.clock() - heard_at) * 1000))
 
         await self.ui.phase(turn_id, "thinking", transcript=text)
+        self.wake.peak = 0.0                                           # how close its own voice comes to waking it
         texts: asyncio.Queue[Optional[str]] = asyncio.Queue()
         reply: list[str] = []
         speaker = self.new_speaker()
@@ -390,7 +402,8 @@ class VoiceAssistant:
             await speaker.drain()
             mark("played")
             self._recent.append((text, "".join(reply).strip()))
-            logger.info("turn %s (%s): timings (ms from heard) %s", turn_id, voice, timings)
+            logger.info("turn %s (%s): timings (ms from heard) %s; the wake word's highest score while speaking %.2f",
+                        turn_id, voice, timings, self.wake.peak)
         except BaseException:
             writing.cancel()
             speaking.cancel()
