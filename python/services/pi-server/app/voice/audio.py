@@ -89,5 +89,10 @@ class Speaker:
 
     async def stop(self) -> None:
         if self._proc is not None:
-            await _stop(self._proc)
-            self._proc = None
+            proc, self._proc = self._proc, None
+            await _stop(proc)
+            # Its stdin closed and awaited: aplay gone mid-write leaves the pipe's BrokenPipeError on asyncio's
+            # close future, logged later as "Future exception was never retrieved" if nobody reads it.
+            with contextlib.suppress(BrokenPipeError, ConnectionResetError):
+                proc.stdin.close()
+                await proc.stdin.wait_closed()
