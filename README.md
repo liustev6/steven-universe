@@ -83,8 +83,10 @@ the voice part of CP4 is planned step by step in [voice-path.md](docs/specs/voic
 
 **Where CP4 is now:** speech-service is live (4.1–4.6); on the Pi, the voice turn, the wake word and
 the voice session are done (4.8–4.12). 4.12b's wake word is 小派小派 since 2026-11-19
-([wake-word.md](docs/specs/wake-word.md)). Next: 4.13 barge-in, 4.14 Hey Pi shows the assistant, 4.15 protocol B in
-shared-schemas and the agent's latency levers.
+([wake-word.md](docs/specs/wake-word.md)). 4.13 barge-in is built (2026-11-23), waiting for its check on the Pi.
+Next: the tools checkpoint (CP5) before the rest of CP4, which needs it (ending a conversation is an
+`end_conversation` tool); then 4.14 Hey Pi shows the assistant, 4.15 protocol B in shared-schemas and the agent's
+latency levers.
 
 ## Docs and deploys
 
