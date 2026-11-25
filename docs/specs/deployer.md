@@ -325,6 +325,8 @@ Built on 2026-11-08:
 ## Open questions
 - **The Pi** (pi-server, systemd per D11): a systemd target in `deploy-target` (release folders, a
   `current` symlink, `systemctl restart`, a restricted key on the Pi), or keep its own script.
+  Either way it reaches the Pi only on the home LAN: the Pi isn't on Tailscale (2026-11-24: a
+  deploy from away hung on `raspberrypi.local`).
 - **The deployer deploying itself** (as Argo CD and Flux can). It needs two things first:
   - a detached host-side run with host-side rollback, since the SSH session lives in the container
     being replaced;

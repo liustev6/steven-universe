@@ -9,12 +9,14 @@ Flutter app (`dart/apps/hey-pi`).
 Hey Pi (Flutter UI) ──ws://127.0.0.1:8765/ws──▶ pi-server ──(later)──▶ home-hub (lab) ──▶ Home Assistant
 ```
 
-- **Now:** serves Hey Pi over a WebSocket with **mock data** (weather, Home Assistant
-  entities, assistant replies) and saves **device settings** (light/dark mode).
-- **Later:** relays to home-hub in the lab instead of mocking, and owns the Pi's
-  hardware (wake word, mic and speaker, backlight).
+- **Now:** owns the Pi's mic and speaker and runs the **voice assistant**: the wake word
+  (小派小派, `models/`), the voice session, the turn (speech-service → agent-service → speech),
+  barge-in by the wake word. Serves Hey Pi over a WebSocket with **mock data** (weather, Home
+  Assistant entities) and saves **device settings** (light/dark mode).
+- **Later:** relays to home-hub in the lab instead of mocking; the backlight.
 
-Protocol and design: `docs/specs/flutter_ui.md` ("Protocol", "pi-server").
+Protocol and design: [flutter_ui.md](../../../docs/specs/flutter_ui.md) ("Protocol", "pi-server"); the voice
+assistant: [voice-path.md](../../../docs/specs/voice-path.md); the wake word: [wake-word.md](../../../docs/specs/wake-word.md).
 
 ## Endpoints
 
