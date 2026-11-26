@@ -120,7 +120,7 @@ appear as `task.*` events).
 | `effort` | `model_reasoning_effort` |
 | `instructions` | added to Codex's own instructions (`developer_instructions`), or, with `codex_instructions: false`, **replacing** them (`base_instructions`) |
 | `codex_instructions` | keep Codex's built-in coding-agent instructions (default `true`). `voice` sets `false`: 42% fewer tokens per call (Q3) |
-| `tools` | Codex's feature switches: shell commands (`features.shell_tool`), web search (`web_search = "live"`, and the gateway provider's `supports_standalone_web_search`: since Codex 0.167 a custom provider gets the search tool only with it; the search is its own request, `POST /model/alpha/search`, relayed by the gateway like any model call), image viewing; `[]` = all off |
+| `tools` | Codex's feature switches: shell commands (`features.shell_tool`), web search (`web_search = "live"`, and the gateway provider's `supports_standalone_web_search`: since Codex 0.167 a custom provider gets the search tool only with it; the search is its own request, `POST /model/alpha/search`, relayed by the gateway like any model call), image viewing; `[]` = all off. **Always:** one MCP server, `tools`, the gateway's `/mcp` with the capability as its bearer token, Codex's own approvals off for it (CP5, [tools.md](tools.md)) |
 
 ## Milestone 1: the test setup
 **Day 1: one message, paid by your subscription.** No tools, on your Mac; then the same on the test

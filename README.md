@@ -76,7 +76,7 @@ the voice part of CP4 is planned step by step in [voice-path.md](docs/specs/voic
 |---|---|---|
 | 1–3 | the runtime, the sandbox worker, the control plane | Done (2026-11-12, 11-13, 11-17) |
 | 4 | **voice:** speech-service, then pi-server → agent-service → speech-service on the Pi | **In progress** |
-| 5 | tools ([tools.md](docs/specs/agent-service/tools.md)): tools-service (one MCP server, weather first), the gateway's `/mcp`, each session's tools = its owner's grant (a profile may narrow it), budgets, `end_conversation`; Home Assistant and confirmations later | **Next** (agreed 2026-11-26; web search, Codex's own, is already on for the `pi` profile since 2026-11-18) |
+| 5 | tools ([tools.md](docs/specs/agent-service/tools.md)): tools-service (one MCP server, weather first), the gateway's `/mcp`, each session's tools = its owner's grant (a profile may narrow it), budgets, `end_conversation`; Home Assistant and confirmations later | **Live** (the core, 2026-11-26: weather and ending the conversation, on the Pi); Home Assistant and confirmations later |
 | 6 | files and mounts ([files-and-mounts.md](docs/specs/agent-service/files-and-mounts.md)) | Planned |
 | 7 | summaries and memory | Planned |
 | 8 | knowledge (RAG over my documents); replaces stevenai-service | Planned |
@@ -85,9 +85,9 @@ the voice part of CP4 is planned step by step in [voice-path.md](docs/specs/voic
 **Where CP4 is now:** speech-service is live (4.1–4.6); on the Pi, the voice turn, the wake word and
 the voice session are done (4.8–4.12). 4.12b's wake word is 小派小派 since 2026-11-19
 ([wake-word.md](docs/specs/wake-word.md)). 4.13 barge-in (the wake word over the reply) is done since 2026-11-25.
-Next: the tools checkpoint (CP5) before the rest of CP4, which needs it (ending a conversation is an
-`end_conversation` tool); then 4.14 Hey Pi shows the assistant, 4.15 protocol B in shared-schemas and the agent's
-latency levers.
+CP5's core went live in between (2026-11-26, [tools.md](docs/specs/agent-service/tools.md)): the Pi answers the
+weather with our own tool and ends the conversation when you say goodbye. Next: 4.14 Hey Pi shows the assistant,
+4.15 protocol B in shared-schemas and the agent's latency levers.
 
 ## Docs and deploys
 

@@ -208,20 +208,24 @@ profiles:
     instructions: |                # optional: the profile's own rules
       You are Hey Pi, … You answer by voice: one to three short sentences …
     caller_instructions: append    # pi-server adds where the panel is (C15); default none
+    tool_instructions: append      # the session's tools-service tools listed (tools.md TL14); default none
     codex_instructions: false      # 42% fewer tokens per call (agent-runtime.md Q3)
-    tools: [web_search]            # Codex's built-in, run at OpenAI (no sandbox network, G4)
-    limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
+    tools: [web_search]            # Codex's built-ins only, run at OpenAI (no sandbox network, G4)
+    # mcp_tools: [weather/]        # optional: narrows the caller's tools-service grant (tools.md TL5); absent = all of it
+    limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}   # max_tool_calls: 20 (default, TL10)
     history: {carry_turns: 4}
   smoke:                           # deploy smoke tests: one short turn, as cheap as possible
     template: chat
     effort: low
     codex_instructions: false
+    mcp_tools: []                  # no tools
     limits: {wall_seconds: 120, max_turns: 2, max_turn_tokens: 20000}
     history: {carry_turns: 0}
 ```
 What reaches the runtime (protocol A's `Profile` in the session file) is the subset it needs
-(model, effort, instructions: the profile's, the caller's (C15), then the carried-over turns (C9), as one
-text; `codex_instructions`, tools, wall time): `AgentProfile.runtime()` in `app/profiles.py`. The profiles
+(model, effort, instructions: the profile's, the session's tool list (tools.md TL14), the caller's (C15),
+then the carried-over turns (C9), as one text, from what never changes to what changes most (TL15);
+`codex_instructions`, tools, wall time): `AgentProfile.runtime()` in `app/profiles.py`. The profiles
 `steven-ai` (the evidence chat) and `voice` were removed on 2026-11-18, unused since `pi`; the tests have
 their own profiles (`tests/profiles.yaml`).
 

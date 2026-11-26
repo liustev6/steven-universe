@@ -22,7 +22,7 @@ the component's spec is what's built.
 | M1 | the runtime on the Codex SDK, with a temporary dev gateway (no control plane). **Done** (2026-11-12): replies paid by your subscription, interrupts in 10 ms; gVisor moves to CP2 |
 | CP2 | the sandbox worker: VM 200, sandbox-runner (pods, templates), gVisor, the Proxmox firewall. **Done** (2026-11-13): claims in 26 ms, ready in ~0.5 s, deployed by the pipeline | [sandbox-runner.md](sandbox-runner.md) |
 | CP3 | the control plane: agent-service on CT 107 (sessions API, gateway, auth broker, PostgreSQL history), the `agent` CLI, api-service's relay. **Done** (2026-11-17): live end to end, through the deployer's pipeline | [control-plane.md](control-plane.md) |
-| CP5 | tools: tools-service (one MCP server), the gateway's `/mcp`, each session's tools = its owner's grant (a profile may narrow it), by token exchange. **Agreed** (2026-11-26) | [tools.md](tools.md) |
+| CP5 | tools: tools-service (one MCP server), the gateway's `/mcp`, each session's tools = its owner's grant (a profile may narrow it), by token exchange. **Live** (2026-11-26: the core, 5.1–5.6; Home Assistant and confirmations later) | [tools.md](tools.md) |
 | M2 | files as a mounted folder: a WebDAV view in file-management, a mounter sidecar, the gateway's files route, narrowed tokens | [files-and-mounts.md](files-and-mounts.md) |
 
 **Replaces and absorbs:**
@@ -206,7 +206,7 @@ session capability and the pod's `X-Sandbox-Id`:
 | `/files/…` (WebDAV reads, for the mounter), `POST /publish` | file-management with the session's narrowed token ([files-and-mounts.md](files-and-mounts.md)) | later |
 
 ## Tools and skills
-As agreed for CP5 (one MCP server, `tools-service`; filtering and delegation): [tools.md](tools.md).
+Live since CP5 (2026-11-26: tools-service, the gateway's `/mcp`, filtering and delegation): [tools.md](tools.md).
 - **MCP servers run outside the sandbox,** as trusted code with their own credentials:
   - **Weather:** Open-Meteo, which needs no key.
   - **Home Assistant:** HA's MCP server integration, or a small MCP server over HA's API. Each
