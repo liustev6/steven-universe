@@ -5,7 +5,8 @@
 #   .venv/bin/python -m app.admin --config-dir /tmp check-policy --file ../../../infra/services/auth-service/policy.yaml
 # Spec: docs/specs/auth-service.md ("Policy").
 #
-# Starting small: api-service, file-management, pi-server, the deployer (OpenBao logins), and agent-service. Only relaying is enabled:
+# Starting small: api-service, file-management, pi-server, the deployer (OpenBao logins), agent-service and
+# tools-service (the agents' tools, docs/specs/agent-service/tools.md). Only relaying is enabled:
 # no users yet (no `${user}` grants, no `can_assert_users`) and nothing hands out narrow
 # tokens yet (no `can_downscope`; see the README before enabling it). Add audiences and clients (gpu-server,
 # stevenai-service, ...) as each service adopts service-auth; tests/fixtures/policy.yaml
@@ -46,6 +47,17 @@ audiences:
   speech-service:
     scopes: [speech:create, speech:transcribe, status:read]
 
+  # The agents' tools: one MCP server (docs/specs/agent-service/tools.md). A client's grant here is the
+  # tools it may use; agent-service asks for a session's profile's tools and gets the overlap with its
+  # owner's grant (grant_overlap, TL5). Locations: "<namespace>/<tool>", "weather/" = the namespace.
+  tools-service:
+    scopes: [tools:call]
+    grant_overlap: true
+    detail_types:
+      tool_access:
+        actions: [call]
+        location_syntax: prefix
+
   # OpenBao: services log in with a token for this audience. What a login may read is OpenBao's
   # policy (generated from the manifests, infra/secrets-manager/tofu/), not a scope here.
   secrets-manager:
@@ -60,7 +72,10 @@ clients:
         scopes: [secrets:read]
 
   # The control plane: claims pods, keeps its login in OpenBao. Secret host-only on CT 107.
+  # Relays a session's owner to tools-service (grant 3, the turn's token), and nowhere else.
   agent-service:
+    can_relay_clients: true
+    relay_audiences: [tools-service]
     grants:
       sandbox-runner:
         scopes: [sandboxes:claim, sandboxes:release, sandboxes:read]
@@ -88,6 +103,7 @@ clients:
   # Relayed to agent-service, a caller gets ITS OWN agent-service grants, never these.
   api-service:
     can_relay_clients: true
+    relay_audiences: [agent-service]     # its only relayed route today: /v1/agent/…
     grants:
       sandbox-runner:                    # its public /v1/status reads the runner's pods (S.1)
         scopes: [status:read]
@@ -109,8 +125,10 @@ clients:
         scopes: [speech:create, speech:transcribe]
       agent-service:
         scopes: [chat:read, chat:write]
-      api-service:
-        scopes: [files:read, files:write, files:delete, files:list]
+      tools-service:                     # what Hey Pi's agent may use (its sessions' tools: profile ∩ this)
+        scopes: [tools:call]
+        authorization_details:
+          - {type: tool_access, actions: [call], locations: ["weather/"]}
       file-management:
         scopes: [files:read, files:write, files:delete, files:list]
         authorization_details:

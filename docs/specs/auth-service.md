@@ -82,7 +82,7 @@ This is enabled in the policy and tested; it goes into use when api-service adop
 | A5 | **Two levels of permission:** `scope` (which actions) and `authorization_details` (RFC 9396, which resources). Both must allow an operation. | Routes check scopes cheaply; the resource service checks locations. |
 | A6 | **Policy decided at mint time, enforced locally.** Receivers never call auth-service per request. | No per-request latency or dependency on auth-service. |
 | A7 | **Tokens can only narrow.** Every exchange yields a subset of what the requester may have, with a bounded lifetime. | No path from a weak credential to a stronger one. |
-| A8 | **Delegation and relay follow RFC 8693** (`act` claim, actor chains); only the token's own audience may exchange it; relaying needs `can_relay_clients`. | Prevents token passthrough and the confused-deputy problem. |
+| A8 | **Delegation and relay follow RFC 8693** (`act` claim, actor chains); only the token's own audience may exchange it; relaying needs `can_relay_clients`, limited to the client's `relay_audiences` when set. | Prevents token passthrough and the confused-deputy problem. |
 | A9 | **No user login here.** End users will log in at api-service through an identity provider. | auth-service only issues tokens to services. |
 | A10 | **No database.** Policy is a YAML file in git; secret hashes and keys are files on CT 102, reloaded when they change. | Reviewable permissions, nothing to operate. |
 | A11 | **Permissions in git, credentials never.** A client exists in `policy.yaml` first; its secret is created on CT 102 and piped straight to the client's host. | Every permission change is reviewed; secrets never pass through git, chat or a terminal. |
@@ -134,6 +134,7 @@ which the tests use. Tokens live 10 minutes (`token_ttl_seconds: 600`), downscop
 |---|---|---|
 | `api-service` | `files:read write delete list` | none |
 | `file-management` | `files:read write delete list` | `file_access`: actions `read write delete list`, prefix locations under `public/` or `private/` (must equal file-management's buckets) |
+| `tools-service` | `tools:call` | `tool_access`: action `call`, prefix locations `<namespace>/<tool>` (`weather/` = the namespace). **`grant_overlap`:** a request for more gets the overlap ([tools.md](agent-service/tools.md) TL5) |
 | `secrets-manager` | `secrets:read` | none; what a login may read is OpenBao's policy, generated from the manifests |
 
 **Clients:**
@@ -141,11 +142,11 @@ which the tests use. Tokens live 10 minutes (`token_ttl_seconds: 600`), downscop
 | Client | Audience: what it gets | Notes |
 |---|---|---|
 | `deployer` | secrets-manager: `secrets:read` | OpenBao login as role `deployer` (`sub=service:deployer`); secret host-only on CT 105 |
-| `api-service` | file-management: `read`, `list` on `public/`; sandbox-runner, agent-service and speech-service: `status:read` | its own token = what anonymous visitors may do; `can_relay_clients` |
-| `pi-server` | api-service: all `files:*`; file-management: all on `private/${client}/` | Hey Pi's backend |
+| `api-service` | file-management: `read`, `list` on `public/`; sandbox-runner, agent-service and speech-service: `status:read` | its own token = what anonymous visitors may do; `can_relay_clients` to agent-service only |
+| `pi-server` | speech-service: `speech:create`, `speech:transcribe`; agent-service: `chat:read`, `chat:write`; tools-service: `call` on `weather/`; file-management: all on `private/${client}/` | Hey Pi's backend (its api-service grant, never used, removed 2026-11-26) |
 | `smoke-test` | file-management: all on `private/${client}/`; agent-service and api-service: `chat:read`, `chat:write`; speech-service: `speech:create`, `speech:transcribe` | deploy checks only (A15) |
 | `speech-test-client` | speech-service: `speech:create`, `speech:transcribe`, `status:read` | speech-service's test client on the Mac (its page); secret in `~/.config/speech-test-client/secret` |
-| `agent-service` | sandbox-runner: claim, release, read; secrets-manager: `secrets:read` | the agents' control plane on CT 107 ([control-plane.md](agent-service/control-plane.md)) |
+| `agent-service` | sandbox-runner: claim, release, read; secrets-manager: `secrets:read` | the agents' control plane on CT 107 ([control-plane.md](agent-service/control-plane.md)); `can_relay_clients` to tools-service only: a session's owner, for its tools |
 | `agent-cli` | agent-service: `chat:read`, `chat:write`, `chat:admin` | the `agent` CLI on CT 107 |
 
 **Templates:** `${client}` is the requesting client (when relayed, the **relayed** client);
@@ -157,7 +158,7 @@ which the tests use. Tokens live 10 minutes (`token_ttl_seconds: 600`), downscop
 `${client}` or `${user}` only; locations stay under the audience's roots, end in `/` or name one
 object, and contain no `..`, `//`, `\` or control characters. An invalid policy is rejected and the
 running one stays. The special permissions default to off: `can_relay_clients` (grant 3 relay;
-api-service only), `can_assert_users` (grant 2; nobody, no users yet) and `can_downscope` (grant 4;
+api-service to agent-service, agent-service to tools-service: `relay_audiences`), `can_assert_users` (grant 2; nobody, no users yet) and `can_downscope` (grant 4;
 nobody, see Known issues).
 
 ## Token endpoint: `POST /oauth2/token`
@@ -165,13 +166,15 @@ Form-encoded (a repeated parameter is an error); client authentication by HTTP B
 Responses are JSON with `Cache-Control: no-store`; errors are RFC 6749 JSON. `invalid_client`
 (401) is identical for an unknown client, a wrong secret and a disabled client. Over 30 requests a
 minute per client and IP: 429 with `Retry-After`. `scope` and `authorization_details` may ask for
-**less** than the policy allows, never more.
+**less** than the policy allows, never more; at an audience with `grant_overlap` (tools-service), a
+request for more gets the overlap and the response says what it got (RFC 6749 §3.3), and nothing in
+common is still refused.
 
 | Grant | Request | Used for | Enabled |
 |---|---|---|---|
 | 1 | `grant_type=client_credentials` | a service calling as itself | all clients |
 | 2 | token exchange, `subject_token_type=urn:steven-universe:token-type:user-id` | api-service starting to act for a logged-in user | no (no users) |
-| 3 | token exchange, a `subject_token` issued **to** the requester | passing a user along a chain; api-service relaying an outside client | relay, for api-service |
+| 3 | token exchange, a `subject_token` issued **to** the requester | passing a user along a chain; api-service relaying an outside client; agent-service relaying a session's owner to tools-service | relay, for api-service and agent-service |
 | 4 | token exchange, the requester's **own** token for the same audience | a narrower, longer-lived token for a sandbox or share link | no (Known issues) |
 
 - **Grant 3:** the subject token must verify and its `aud` must be the requester. A `service:`

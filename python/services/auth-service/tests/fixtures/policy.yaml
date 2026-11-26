@@ -21,6 +21,15 @@ audiences:
     scopes: [tasks:run, sessions:read, sessions:admin]
   stevenai-service:
     scopes: [chat:stream]
+  agent-service:                         # the agents' control plane: sessions
+    scopes: [chat:read, chat:write]
+  tools-service:                         # the agents' tools (docs/specs/agent-service/tools.md)
+    scopes: [tools:call]
+    grant_overlap: true                  # a request for a profile's tools gets what the client is granted
+    detail_types:
+      tool_access:
+        actions: [call]
+        location_syntax: prefix          # "<namespace>/<tool>"; "weather/" = the namespace
 
 clients:
   api-service:
@@ -40,6 +49,12 @@ clients:
 
   hey-pi:                                # pi-server on the panel; from outside it comes in via api-service
     grants:
+      agent-service:
+        scopes: [chat:write]
+      tools-service:
+        scopes: [tools:call]
+        authorization_details:
+          - {type: tool_access, actions: [call], locations: ["weather/"]}
       api-service:
         scopes: [files:read, files:list]
       file-management:
@@ -74,8 +89,19 @@ clients:
           - {type: file_access, actions: [read], locations: ["models/"]}
           - {type: file_access, actions: [write], locations: ["users/${user}/outputs/"]}
 
+  agent-service:                         # relays a session's owner to tools-service, nowhere else
+    can_relay_clients: true
+    relay_audiences: [tools-service]
+    grants: {}
+
   admin-cli:
     grants:
+      agent-service:
+        scopes: [chat:write]
+      tools-service:
+        scopes: [tools:call]
+        authorization_details:
+          - {type: tool_access, actions: [call], locations: ["weather/forecast", "home/lights/"]}
       file-management:
         scopes: [files:read, files:write, files:delete, files:list]
         authorization_details:

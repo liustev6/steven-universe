@@ -60,9 +60,9 @@ The design, decisions TL1–TL12: [tools.md](tools.md).
 | Sub-CP | Status | What | Done when |
 |---|---|---|---|
 | 5.1 | ⏳ | **auth-service:** the `tools-service` audience and the `tool_access` detail type; agent-service may relay (`can_relay_clients`); a request granted the overlap with the policy, not refused (RFC 6749 §3.3) | an exchange returns profile ∩ grants; its audit line shows `sub` and `act` |
-| 5.2 | ⏳ | **tools-service** on its own LXC, through the pipeline: `weather.*` on Open-Meteo; tokens checked; its list filtered by token | Claude Code on the Mac, with a test client's token, sees only that client's tools |
+| 5.2 | ⏳ | **tools-service** on its own LXC, through the pipeline: `weather/` on Open-Meteo; tokens checked; its list filtered by token | Claude Code on the Mac, with a test client's token, sees only that client's tools |
 | 5.3 | ⏳ | **the gateway's `/mcp`:** the session's list fixed at its start, the exchange per turn, the tool budget, `end_conversation` | a sandbox lists and calls weather; another pod's capability gets 403; a session over its tool budget is refused |
-| 5.4 | ⏳ | **the runtime and profiles:** Codex's MCP configuration (keys checked on the pinned Codex); `tools`, `max_tool_calls`, skills' `requires_tools` | "明天天气怎么样" on the Pi is answered by `weather.*`, not a web search |
+| 5.4 | ⏳ | **the runtime and profiles:** Codex's MCP configuration (keys checked on the pinned Codex); `tools`, `max_tool_calls`, skills' `requires_tools` | "明天天气怎么样" on the Pi is answered by `weather_forecast`, not a web search |
 | 5.5 | ⏳ | **the safety checks** | an instruction injected through a web page or a tool result can't call a tool outside the session's list; the budget holds; both logged |
 | 5.6 | ⏳ | **`end_conversation`** in the voice path | "好了，谢谢" ends the session |
 
@@ -108,7 +108,7 @@ strike it through with the date, as below.
 | **Deploys of the Pi on push** (pi-server, Hey Pi): deployer phase 4; until then by hand from the Mac, on the home LAN | [deployer.md](../deployer.md) | when deploying by hand gets in the way; the Pi on Tailscale first, to deploy from away |
 | **Hey Pi boots to the app** (the `hey-pi.service` unit; `pi-setup.sh` from a fresh Pi OS) | [flutter_ui.md](../flutter_ui.md) | with 4.14 |
 | **The wake word's next round:** 30–60 min of your ordinary talk on the Pi's mic, pi-server saving each wake's audio, test set v2 and a retrain (quiet takes 68%, speech over media) | [wake-word.md](../wake-word.md) | when false wakes or misses show up in daily use |
-| **pi-server's unused grant at api-service** (`files:*`: nothing in pi-server calls api-service) | the auth policy | 5.1 (the policy is edited anyway) |
+| ~~**pi-server's unused grant at api-service**~~ removed in 5.1 (2026-11-26) | the auth policy | 5.1 ✅ |
 | **The website's Steven AI chat** calls web-gateway's `/chat/stream` on api.liustev6.ca: 404 since api-service replaced it | the website | CP8 (stevenai-service retired); hide it until then |
 | **Open bugs** (2026-11-24): #1 pi-server can loop on empty turns; #2 the TTS's second slot can fail to allocate memory (worked around); #3 speech-service's GPU memory creeps up; #5 the Pi's journal is in memory, lost on reboot; #6 the agent's search queries aren't logged; #7 the agent sometimes replies in Spanish; #8 speech-service's test client sends no location; #9 a deploy's smoke test once heard garbled audio; #10 tokens go stale across the Mac's sleep; #11 (proposed) speech-service logs the speech-to-text context, sent in the URL | CP4 | #5 first (cheap, and it makes the rest diagnosable); the others between CP5's steps or with 4.15 |
 

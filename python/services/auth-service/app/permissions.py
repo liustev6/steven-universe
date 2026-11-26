@@ -5,6 +5,9 @@
 2. If the request asks for specific scopes / authorization details, each must
    be covered by an allowed one. The token gets what was asked for, or
    everything allowed if nothing was asked for. Tokens can only narrow (A9).
+   At an audience with `grant_overlap`, a request asking for more gets the
+   overlap of what it asked for and what is allowed instead (RFC 6749 §3.3);
+   nothing in common is still refused.
 """
 
 from __future__ import annotations
@@ -108,6 +111,63 @@ def _detail_covered(requested: dict[str, Any], allowed: dict[str, Any]) -> bool:
     return all(
         any(covers(a, r) for a in allowed["locations"]) for r in requested["locations"]
     )
+
+
+def _location_overlap(allowed: str, requested: str) -> str | None:
+    """The narrower of two locations when one covers the other, else None."""
+    if covers(allowed, requested):
+        return requested
+    if covers(requested, allowed):
+        return allowed
+    return None
+
+
+def _detail_overlaps(requested: dict[str, Any], allowed: dict[str, Any]) -> dict[str, Any] | None:
+    """What `requested` and `allowed` have in common, as one detail, or None."""
+    if requested["type"] != allowed["type"]:
+        return None
+    if "identifier" in allowed and requested.get("identifier") != allowed["identifier"]:
+        return None
+    actions = [a for a in requested["actions"] if a in allowed["actions"]]
+    locations = [
+        loc for r in requested["locations"] for a in allowed["locations"]
+        if (loc := _location_overlap(a, r)) is not None
+    ]
+    if not actions or not locations:
+        return None
+    detail: dict[str, Any] = {
+        "type": requested["type"], "actions": actions, "locations": list(dict.fromkeys(locations)),
+    }
+    identifier = requested.get("identifier", allowed.get("identifier"))
+    if identifier is not None:
+        detail["identifier"] = identifier
+    return detail
+
+
+def overlap(
+    allowed: Permissions,
+    requested_scopes: list[str] | None,
+    requested_details: list[dict[str, Any]] | None,
+) -> Permissions:
+    """What the request and `allowed` have in common (grant_overlap audiences); refused if nothing."""
+    if requested_scopes is not None:
+        scopes = tuple(s for s in dict.fromkeys(requested_scopes) if s in allowed.scopes)
+    else:
+        scopes = allowed.scopes
+    if not scopes:
+        raise invalid_scope("none of the requested scopes is allowed")
+
+    if requested_details is not None:
+        found = [
+            d for r in requested_details for a in allowed.details
+            if (d := _detail_overlaps(r, a)) is not None
+        ]
+        details = tuple({repr(sorted(d.items())): d for d in found}.values())  # duplicates once
+        if not details:
+            raise invalid_details("none of the requested authorization details is allowed")
+    else:
+        details = allowed.details
+    return Permissions(scopes, details)
 
 
 def narrow(

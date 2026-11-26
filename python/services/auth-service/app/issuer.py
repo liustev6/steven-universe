@@ -34,7 +34,7 @@ from .errors import (
     unauthorized_client,
 )
 from .keys import KeyStore
-from .permissions import Permissions, narrow, parse_requested_details, resolve
+from .permissions import Permissions, narrow, overlap, parse_requested_details, resolve
 from .policy import Policy, PolicyStore
 from .validation import CLIENT_ID_RE, USER_ID_RE
 
@@ -174,8 +174,11 @@ class Issuer:
             grant = "token_exchange:delegation"
         elif sub.startswith(SERVICE_PREFIX):
             relayed = sub[len(SERVICE_PREFIX):]
-            if not policy.clients[req.client_id].can_relay_clients:
+            relay = policy.clients[req.client_id]
+            if not relay.can_relay_clients:
                 raise unauthorized_client("this client may not relay other clients")
+            if relay.relay_audiences is not None and req.audience not in relay.relay_audiences:
+                raise unauthorized_client(f"this client may not relay to {req.audience!r}")
             if not CLIENT_ID_RE.match(relayed) or relayed not in policy.clients:
                 raise invalid_grant("subject_token's client is not in policy")
             owner = relayed
@@ -244,7 +247,7 @@ class Issuer:
         requested_details = None
         if req.details_raw is not None:
             requested_details = parse_requested_details(req.details_raw, aud)
-        return narrow(allowed, req.scopes, requested_details)
+        return (overlap if aud.grant_overlap else narrow)(allowed, req.scopes, requested_details)
 
     def _verify_subject(self, policy: Policy, token: str) -> dict[str, Any]:
         """Check a subject token issued by this server (signature, iss, exp, typ)."""

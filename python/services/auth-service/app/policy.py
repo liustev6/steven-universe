@@ -33,6 +33,10 @@ class DetailTypeDef(_Strict):
 class AudienceDef(_Strict):
     scopes: list[str]
     detail_types: dict[str, DetailTypeDef] = Field(default_factory=dict)
+    # A request asking for more than the policy allows gets the overlap (and the response says what
+    # it got: RFC 6749 §3.3) instead of a refusal. For audiences where a request is a menu, not an
+    # exact need: tools-service, asked for a profile's tools (docs/specs/agent-service/tools.md TL5).
+    grant_overlap: bool = False
 
 
 class DetailTemplate(_Strict):
@@ -49,6 +53,9 @@ class GrantDef(_Strict):
 class ClientDef(_Strict):
     can_assert_users: bool = False
     can_relay_clients: bool = False
+    # Where a relay may pass a client on (grant 3, a service subject); None: any audience the relayed
+    # client has a grant for. agent-service relays its sessions' owners only to tools-service.
+    relay_audiences: list[str] | None = None
     can_downscope: bool = False
     grants: dict[str, GrantDef] = Field(default_factory=dict)
 
@@ -95,6 +102,12 @@ class Policy(_Strict):
             where = f"clients.{name}"
             if not CLIENT_ID_RE.match(name):
                 errors.append(f"{where}: invalid client id")
+            if client.relay_audiences is not None:
+                if not client.can_relay_clients:
+                    errors.append(f"{where}: relay_audiences without can_relay_clients")
+                for aud_name in client.relay_audiences:
+                    if aud_name not in self.audiences:
+                        errors.append(f"{where}.relay_audiences: unknown audience {aud_name!r}")
             for aud_name, grant in client.grants.items():
                 gwhere = f"{where}.grants.{aud_name}"
                 aud = self.audiences.get(aud_name)

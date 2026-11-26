@@ -169,3 +169,69 @@ def test_downscope_needs_permission_and_own_token(mint):
 def test_expires_in_only_applies_to_downscoping(mint):
     response = mint("hey-pi", grant_type="client_credentials", resource="file-management", expires_in="60")
     assert error_of(response) == "invalid_request"
+
+
+# ---- grant 3: agent-service relays a session's owner to tools-service (grant_overlap) -------
+
+TOOLS = "tools-service"
+
+
+def tools_for(mint, owner, wanted, scope="tools:call"):
+    """agent-service exchanges the owner's agent-service token for a tools-service token."""
+    subject = own_token(mint, owner, "agent-service")
+    details = [{"type": "tool_access", "actions": ["call"], "locations": wanted}]
+    return exchange(mint, "agent-service", subject, TOOLS, scope=scope,
+                    authorization_details=json.dumps(details))
+
+
+def test_a_profiles_tools_meet_the_owners_grants(mint, claims_of):
+    body = ok(tools_for(mint, "hey-pi", ["weather/", "home/"]))
+    granted = [{"type": "tool_access", "actions": ["call"], "locations": ["weather/"]}]
+    assert body["authorization_details"] == granted          # the response says what it got
+    assert body["scope"] == "tools:call"
+    claims = claims_of(body["access_token"], audience=TOOLS)
+    assert claims["sub"] == "service:hey-pi"
+    assert claims["act"] == {"sub": "service:agent-service"}
+    assert claims["authorization_details"] == granted
+
+
+def test_the_overlap_is_the_narrower_of_the_two(mint):
+    # asked for one tool of a granted namespace: that tool
+    body = ok(tools_for(mint, "hey-pi", ["weather/forecast"]))
+    assert body["authorization_details"][0]["locations"] == ["weather/forecast"]
+    # asked for whole namespaces, granted one tool of one and all of another: those
+    body = ok(tools_for(mint, "admin-cli", ["weather/", "home/"]))
+    assert body["authorization_details"][0]["locations"] == ["weather/forecast", "home/lights/"]
+
+
+def test_nothing_in_common_is_still_refused(mint):
+    assert error_of(tools_for(mint, "hey-pi", ["home/"])) == "invalid_authorization_details"
+    assert error_of(tools_for(mint, "hey-pi", ["weather/"], scope="tools:admin")) == "invalid_scope"
+
+
+def test_relay_only_to_its_relay_audiences(mint):
+    subject = own_token(mint, "hey-pi", "agent-service")
+    response = exchange(mint, "agent-service", subject, "file-management")
+    assert error_of(response) == "unauthorized_client"
+
+
+def test_other_audiences_still_refuse_asking_for_more(mint):
+    """grant_overlap is per audience: file-management keeps refusing (above), tools-service overlaps."""
+    wider = [{"type": "file_access", "actions": ["write"], "locations": ["public/"]}]
+    response = mint("api-service", grant_type="client_credentials", resource="file-management",
+                    authorization_details=json.dumps(wider))
+    assert error_of(response) == "invalid_authorization_details"
+
+
+def test_relay_audiences_need_relaying_and_known_audiences():
+    import pytest
+    from app.policy import Policy
+
+    data = policy_data()
+    data["clients"]["hey-pi"]["relay_audiences"] = ["tools-service"]
+    with pytest.raises(ValueError, match="relay_audiences without can_relay_clients"):
+        Policy.model_validate(data)
+    data = policy_data()
+    data["clients"]["agent-service"]["relay_audiences"] = ["nowhere"]
+    with pytest.raises(ValueError, match="unknown audience 'nowhere'"):
+        Policy.model_validate(data)

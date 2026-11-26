@@ -17,7 +17,7 @@ def test_metadata_points_at_token_endpoint_and_jwks(client):
     assert meta["token_endpoint"] == f"{ISSUER}/oauth2/token"
     assert meta["jwks_uri"] == f"{ISSUER}/.well-known/jwks.json"
     assert "urn:ietf:params:oauth:grant-type:token-exchange" in meta["grant_types_supported"]
-    assert meta["authorization_details_types_supported"] == ["file_access"]
+    assert meta["authorization_details_types_supported"] == ["file_access", "tool_access"]
 
     jwks = client.get("/.well-known/jwks.json").json()
     (key,) = jwks["keys"]
