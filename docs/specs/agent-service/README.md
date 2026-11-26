@@ -22,7 +22,7 @@ the component's spec is what's built.
 | M1 | the runtime on the Codex SDK, with a temporary dev gateway (no control plane). **Done** (2026-11-12): replies paid by your subscription, interrupts in 10 ms; gVisor moves to CP2 |
 | CP2 | the sandbox worker: VM 200, sandbox-runner (pods, templates), gVisor, the Proxmox firewall. **Done** (2026-11-13): claims in 26 ms, ready in ~0.5 s, deployed by the pipeline | [sandbox-runner.md](sandbox-runner.md) |
 | CP3 | the control plane: agent-service on CT 107 (sessions API, gateway, auth broker, PostgreSQL history), the `agent` CLI, api-service's relay. **Done** (2026-11-17): live end to end, through the deployer's pipeline | [control-plane.md](control-plane.md) |
-| CP5 | tools: tools-service (one MCP server), the gateway's `/mcp`, each session's tools = its profile ∩ its owner's grants, by token exchange. **Agreed** (2026-11-26) | [tools.md](tools.md) |
+| CP5 | tools: tools-service (one MCP server), the gateway's `/mcp`, each session's tools = its owner's grant (a profile may narrow it), by token exchange. **Agreed** (2026-11-26) | [tools.md](tools.md) |
 | M2 | files as a mounted folder: a WebDAV view in file-management, a mounter sidecar, the gateway's files route, narrowed tokens | [files-and-mounts.md](files-and-mounts.md) |
 
 **Replaces and absorbs:**
@@ -202,7 +202,7 @@ session capability and the pod's `X-Sandbox-Id`:
 |---|---|---|
 | `GET /v1/runtime/turns`, `POST /v1/runtime/events` | the runtime's long poll, and its events (protocol A) | built |
 | `/model/…` (OpenAI's Responses API) | your subscription's token added (the auth broker); the profile's model and token budget enforced | built |
-| `/mcp` (streamable HTTP MCP) | the session's tools, fixed at its start (profile ∩ the owner's grants), forwarded to tools-service with a token exchanged for the owner, plus the gateway's own (`end_conversation`); tool budgets; later confirmations (`POST /v1/sessions/{id}/confirmations/{call_id}` on the callers' side). [tools.md](tools.md) | CP5 |
+| `/mcp` (streamable HTTP MCP) | the session's tools, fixed at its start (the owner's grant, narrowed by the profile's optional `mcp_tools`), forwarded to tools-service with a token exchanged for the owner, plus the gateway's own (`end_conversation`); tool budgets; later confirmations (`POST /v1/sessions/{id}/confirmations/{call_id}` on the callers' side). [tools.md](tools.md) | CP5 |
 | `/files/…` (WebDAV reads, for the mounter), `POST /publish` | file-management with the session's narrowed token ([files-and-mounts.md](files-and-mounts.md)) | later |
 
 ## Tools and skills

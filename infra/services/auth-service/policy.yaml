@@ -125,7 +125,7 @@ clients:
         scopes: [speech:create, speech:transcribe]
       agent-service:
         scopes: [chat:read, chat:write]
-      tools-service:                     # what Hey Pi's agent may use (its sessions' tools: profile ∩ this)
+      tools-service:                     # what Hey Pi's agent may use (its agent sessions get all of this unless a profile's mcp_tools narrows it)
         scopes: [tools:call]
         authorization_details:
           - {type: tool_access, actions: [call], locations: ["weather/"]}
