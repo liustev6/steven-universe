@@ -1,6 +1,6 @@
 # Spec: tools (CP5: tools-service, the gateway's `/mcp`, filtering and delegation)
 
-**Status: agreed** (2026-11-26); building in CP5 ([tracker.md](tracker.md)). Part of
+**Status: agreed** (2026-11-26); building in CP5 ([tracker.md](tracker.md)): tools-service live on CT 109 since 2026-11-26 (5.2). Part of
 [agent-service](README.md). Related: [control-plane.md](control-plane.md) (the gateway, profiles),
 [agent-runtime.md](agent-runtime.md) (Codex in the sandbox), [auth-service.md](../auth-service.md)
 (grants, token exchange), [voice-path.md](../voice-path.md) (`end_conversation`).
