@@ -1,35 +1,30 @@
 import 'package:flutter/material.dart';
 
 import '../protocol/messages.dart';
+import '../ui/ambient_background.dart';
 import '../ui/theme.dart';
+import 'assistant_figure.dart';
 
-/// The screen while the voice assistant listens or speaks. A plain placeholder: its design comes
-/// later.
+/// The screen while the voice assistant listens or speaks: its character on the
+/// idle screens' background, shaded and dimmed like the sleep clock.
 class SpeechView extends StatelessWidget {
   const SpeechView(this.speech, {super.key});
 
   final SpeechState speech;
 
+  /// The character's height (its design is 360×320).
+  static const double figureHeight = 480;
+
   @override
-  Widget build(BuildContext context) {
-    final palette = context.palette;
-    final listening = speech == SpeechState.listening;
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            listening ? Icons.mic : Icons.graphic_eq,
-            size: 96,
-            color: palette.primaryColor,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            listening ? 'Listening…' : 'Speaking…',
-            style: Theme.of(context).textTheme.headlineMedium,
-          ),
-        ],
+  Widget build(BuildContext context) => AmbientBackground(
+    child: Center(
+      child: SizedBox(
+        height: figureHeight,
+        child: Semantics(
+          label: speech == SpeechState.listening ? 'Listening' : 'Speaking',
+          child: AssistantFigure(speech, shade: context.palette.assistant),
+        ),
       ),
-    );
-  }
+    ),
+  );
 }

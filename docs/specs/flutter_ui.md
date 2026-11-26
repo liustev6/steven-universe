@@ -46,7 +46,7 @@ Enclosure: `models/3d-print/home-control-frame/`.
 | D5 | **One transport, one router:** a single WebSocket client plus a typed message router (sealed classes, exhaustive `switch`). No HTTP clients in the app. |
 | D6 | Device pixel ratio ≈ **1.0**; the logical canvas is 1024×600 on both Pi and Mac. |
 | D7 | Pure-Dart packages only, no plugins with native code. |
-| D8 | **The protocol starts minimal and grows by adding message types** (2026-11-26: the first design's client/device split, mock feeds, settings and assistant messages were removed). Today: one message, `speech`, pi-server → UI; the UI sends nothing. `protocol/` and `connection/server_client.dart` stay **pure Dart**, so they can be shared later. |
+| D8 | **The protocol starts minimal and grows by adding message types** (2026-11-26: the first design's client/device split, mock feeds, settings and assistant messages were removed). Today: `speech`, pi-server → UI; `wake` (the voice button), UI → pi-server. `protocol/` and `connection/server_client.dart` stay **pure Dart**, so they can be shared later. |
 | D9 | **What the screen shows is derived, never stored:** pi-server's speech state when it isn't idle (`listening`, `speaking`), else the app's own mode (`dashboard`, `idle`) (2026-11-26). |
 
 ## Hardware / display
@@ -90,7 +90,8 @@ touches, timers ─────────────────────�
 
 ### ServerClient (transport): `lib/connection/server_client.dart`
 - `dart:io` `WebSocket` (no package), `pingInterval` 5 s to detect a hung pi-server. Pure Dart.
-- **Receive-only:** the protocol has nothing for the UI to send.
+- `send(message)` while connected; **not connected, it's dropped, not queued** (a tap from a minute
+  ago mustn't wake the assistant later).
 - Reconnect with exponential backoff: 0.5 s → 10 s cap, reset after a successful connect.
 - Exposes the link status (`connecting | connected | disconnected`) and the decoded messages.
 - The address is `ws://127.0.0.1:8765/ws` (the Pi's loopback), or `--dart-define=PI_SERVER_URL=…`.
@@ -118,16 +119,21 @@ handlers change a store.**
 
 - **Events** (`state/events/`): each is a `UserEvent` or a `SystemEvent` (source) and may also have
   effect types: `AppModeEvent` (changes the app store), `ServerStateEvent` (changes the server store). **Handlers** (`state/handler/`): one function per event; through their
-  `HandlerContext` (`store/handler_context.dart`) they read the state, call the store's setters and
-  raise further events. The dispatcher routes events to handlers (exhaustive over the sealed
-  `AppEvent`) and owns the idle timer (every `UserEvent` restarts it).
+  `HandlerContext` (`store/handler_context.dart`) they read the state, call the store's setters,
+  raise further events and **send pi-server a message** (`send`: the voice tile's `VoiceClick` sends
+  `wake`). The dispatcher routes events to handlers (exhaustive over the sealed `AppEvent`) and owns
+  the idle timer (every `UserEvent` restarts it).
 - **The idle timer keeps running during speech.** When speech goes back to `idle`, the screen shows
   the app's mode as it is by then (`dashboard`, or `idle` if nobody touched it for 2 min).
+- **The voice tile changes no store:** it sends `wake`, and the screen follows pi-server's `speech`
+  messages, as for the wake word.
 - `PanelRoot` renders `uiModeProvider`: `dashboard` → the dashboard, `idle` → the ambient clock,
-  `listening` / `speaking` → the speech view (a placeholder until its design).
+  `listening` / `speaking` → the speech view: the assistant's character, animated, on the ambient
+  clock's background (Widgets, 4).
 - Tests: events through the dispatcher and the store (`test/state/handler/`), the derivation table
-  (`test/state/store/ui_mode_test.dart`), the speech view over both app modes
-  (`test/display/panel_root_test.dart`).
+  (`test/state/store/ui_mode_test.dart`), the voice tile's `wake` (`test/state/handler/voice_click_test.dart`), the speech view over both app modes
+  (`test/display/panel_root_test.dart`), the figure in both speech states and themes
+  (`test/display/assistant_figure_test.dart`).
 
 ### The ambient clock (`idle`)
 Big time (h:mm) with AM/PM stacked over the seconds on its right, date below, small current weather;
@@ -140,7 +146,7 @@ anything on the dashboard.
 ## Protocol (JSON over WebSocket; panel endpoint `ws://127.0.0.1:8765/ws`)
 Models: `lib/protocol/messages.dart` (pure Dart) and pi-server's `app/protocol.py`, kept in sync.
 
-**One message, pi-server → UI**, on connect and on every change:
+**pi-server → UI**, on connect and on every change:
 ```json
 {"type": "speech", "state": "idle | listening | speaking"}
 ```
@@ -148,10 +154,20 @@ Models: `lib/protocol/messages.dart` (pure Dart) and pi-server's `app/protocol.p
 | State | Means | pi-server's voice assistant |
 |---|---|---|
 | `idle` | no voice session | `IDLE` |
-| `listening` | the session waits for you, or hears you | `WAITING`, `LISTENING` |
-| `speaking` | its turn: from the end of what you said until its reply has played (thinking included) | `REPLYING` |
+| `listening` | the session waits for you, hears you, or works out its reply | `WAITING`, `LISTENING`, and `REPLYING` until the reply's first sound (its `thinking` phase) |
+| `speaking` | its voice: from the reply's first sound until it has played | `REPLYING`, from its first audio (its `speaking` phase) |
 
-**The UI sends nothing.** What it shows when speech is `idle` is its own mode (D1, D9).
+**UI → pi-server, the voice button** (2026-11-26):
+```json
+{"type": "wake"}
+```
+What hearing the wake word does (pi-server's `VoiceAssistant.woken`): no session, one opens (its
+agent session and pod claimed now, the 7 s window, a voice starts the turn); over a reply, a
+barge-in; while the session waits or listens, nothing. The same rules after it as after the word
+(follow-ups, the timeouts, the wake word to barge in). The button and the word at once act once.
+pi-server drops anything else a screen sends, without closing the socket.
+
+What the UI shows when speech is `idle` is its own mode (D1, D9).
 Unknown message types and states are ignored, so pi-server can add messages before the UI knows
 them. **Removed on 2026-11-26** (mock, or a first design never used for real): `hello`, `subscribe`,
 `snapshot`, `widget_update`, `ha_*`, `assistant*`, `display_state`, `connection`, `settings*`,
@@ -189,10 +205,21 @@ span ≥ 2×2.
    values every 5 s) until a weather message exists in the protocol (contract below).
 3. **HA quick controls**: lights/scenes as toggle tiles (later, with Home Assistant).
 4. **Assistant**: not a tile: while speech isn't `idle`, the speech view replaces the screen (App
-   state). Its design (and anything shown of what was said) comes later.
+   state): the assistant's character (`AssistantFigure`, 480 px tall of the 600), listening (head tilted to a
+   cupped ear, incoming waves) or speaking (mouth moving, outgoing waves), on the sleep view's
+   background (`AmbientBackground`: same vignette, same 15% dim over everything, figure included, as over
+   the sleep clock). Design source: `assets/svgs/assistant-{listening,speaking}.svg`. They animate with CSS
+   (`@keyframes`, `var(--outline-color)`, `d: path()`), which flutter_svg doesn't run, so the
+   figure is a `CustomPainter` with the same paths (parsed by `path_parsing`) and the same 2.4 s
+   keyframes; an SVG change is mirrored there. Coloured like the clock's time digits: the palette's
+   `assistant` gradient (the SVGs' `--outline-color`; today the same shaded white / near-black as
+   `primary`), stretched over the drawing's own height (antennae to chin) as the clock's spans its
+   digits. Reduced motion (`disableAnimations`): drawn still, as the SVGs'
+   `prefers-reduced-motion`.
 5. **Status** (connection): will come back as a grid widget.
 6. **Sleep tile** (1×1): puts the panel to sleep immediately.
-7. **`PlaceholderTile(title, icon, columns, rows)`**: stand-in of any size for widgets that don't
+7. **Voice tile** (1×1, `VoiceTile`, a mic): the wake word pressed: sends `wake` (Protocol).
+8. **`PlaceholderTile(title, icon, columns, rows)`**: stand-in of any size for widgets that don't
    exist yet (icon only at 1×1, icon + title when one cell wide or tall, full card otherwise).
 
 Current `dashboardLayout` (fills all 84 cells; a test checks this):
@@ -204,7 +231,7 @@ r2   Media 4×2  |            | Calendar 3×3 | Door 1×1
 r3              |            |              | Volume
 r4   Forecast 4×1 | Assistant |             |  1×2
 r5   Hourly 4×1 |   4×2      | Camera       | Energy
-r6   Sleep Lock Fan Theme|Sun 2×1|Air 2×1| 2×2 | 2×2
+r6   Sleep Voice Fan Theme|Sun 2×1|Air 2×1| 2×2 | 2×2
 ```
 
 ## Weather feed contract
@@ -262,9 +289,9 @@ dart/apps/hey-pi/
 │   ├── main.dart                # ProviderScope, env config, runApp
 │   ├── app.dart                 # MaterialApp, theme; PanelRoot: uiModeProvider → the screen
 │   ├── protocol/
-│   │   └── messages.dart        # the protocol (pure Dart): `speech`, mirroring pi-server's protocol.py
+│   │   └── messages.dart        # the protocol (pure Dart): `speech` in, `wake` out; mirrors protocol.py
 │   ├── connection/
-│   │   ├── server_client.dart   # WebSocket, ping, reconnect/backoff, receive-only (pure Dart)
+│   │   ├── server_client.dart   # WebSocket, ping, reconnect/backoff, send (pure Dart)
 │   │   └── message_router.dart  # serverClientProvider, serverLinkProvider; messages → system events
 │   ├── weather/                 # weather_data.dart (model + JSON), weather_provider.dart (mock for now)
 │   ├── state/
@@ -273,13 +300,13 @@ dart/apps/hey-pi/
 │   │   │   ├── app_store.dart         # AppState (AppMode + theme mode) + setters: app-only
 │   │   │   ├── server_store.dart      # ServerState: what pi-server says (set by handlers)
 │   │   │   ├── ui_mode.dart           # UiMode, derived: speech over the app's mode
-│   │   │   └── handler_context.dart   # what a handler may use: state, setters, dispatch
+│   │   │   └── handler_context.dart   # what a handler may use: state, setters, dispatch, send
 │   │   ├── types/
 │   │   │   └── app_mode.dart          # AppMode: dashboard | idle
 │   │   ├── events/                 # what can happen (definitions only)
 │   │   │   ├── app_event.dart         # sealed AppEvent; source: UserEvent | SystemEvent (extends);
 │   │   │   │                          # effects: AppModeEvent, ServerStateEvent (implements)
-│   │   │   ├── user_events.dart       # UserUncategorizedClick, SleepClick, ThemeModeClick
+│   │   │   ├── user_events.dart       # UserUncategorizedClick, SleepClick, ThemeModeClick, VoiceClick
 │   │   │   └── system_events.dart     # IdleTimeout; ServerSpeech, ServerDisconnected (the router's)
 │   │   └── handler/                # what each event does
 │   │       ├── event_dispatcher.dart  # dispatch(event) → handler; owns the idle timer
@@ -288,7 +315,8 @@ dart/apps/hey-pi/
 │   ├── display/
 │   │   ├── dashboard_view.dart  # grid from layout
 │   │   ├── sleep_view.dart      # the ambient clock (`idle`), 1/min redraw, pixel shift
-│   │   ├── speech_view.dart     # listening / speaking (placeholder)
+│   │   ├── speech_view.dart     # listening / speaking: the figure on the ambient background
+│   │   ├── assistant_figure.dart # the character, painted from assets/svgs/assistant-*.svg
 │   │   └── touch_guard.dart     # every touch → UserUncategorizedClick (wake + idle reset)
 │   ├── layout/
 │   │   ├── panel_widget.dart    # abstract PanelWidget: columns, rows (≤4), expandable
@@ -298,9 +326,11 @@ dart/apps/hey-pi/
 │   │   ├── clock_widget.dart
 │   │   ├── weather_widget.dart
 │   │   ├── sleep_tile.dart      # 1×1 sleep button
+│   │   ├── voice_tile.dart      # 1×1 voice button: sends `wake`
 │   │   └── placeholder_tile.dart # stand-in of any size
 │   └── ui/
 │       ├── theme.dart
+│       ├── ambient_background.dart # the idle screens' vignette + dim (sleep clock, speech view)
 │       ├── sizing.dart          # 12 mm tap target, spacing scale
 │       └── keyboard/            # on-screen keyboard
 ├── test/
@@ -436,5 +466,5 @@ backlight/GPIO/audio code; no app-store packaging; no `linux/` desktop target; n
   Confirm the active area from the panel datasheet; if the pixels really aren't square, round/square
   shapes will look ~7% squashed (Flutter can't compensate).
 - Weather location and the HA entity list for the Home widget.
-- The speech view's design, and whether it shows what was said and the reply (the protocol would grow
+- Whether the speech view shows what was said and the reply (the protocol would grow
   a message for them).

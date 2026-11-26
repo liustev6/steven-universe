@@ -1,4 +1,4 @@
-"""The protocol: one message, `speech`, pi-server -> hey-pi (app/protocol.py)."""
+"""The protocol (app/protocol.py): `speech`, pi-server -> hey-pi; `wake`, hey-pi -> pi-server."""
 
 import asyncio
 
@@ -30,17 +30,36 @@ def test_every_screen_hears_each_change_and_only_changes(client):
         assert late.receive_json() == {"type": "speech", "state": "speaking"}
 
 
-def test_whatever_a_screen_sends_is_dropped_and_the_socket_stays(client):
+def test_what_isnt_in_the_protocol_is_dropped_and_the_socket_stays(client):
     with client.websocket_connect("/ws") as ws:
         ws.receive_json()
         ws.send_text("not json")
+        ws.send_text("[1, 2]")
         ws.send_json({"type": "user_activity"})                     # the old protocol: gone
+        ws.send_json({"type": "wake"})                              # the voice off: nothing to wake
         client.post("/debug/speech/listening")
         assert ws.receive_json() == {"type": "speech", "state": "listening"}
 
 
+def test_the_voice_button_wakes_the_voice_assistant():
+    server = PiServer(Settings(VOICE=False))
+    woken = []
+
+    class Voice:
+        async def woken(self, by):
+            woken.append(by)
+    server.voice = Voice()
+
+    async def go():
+        await server.handle(None, '{"type": "wake"}')
+        await server.handle(None, '{"type": "wake", "extra": 1}')   # extra fields: still a wake
+        await server.handle(None, '{"type": "listen"}')             # not in the protocol
+    asyncio.run(go())
+    assert woken == ["the voice button", "the voice button"]
+
+
 def test_the_voice_assistants_phases_become_the_speech_state():
-    """idle -> idle; listening -> listening; thinking and speaking -> speaking (its turn)."""
+    """idle -> idle; listening and thinking -> listening; speaking -> speaking (its voice heard)."""
     server = PiServer(Settings(VOICE=False))
     sent = []
 
@@ -49,7 +68,7 @@ def test_the_voice_assistants_phases_become_the_speech_state():
     server.hub.broadcast = broadcast
 
     async def go():
-        for phase in ("listening", "listening", "thinking", "speaking", "listening", "idle"):
+        for phase in ("listening", "listening", "thinking", "speaking", "listening", "thinking", "idle"):
             await server.phase("v1", phase)
         await server.reply_delta("v1", "ignored")
         await server.awake()

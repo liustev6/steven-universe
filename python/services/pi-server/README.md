@@ -12,21 +12,28 @@ Hey Pi (Flutter UI) ◀──ws://127.0.0.1:8765/ws── pi-server ──▶ sp
 
 - **Runs the voice assistant:** owns the Pi's mic and speaker; the wake word (小派小派, `models/`), the
   voice session, the turn (speech-service → agent-service → speech), barge-in by the wake word.
-- **Tells Hey Pi one thing, the speech state** (since 2026-11-26): its only message. Later: relaying
-  data for the dashboard, as new messages; the backlight.
+- **Tells Hey Pi the speech state; hears its voice button** (since 2026-11-26). Later: relaying data
+  for the dashboard, as new messages; the backlight.
 
 Protocol and design: [flutter_ui.md](../../../docs/specs/flutter_ui.md) ("Protocol"); the voice
 assistant: [voice-path.md](../../../docs/specs/voice-path.md); the wake word: [wake-word.md](../../../docs/specs/wake-word.md).
 
 ## Protocol
-One message, pi-server → Hey Pi, on connect and on every change (`app/protocol.py`):
+pi-server → Hey Pi, on connect and on every change (`app/protocol.py`):
 ```json
 {"type": "speech", "state": "idle | listening | speaking"}
 ```
-`idle`: no voice session. `listening`: the session waits for you, or hears you. `speaking`: its turn,
-from the end of what you said until its reply has played. The voice assistant's phases map onto it
-in `app/server.py` (thinking and speaking are both `speaking`). Hey Pi sends nothing; anything it
-sends is dropped, and never closes the connection.
+`idle`: no voice session. `listening`: the session waits for you, hears you, or works out its reply.
+`speaking`: its voice, from the reply's first sound until it has played. The voice assistant's
+phases map onto it in `app/server.py` (`thinking` is `listening`).
+
+Hey Pi → pi-server, its voice button:
+```json
+{"type": "wake"}
+```
+What hearing the wake word does (`VoiceAssistant.woken`): a session if there's none, a barge-in over
+a reply, nothing while the session already listens. Anything else a screen sends is dropped, and
+never closes the connection.
 
 ## Endpoints
 

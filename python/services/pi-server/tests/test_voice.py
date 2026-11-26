@@ -263,6 +263,45 @@ def test_a_barge_in_after_the_agent_finished_doesnt_interrupt_it():
     run(go())
 
 
+def test_the_voice_button_opens_a_session_like_the_wake_word():
+    """Same session, same rules: the window, a voice starts the turn, quiet ends it."""
+    async def go():
+        r = Rig()
+        await r.va.woken("the voice button")
+        assert r.va.state is State.WAITING and r.ui.woke == 1 and r.ui.phases == ["listening"]
+        await r.frames(QUIET, QUIET, QUIET, *VOICE, QUIET)
+        await r.settle()
+        assert r.agent.started == 1 and r.agent.asked == ["what's the weather"]
+        await r.frames(*[QUIET] * 51)
+        await r.settle()
+        assert r.va.state is State.IDLE and r.agent.ended == 1
+    run(go())
+
+
+def test_the_voice_button_over_the_reply_barges_in_and_while_listening_does_nothing():
+    async def go():
+        r = Rig(agent=Agent(hang=True))
+        await r.va.woken("the voice button")
+        await r.va.woken("the voice button")                        # already listening: nothing
+        await asyncio.sleep(0)                                       # the claim runs in its own task
+        assert r.agent.started == 1 and r.ui.woke == 1
+        await r.frames(QUIET, QUIET, QUIET, *VOICE, QUIET)
+        assert r.va.state is State.REPLYING
+        await r.va.woken("the voice button")
+        assert r.speaker.stopped and r.agent.cancelled == 1 and r.agent.ended == 0
+        assert r.va.state is State.WAITING and r.ui.woke == 2
+    run(go())
+
+
+def test_the_button_and_the_wake_word_together_open_one_session():
+    async def go():
+        r = Rig()
+        await asyncio.gather(r.va.woken("the voice button"), r.frames(WAKE))
+        await asyncio.sleep(0)
+        assert r.agent.started == 1 and r.ui.woke == 1 and r.va.state is State.WAITING
+    run(go())
+
+
 def test_cancel_mid_reply_ends_everything():
     async def go():
         r = Rig(agent=Agent(hang=True))

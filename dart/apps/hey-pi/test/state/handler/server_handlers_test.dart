@@ -8,16 +8,19 @@ import 'package:hey_pi/state/store/server_store.dart';
 import 'package:hey_pi/state/types/app_mode.dart';
 
 void main() {
-  test('pi-server\'s events change the server store, never the app\'s own mode', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    final dispatch = container.read(eventDispatcherProvider).dispatch;
-    SpeechState speech() => container.read(serverStoreProvider).speech;
+  test(
+    'pi-server\'s events change the server store, never the app\'s own mode',
+    () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final dispatch = container.read(eventDispatcherProvider).dispatch;
+      SpeechState speech() => container.read(serverStoreProvider).speech;
 
-    dispatch(const ServerSpeech(SpeechState.speaking));
-    expect(speech(), SpeechState.speaking);
-    dispatch(const ServerDisconnected()); // the link dropped mid-reply
-    expect(speech(), SpeechState.idle);
-    expect(container.read(appStoreProvider).mode, AppMode.dashboard);
-  });
+      dispatch(const ServerSpeech(SpeechState.speaking));
+      expect(speech(), SpeechState.speaking);
+      dispatch(const ServerDisconnected()); // the link dropped mid-reply
+      expect(speech(), SpeechState.idle);
+      expect(container.read(appStoreProvider).mode, AppMode.dashboard);
+    },
+  );
 }

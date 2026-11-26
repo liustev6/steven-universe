@@ -1,13 +1,19 @@
 /// The hey-pi ⇄ pi-server protocol (docs/specs/flutter_ui.md "Protocol"): JSON over WebSocket, one
 /// object per message, tagged by `type`. Mirrors pi-server's `app/protocol.py`: keep both in sync.
 ///
-/// One message, pi-server → hey-pi, on connect and on every change:
+/// pi-server → hey-pi, on connect and on every change:
 ///
 /// ```json
 /// {"type": "speech", "state": "idle" | "listening" | "speaking"}
 /// ```
 ///
-/// hey-pi sends nothing. Pure Dart (no Flutter imports), so it can be shared later.
+/// hey-pi → pi-server, the voice button (as if the wake word were heard):
+///
+/// ```json
+/// {"type": "wake"}
+/// ```
+///
+/// Pure Dart (no Flutter imports), so it can be shared later.
 library;
 
 import 'dart:convert';
@@ -17,10 +23,10 @@ enum SpeechState {
   /// No voice session: the app shows its own mode.
   idle,
 
-  /// The session waits for you, or hears you.
+  /// The session waits for you, hears you, or works out its reply.
   listening,
 
-  /// Its turn: from the end of what you said until its reply has played.
+  /// Its voice: from the reply's first sound until it has played.
   speaking;
 
   static SpeechState? fromWire(Object? value) =>
@@ -64,4 +70,21 @@ final class UnknownMessage extends ServerMessage {
 
   final String raw;
   final String reason;
+}
+
+/// What hey-pi sends pi-server.
+sealed class ScreenMessage {
+  const ScreenMessage();
+
+  /// The message on the wire.
+  String encode();
+}
+
+/// The voice button: what hearing the wake word does (a voice session if there's none, a barge-in
+/// over a reply).
+final class WakeMessage extends ScreenMessage {
+  const WakeMessage();
+
+  @override
+  String encode() => jsonEncode({'type': 'wake'});
 }

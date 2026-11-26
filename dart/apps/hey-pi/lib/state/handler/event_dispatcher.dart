@@ -49,6 +49,7 @@ class EventDispatcher {
     UserUncategorizedClick() => handleUserUncategorizedClick(event, _ctx),
     SleepClick() => handleSleepClick(event, _ctx),
     ThemeModeClick() => handleThemeModeClick(event, _ctx),
+    VoiceClick() => handleVoiceClick(event, _ctx),
     // system events → system_handler.dart
     IdleTimeout() => handleIdleTimeout(event, _ctx),
     ServerSpeech() => handleServerSpeech(event, _ctx),

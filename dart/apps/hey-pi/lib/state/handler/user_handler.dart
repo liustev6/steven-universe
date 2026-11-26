@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart' show ThemeMode;
 
+import '../../protocol/messages.dart';
 import '../events/app_event.dart';
 import '../types/app_mode.dart';
 import '../store/handler_context.dart';
@@ -31,4 +32,12 @@ void handleThemeModeClick(ThemeModeClick event, HandlerContext ctx) {
   ctx.store.setThemeMode(
     ctx.state.themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark,
   );
+}
+
+// Voice -----------------------------------------------------------------------
+
+/// The voice tile: pi-server opens a voice session (or barges in over a reply). The screen
+/// follows its `speech` messages, like for the wake word; nothing changes here.
+void handleVoiceClick(VoiceClick event, HandlerContext ctx) {
+  ctx.send(const WakeMessage());
 }

@@ -7,9 +7,13 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hey_pi/connection/server_client.dart';
 
-/// A socket the test drives: what pi-server says.
+/// A socket the test drives: what pi-server says, and what the app [sent].
 class FakeSocket implements Socket {
   final _incoming = StreamController<String>();
+  final sent = <Object?>[];
+
+  @override
+  void add(String message) => sent.add(jsonDecode(message));
 
   void say(Map<String, Object?> message) => _incoming.add(jsonEncode(message));
   void sayRaw(String raw) => _incoming.add(raw);

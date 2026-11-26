@@ -6,6 +6,7 @@ import '../widgets/home_controls_widget.dart';
 import '../widgets/placeholder_tile.dart';
 import '../widgets/sleep_tile.dart';
 import '../widgets/theme_mode_tile.dart';
+import '../widgets/voice_tile.dart';
 import '../widgets/weather_widget.dart';
 import 'panel_grid.dart';
 
@@ -82,16 +83,7 @@ const dashboardLayout = <PanelPlacement>[
   PanelPlacement(column: 4, row: 0, widget: HomeControlsWidget()), // 4×4
   PanelPlacement(column: 4, row: 4, widget: AssistantWidget()), // 4×2
   PanelPlacement(column: 0, row: 6, widget: SleepTile()), // 1×1
-  PanelPlacement(
-    column: 1,
-    row: 6,
-    widget: PlaceholderTile(
-      'Lock',
-      icon: Icons.lock_outline,
-      columns: 1,
-      rows: 1,
-    ),
-  ),
+  PanelPlacement(column: 1, row: 6, widget: VoiceTile()), // 1×1
   PanelPlacement(
     column: 2,
     row: 6,

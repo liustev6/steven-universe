@@ -20,8 +20,9 @@
     at once (the speaker, the speech; the agent's turn interrupted, which agent-service ignores for a
     turn already complete) and the session waits for what the user says next
 Hey Pi sees `listening` for the whole session between turns, `thinking` and `speaking` in a turn,
-`idle` when it ends (V7), and the screen wakes at the wake word. Push-to-talk and the debug endpoints
-use the same session (`listen`, `commit`, `say`, `cancel`). A hop that fails ends that turn, logged;
+`idle` when it ends (V7), and the screen wakes at the wake word. Hey Pi's voice button is the wake
+word pressed (`woken`): the same session, the same rules. Push-to-talk and the debug endpoints use
+the same session (`listen`, `commit`, `say`, `cancel`). A hop that fails ends that turn, logged;
 the session goes on (V8).
 """
 
@@ -123,6 +124,7 @@ class VoiceAssistant:
         self._replied = False                # this session has replied once: a new turn is a follow-up
         self._listen_until = 0.0             # listening: the turn's cap (max_turn)
         self._follow_up = False              # listening: a follow-up (dropped at the cap) or asked
+        self._waking = asyncio.Lock()         # the wake word and the voice button: one at a time
 
     # ---- the mic loop ------------------------------------------------------------------------------
     async def run(self) -> None:
@@ -140,9 +142,7 @@ class VoiceAssistant:
         self._preroll.append(frame)
         if self.state is State.IDLE:
             if self.wake.feed(frame):
-                logger.info("wake word heard")
-                self.wake.reset()
-                await self._open()
+                await self.woken("the wake word")
         elif self.state is State.WAITING:
             now = self.clock()
             self._speech_run = self._speech_run + 1 if speaking and now >= self._holdoff else 0
@@ -155,7 +155,21 @@ class VoiceAssistant:
             if self.clock() >= self._listen_until and not self._commit.is_set():
                 self._at_the_cap()
         elif self.state is State.REPLYING and self.wake.feed(frame):   # only the wake word: barge-in (V6)
-            await self._barge_in()
+            await self.woken("the wake word")
+
+    async def woken(self, by: str) -> None:
+        """The wake word, heard or pressed (Hey Pi's voice button): idle, a session opens; over a reply,
+        a barge-in (V6); waiting or listening, nothing (the session already listens). One at a time:
+        the button and the word together act once."""
+        async with self._waking:
+            if self.state is State.IDLE:
+                logger.info("%s: a voice session", by)
+                self.wake.reset()
+                await self._open()
+            elif self.state is State.REPLYING:
+                await self._barge_in(by)
+            else:
+                logger.info("%s: the session already listens", by)
 
     # ---- the session -------------------------------------------------------------------------------
     async def _open(self) -> None:
@@ -270,9 +284,10 @@ class VoiceAssistant:
             logger.error("turn %s failed: %s: %s", turn_id, type(e).__name__, e)
         await self._wait(holdoff=HOLDOFF_SECONDS)
 
-    async def _barge_in(self) -> None:
+    async def _barge_in(self, by: str) -> None:
         """The wake word over the reply: it stops now, and the session listens for what comes next."""
-        logger.info("turn %s: barge-in (the wake word over the reply, %.2f)", self.turn_id, self.wake.peak)
+        logger.info("turn %s: barge-in (%s over the reply; the wake word's peak %.2f)", self.turn_id, by,
+                    self.wake.peak)
         self.wake.reset()
         await self._stop_turn()            # the reply's own cleanup: speaker stopped, speech and agent cancelled
         await self.ui.awake()

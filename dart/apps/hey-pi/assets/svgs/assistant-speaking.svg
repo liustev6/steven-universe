@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 320" fill="none" role="img" aria-labelledby="speaking-title speaking-desc">
+  <title id="speaking-title">Voice assistant — speaking</title>
+  <desc id="speaking-desc">An outline character speaks with an animated bottom-semicircle mouth of constant stroke width, solid, gently moving hands, and outward voice waves. The loop simulates speech. Set --outline-color to change every stroke together.</desc>
+  <style>
+    .va-speak-mouth{animation:va-talk 2.4s ease-in-out infinite}
+    .va-speak-hand{transform-origin:302px 215px;animation:va-gesture 2.4s ease-in-out infinite}
+    .va-speak-wave{animation:va-outgoing 2.4s ease-in-out infinite}
+    .va-speak-wave.second{animation-delay:.16s}
+    .va-speak-wave.third{animation-delay:.32s}
+    @keyframes va-talk{0%,85%,100%{d:path("M156 190H196A20 5 0 0 1 156 190Z")}24%{d:path("M156 190H196A20 17 0 0 1 156 190Z")}42%{d:path("M156 190H196A20 8 0 0 1 156 190Z")}60%{d:path("M156 190H196A20 20 0 0 1 156 190Z")}}
+    @keyframes va-gesture{0%,100%{transform:translateY(0) rotate(8deg)}38%{transform:translateY(-4px) rotate(-5deg)}65%{transform:translateY(-1px) rotate(3deg)}}
+    @keyframes va-outgoing{0%,85%,100%{opacity:.12}24%,60%{opacity:.85}42%{opacity:.3}}
+    @media(prefers-reduced-motion:reduce){.va-speak-mouth,.va-speak-hand,.va-speak-wave{animation:none}.va-speak-wave{opacity:.5}}
+  </style>
+  <g fill="none" stroke="var(--outline-color, currentColor)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m145 77-19-31m81 31 19-31"/>
+    <path d="M122 77h108q47 0 47 47v80q0 47-47 47H122q-47 0-47-47v-80q0-47 47-47"/>
+    <rect stroke="none" fill="var(--outline-color, currentColor)" x="44" y="199" width="20" height="38" rx="10" transform="rotate(-15 54 218)"/>
+    <g class="va-speak-hand"><rect stroke="none" fill="var(--outline-color, currentColor)" x="292" y="198" width="20" height="38" rx="10" transform="rotate(15 302 217)"/></g>
+  </g>
+  <g stroke="var(--outline-color, currentColor)" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M117 149q15-15 30 0 M205 149q15-15 30 0" stroke-width="14"/>
+    <path class="va-speak-mouth" d="M156 190H196A20 20 0 0 1 156 190Z" stroke-width="12" fill="none"/>
+  </g>
+  <g stroke="var(--outline-color, currentColor)" stroke-width="7.5" stroke-linecap="round">
+    <path class="va-speak-wave" d="M297 117q8 7 9 17"/>
+    <path class="va-speak-wave second" d="M308 105q13 11 16 27"/>
+    <path class="va-speak-wave third" d="M319 93q18 15 23 37"/>
+  </g>
+</svg>

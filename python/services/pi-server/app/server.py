@@ -1,9 +1,10 @@
 """
-pi-server's core: the voice assistant (when PI_SERVER_VOICE is on), and the one thing hey-pi is told,
-the speech state (app/protocol.py).
+pi-server's core: the voice assistant (when PI_SERVER_VOICE is on), what hey-pi is told (the speech
+state) and what it asks (its voice button) (app/protocol.py).
 
 The voice assistant reports its phases (app/voice/assistant.py: idle, listening, thinking, speaking);
-here they become the speech state: thinking and speaking are both its turn, `speaking`.
+here they become the speech state: `speaking` only once its voice is heard; working out the reply
+(`thinking`) still looks like `listening`.
 """
 
 import asyncio
@@ -12,13 +13,13 @@ from typing import Optional
 
 from app.core.config import Settings
 from app.hub import Client, Hub
-from app.protocol import Speech, SpeechState
+from app.protocol import Speech, SpeechState, Wake, decode
 from app.voice.assistant import VoiceAssistant
 
 logger = logging.getLogger(__name__)
 
 SPEECH_OF: dict[str, SpeechState] = {
-    "idle": "idle", "listening": "listening", "thinking": "speaking", "speaking": "speaking",
+    "idle": "idle", "listening": "listening", "thinking": "listening", "speaking": "speaking",
 }
 
 
@@ -52,8 +53,15 @@ class PiServer:
         await self.hub.send(client, Speech(state=self.speech))
 
     async def handle(self, client: Client, raw: str) -> None:
-        """hey-pi sends nothing in this protocol: anything that arrives is dropped."""
-        logger.debug("dropped a message from a screen: %.80s", raw)
+        """A message from a screen; one that isn't in the protocol is dropped (the socket stays)."""
+        match decode(raw):
+            case Wake():
+                if self.voice is None:
+                    logger.info("the voice button: the voice assistant is off")
+                else:
+                    await self.voice.woken("the voice button")
+            case None:
+                logger.info("dropped a message from a screen: %.80s", raw)
 
     async def set_speech(self, state: SpeechState) -> None:
         if state != self.speech:

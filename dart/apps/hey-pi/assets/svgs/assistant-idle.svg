@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 320" fill="none" role="img" aria-labelledby="idle-title idle-desc">
+  <title id="idle-title">Voice assistant — idle</title>
+  <desc id="idle-desc">A calm outline character with relaxed solid hands, a small smile, gentle breathing motion, and an occasional blink. Set --outline-color to change every stroke and the hands together.</desc>
+  <style>
+    .va-idle-body{animation:va-idle-breathe 4.8s ease-in-out infinite}
+    .va-idle-eyes{animation:va-idle-blink 5.6s ease-in-out infinite}
+    @keyframes va-idle-breathe{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+    @keyframes va-idle-blink{0%,70%,78%,100%{d:path("M117 149Q132 134 147 149M205 149Q220 134 235 149")}74%{d:path("M117 149Q132 149 147 149M205 149Q220 149 235 149")}}
+    @media(prefers-reduced-motion:reduce){.va-idle-body,.va-idle-eyes{animation:none}}
+  </style>
+  <g class="va-idle-body" stroke="var(--outline-color, currentColor)" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke-width="14">
+      <path d="m145 77-19-31m81 31 19-31"/>
+      <path d="M122 77h108q47 0 47 47v80q0 47-47 47H122q-47 0-47-47v-80q0-47 47-47"/>
+      <path class="va-idle-eyes" d="M117 149Q132 134 147 149M205 149Q220 134 235 149"/>
+    </g>
+    <path d="M151 187c4 19 18 20 25 4 7 16 21 15 25-4" stroke-width="12"/>
+    <g stroke="none" fill="var(--outline-color, currentColor)">
+      <rect x="44" y="205" width="20" height="34" rx="10" transform="rotate(-12 54 222)"/>
+      <rect x="288" y="205" width="20" height="34" rx="10" transform="rotate(12 298 222)"/>
+    </g>
+  </g>
+</svg>

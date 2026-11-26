@@ -23,3 +23,11 @@ final class SleepClick extends UserEvent implements AppModeEvent {
 final class ThemeModeClick extends UserEvent {
   const ThemeModeClick();
 }
+
+// Voice -----------------------------------------------------------------------
+
+/// The voice tile was tapped: as if the wake word were heard (pi-server's `wake`).
+/// Handler: `handleVoiceClick`.
+final class VoiceClick extends UserEvent {
+  const VoiceClick();
+}

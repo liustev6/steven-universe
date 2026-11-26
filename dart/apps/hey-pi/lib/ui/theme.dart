@@ -40,6 +40,7 @@ class PanelPalette extends ThemeExtension<PanelPalette> {
     required this.glowOpacity,
     required this.sleepGlow,
     required this.sleepBackground,
+    required this.assistant,
     required this.glassFillTop,
     required this.glassFillBottom,
     required this.glassBorder,
@@ -67,6 +68,11 @@ class PanelPalette extends ThemeExtension<PanelPalette> {
   final Color sleepGlow;
   final Color sleepBackground;
 
+  /// The voice assistant's character on the speech view (every stroke and
+  /// fill; the SVGs' `--outline-color`), shaded top to bottom. The same as
+  /// [primary] (the clock's digits) for now; its own token so it can differ.
+  final LinearGradient assistant;
+
   /// Glass panels. The glass contrasts with the background: a light (white)
   /// tint over the dark background in dark mode, a dark tint over the pale
   /// background in light mode.
@@ -83,6 +89,7 @@ class PanelPalette extends ThemeExtension<PanelPalette> {
     glowOpacity: 0.45,
     sleepGlow: Color(0xFF1C1F2A),
     sleepBackground: Color(0xFF0B0D12),
+    assistant: PanelColors.primary,
     // White tint: lighter than the background.
     glassFillTop: Color(0x26FFFFFF),
     glassFillBottom: Color(0x0AFFFFFF),
@@ -98,6 +105,7 @@ class PanelPalette extends ThemeExtension<PanelPalette> {
     glowOpacity: 0.35,
     sleepGlow: Color(0xFFF7F8FC),
     sleepBackground: Color(0xFFDFE4ED),
+    assistant: PanelColors.primaryInverse,
     // Near-black (#1C1F2A) tint: darker than the background.
     glassFillTop: Color(0x0F1C1F2A),
     glassFillBottom: Color(0x051C1F2A),

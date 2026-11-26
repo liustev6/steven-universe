@@ -1,6 +1,6 @@
 /// The socket to pi-server (docs/specs/flutter_ui.md "ServerClient"): `dart:io` WebSocket, a 5 s
 /// ping to notice a hung pi-server, reconnect with backoff (0.5 s → 10 s, reset after a connect).
-/// Receive-only: the protocol has nothing for the app to send. Pure Dart.
+/// [send] while connected; a message sent while not connected is dropped (nothing queues). Pure Dart.
 library;
 
 import 'dart:async';
@@ -14,6 +14,7 @@ enum LinkStatus { connecting, connected, disconnected }
 /// One open socket, as [ServerClient] reads it: replaced by a fake in tests.
 abstract interface class Socket {
   Stream<String> get incoming;
+  void add(String message);
   Future<void> close();
 }
 
@@ -34,6 +35,9 @@ class IoSocket implements Socket {
 
   @override
   Stream<String> get incoming => _ws.where((m) => m is String).cast<String>();
+
+  @override
+  void add(String message) => _ws.add(message);
 
   @override
   Future<void> close() => _ws.close();
@@ -61,6 +65,18 @@ class ServerClient {
   Stream<ServerMessage> get messages => _messages.stream;
   Stream<LinkStatus> get status => _status.stream;
   LinkStatus get current => _current;
+
+  /// Sends [message] now. False if not connected: it's dropped, not queued (a tap from a minute
+  /// ago mustn't wake the assistant later).
+  bool send(ScreenMessage message) {
+    final socket = _socket;
+    if (socket == null || _current != LinkStatus.connected) {
+      log('not connected: dropped ${message.runtimeType}', name: 'pi-server');
+      return false;
+    }
+    socket.add(message.encode());
+    return true;
+  }
 
   /// Connects, and keeps reconnecting until [dispose].
   void start() {

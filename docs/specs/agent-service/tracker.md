@@ -98,7 +98,7 @@ strike it through with the date, as below.
 
 | Item | Skipped from | Comes back |
 |---|---|---|
-| **4.14 Hey Pi shows the assistant:** in progress (2026-11-26): the protocol reduced to one message, `speech` (idle, listening, speaking), on both sides; the app connects and shows a speech view over its own mode. No push-to-talk ([flutter_ui.md](../flutter_ui.md) "Protocol") | CP4 | **next** (CP5's core is live) |
+| **4.14 Hey Pi shows the assistant:** in progress (2026-11-26): the protocol reduced to one message, `speech` (idle, listening, speaking), on both sides; the app connects and shows a speech view over its own mode; its voice button is the wake word pressed (`wake`). No push-to-talk ([flutter_ui.md](../flutter_ui.md) "Protocol") | CP4 | **next** (CP5's core is live) |
 | **4.15 protocol B in shared-schemas; the agent's latency levers** (~5,800 tokens per call of Codex's own context, below) | CP4 | after 4.14 |
 | **CP4's "done when":** the first-audio budget measured against what was set; a week of daily use | CP4 | after 4.15 |
 | **Home Assistant's tools** (`home.*`, each with its class) **and confirmations** (G12, `confirmation.requested`, asked out loud on the Pi) | CP5 ([tools.md](tools.md) "Later") | after CP4 is done |

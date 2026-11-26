@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hey_pi/app.dart';
 import 'package:hey_pi/display/dashboard_view.dart';
 import 'package:hey_pi/display/sleep_view.dart';
+import 'package:hey_pi/display/assistant_figure.dart';
 import 'package:hey_pi/display/speech_view.dart';
 import 'package:hey_pi/protocol/messages.dart';
 import 'package:hey_pi/state/store/server_store.dart';
@@ -98,20 +99,20 @@ void main() {
       void speech(SpeechState s) =>
           container.read(serverStoreProvider.notifier).setSpeech(s);
 
+      // The figure loops forever: pump, not pumpAndSettle, while it shows.
       speech(SpeechState.listening);
-      await tester.pumpAndSettle();
-      expect(find.byType(SpeechView), findsOneWidget);
-      expect(find.text('Listening…'), findsOneWidget);
+      await tester.pump();
+      expect(figure(SpeechState.listening), findsOneWidget);
       speech(SpeechState.speaking);
-      await tester.pumpAndSettle();
-      expect(find.text('Speaking…'), findsOneWidget);
+      await tester.pump();
+      expect(figure(SpeechState.speaking), findsOneWidget);
       speech(SpeechState.idle);
       await tester.pumpAndSettle();
       expect(find.byType(DashboardView), findsOneWidget);
 
       await idleUntilAsleep(tester); // the app's own mode: idle
       speech(SpeechState.listening);
-      await tester.pumpAndSettle();
+      await tester.pump();
       expect(find.byType(SpeechView), findsOneWidget);
       speech(SpeechState.idle);
       await tester.pumpAndSettle();
@@ -119,3 +120,6 @@ void main() {
     },
   );
 }
+
+Finder figure(SpeechState speech) =>
+    find.byWidgetPredicate((w) => w is AssistantFigure && w.speech == speech);

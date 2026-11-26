@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hey_pi/protocol/messages.dart';
 
@@ -21,5 +23,9 @@ void main() {
     ]) {
       expect(ServerMessage.decode(raw), isA<UnknownMessage>(), reason: raw);
     }
+  });
+
+  test('the voice button: wake', () {
+    expect(jsonDecode(const WakeMessage().encode()), {'type': 'wake'});
   });
 }

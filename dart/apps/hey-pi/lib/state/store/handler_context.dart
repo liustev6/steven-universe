@@ -1,12 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../connection/message_router.dart';
+import '../../protocol/messages.dart';
 import '../events/app_event.dart';
 import 'app_store.dart';
 import 'server_store.dart';
 
 /// Everything a handler may use: read the stores, change them through their
-/// setters, and raise further events. Handlers are the only code that changes
-/// a store.
+/// setters, raise further events, and send pi-server a message. Handlers are
+/// the only code that changes a store.
 class HandlerContext {
   HandlerContext(this._ref, {required this.dispatch});
 
@@ -26,4 +28,8 @@ class HandlerContext {
 
   /// The server store's setters.
   ServerStore get serverStore => _ref.read(serverStoreProvider.notifier);
+
+  /// Send pi-server [message] now (dropped if not connected).
+  void send(ScreenMessage message) =>
+      _ref.read(serverClientProvider).send(message);
 }

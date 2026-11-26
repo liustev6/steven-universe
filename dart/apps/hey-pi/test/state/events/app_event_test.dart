@@ -8,6 +8,7 @@ void main() {
       (const UserUncategorizedClick(), user: true, mode: true, server: false),
       (const SleepClick(), user: true, mode: true, server: false),
       (const ThemeModeClick(), user: true, mode: false, server: false),
+      (const VoiceClick(), user: true, mode: false, server: false),
       (const IdleTimeout(), user: false, mode: true, server: false),
       (
         const ServerSpeech(SpeechState.listening),
