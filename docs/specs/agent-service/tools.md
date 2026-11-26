@@ -74,6 +74,11 @@ pi-server ──turn (its token)──▶ agent-service ──▶ sandbox: Codex
   (allowed and refused at the gateway, never declined by Codex's own approvals under `approval_policy =
   never`), `startup_timeout_sec = 10`, `tool_timeout_sec = 30`. Every session gets the server; the
   gateway's list may be empty. No tool list in the image or the configuration.
+- **Codex keeps MCP tools behind its tool search** (0.167.2: `tool_search_always_defer_mcp_tools`, not
+  configurable for MCP servers): the model looks a tool up before its first call, while built-in tools
+  like `web_search` are always in hand. A profile that should prefer one of ours names it in its
+  instructions (`pi`: "for the weather, always use your weather tools…"). The lookup costs ~2 s before the
+  first tool call of a session (measured 2026-11-26).
 - **The start's race:** the runtime starts, and Codex lists its MCP tools, as soon as the claim writes
   the session file, while agent-service may still be looking the tools up. The session is paired at the
   gateway right after the claim, and `/mcp`'s `tools/list` waits for the lookup (capped at 3 s).
