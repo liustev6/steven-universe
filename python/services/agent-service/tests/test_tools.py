@@ -41,7 +41,7 @@ class FakeTools:
     async def call(self, caller_token, mcp_tools, name, arguments):
         self.calls.append((caller_token, mcp_tools, name, arguments))
         return types.CallToolResult(content=[types.TextContent(type="text", text=f"{name} ok")],
-                                    structured_content={"tool": name, "arguments": arguments})
+                                    structured_content={"tool": name, "arguments": arguments}), "jti-1"
 
 
 class FakeLogin:
@@ -229,3 +229,33 @@ async def test_a_slow_tools_service_doesnt_hold_up_a_start(env):
     row, _ = await asyncio.wait_for(env.start("chat"), 5)
     async with env.db() as db:
         assert (await db.get(ChatSession, row.id)).tools is None
+
+
+async def test_mcp_waits_for_tools_still_being_looked_up(env):
+    """The runtime lists its tools as soon as it starts, maybe before the start has them (5.4's race)."""
+    import asyncio
+
+    async def slow(caller_token, mcp_tools):
+        await asyncio.sleep(0.4)
+        return WEATHER
+    env.tools.list = slow
+    async with env.serving():
+        start = asyncio.create_task(env.sessions.start(ME, "chat", caller_token="t"))
+        while not env.runner.claims or not env.sessions._live:       # claimed and paired, tools not known yet
+            await asyncio.sleep(0.01)
+        claim = env.runner.claims[-1]
+        assert not next(iter(env.sessions._live.values())).tools_ready.is_set()
+        headers = {"authorization": f"Bearer {claim['capability']}", "x-sandbox-id": str(claim["sandbox_id"])}
+        async with env.mcp(headers) as c:
+            names = [t.name for t in (await c.list_tools()).tools]
+        await start
+    assert names == ["weather_current", "weather_forecast"]
+
+
+def test_jti_of_reads_a_tokens_id():
+    import base64
+    import json
+
+    from app.tools_service import jti_of
+    body = base64.urlsafe_b64encode(json.dumps({"jti": "abc123"}).encode()).decode().rstrip("=")
+    assert jti_of(f"h.{body}.s") == "abc123" and jti_of("not-a-jwt") is None

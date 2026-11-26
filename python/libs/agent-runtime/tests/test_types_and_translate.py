@@ -79,6 +79,10 @@ def test_codex_points_at_the_gateway_with_only_the_capability(tmp_path):
     assert tools["features.shell_tool"] is True and tools["web_search"] == "live"
     assert tools["model_providers.gateway.supports_standalone_web_search"] is True     # else no search tool
     assert o["model_providers.gateway.supports_standalone_web_search"] is False
+    # the gateway's /mcp, with the capability: no other credential, no approval prompts of Codex's own
+    assert o["mcp_servers.tools.url"] == f"{SESSION['gateway_url'].rstrip('/')}/mcp"
+    assert o["mcp_servers.tools.bearer_token_env_var"] == CAPABILITY_ENV
+    assert o["mcp_servers.tools.default_tools_approval_mode"] == "approve"
 
 
 # ---- the Translator ------------------------------------------------------------------------------

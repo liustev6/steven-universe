@@ -4,6 +4,8 @@ The SDK (`openai-codex`) drives a local `codex app-server` over JSON-RPC. We giv
 - the gateway as its model provider: a custom provider whose base URL is the gateway and whose key
   is the session capability; Codex never logs in and never holds a real token (model-access MA1);
 - the profile: model, effort, instructions, which built-in tools are on;
+- one MCP server, `tools`: the gateway's /mcp, with the same capability (tools.md, CP5). The gateway
+  lists the session's tools-service tools (none is fine: an empty list) and forwards each call;
 - a fresh CODEX_HOME on /tmp (read-only root, R4), no AGENTS.md from the workspace, no update
   checks or analytics (only the gateway is reachable anyway);
 - its own sandbox off and no approval prompts: our container is the boundary.
@@ -25,6 +27,7 @@ from core.types import OUTPUT_CHARS, EventType, SessionFile
 
 Payload = dict[str, Any]
 CAPABILITY_ENV = "AGENT_CAPABILITY"        # the provider's env_key: Codex sends it as `Authorization: Bearer`
+MCP_SERVER = "tools"                       # Codex names its tools `tools.<name>` (protocol A's tool.started)
 
 
 def _toml(value: Any) -> str:
@@ -52,6 +55,16 @@ def codex_overrides(session: SessionFile) -> dict[str, Any]:
         "features.shell_tool": "shell" in tools,
         "features.view_image": "view_image" in tools,
         "web_search": "live" if "web_search" in tools else "disabled",
+        # The gateway's /mcp (CP5, tools.md TL2): the session's tools-service tools. Keys checked against the
+        # pinned Codex (0.167.2: `codex mcp add --url --bearer-token-env-var` writes exactly these).
+        f"mcp_servers.{MCP_SERVER}.url": f"{session.gateway_url.rstrip('/')}/mcp",
+        f"mcp_servers.{MCP_SERVER}.bearer_token_env_var": CAPABILITY_ENV,
+        # Allowed and refused at the gateway (and, for sensitive tools later, confirmed through the caller,
+        # G12): Codex adds no approval of its own, which under `approval_policy = never` could decline calls.
+        f"mcp_servers.{MCP_SERVER}.default_tools_approval_mode": "approve",
+        # The gateway answers tools/list once the session's tools are known (at most 3 s after the claim).
+        f"mcp_servers.{MCP_SERVER}.startup_timeout_sec": 10,
+        f"mcp_servers.{MCP_SERVER}.tool_timeout_sec": 30,
         "project_doc_max_bytes": 0,            # never read AGENTS.md from the (untrusted) workspace
         "check_for_update_on_startup": False,
         "analytics.enabled": False,

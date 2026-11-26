@@ -11,6 +11,8 @@ agent-service) is what gets exchanged; neither token ever reaches the sandbox (T
 
 from __future__ import annotations
 
+import base64
+import json
 import logging
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Callable
@@ -23,6 +25,15 @@ from service_auth import TokenClient, TokenRequestError
 logger = logging.getLogger(__name__)
 AUDIENCE = "tools-service"
 SCOPE = "tools:call"
+
+
+def jti_of(token: str) -> str | None:
+    """A token's `jti`, for log lines only (it's auth-service's token, just minted; not a verification)."""
+    try:
+        payload = token.split(".")[1]
+        return json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))).get("jti")
+    except (IndexError, ValueError):
+        return None
 
 
 class NoTools(Exception):
@@ -64,6 +75,8 @@ class ToolsService:
         return [t.model_dump(mode="json", by_alias=True, exclude_none=True) for t in result.tools]
 
     async def call(self, caller_token: str, mcp_tools: list[str] | None, name: str,
-                   arguments: dict[str, Any]) -> types.CallToolResult:
-        async with self._session(caller_token, mcp_tools) as client:
-            return await client.call_tool(name, arguments)
+                   arguments: dict[str, Any]) -> tuple[types.CallToolResult, str | None]:
+        """The result, and the exchanged token's `jti` (for the gateway's log line)."""
+        token = await self.token(caller_token, mcp_tools)
+        async with self._client(token) as client:
+            return await client.call_tool(name, arguments), jti_of(token)

@@ -81,6 +81,9 @@ class Live:
     turn_tokens: int = 0              # the running turn's tokens, counted by the gateway (C13)
     over_budget: bool = False         # the running turn hit max_turn_tokens (reported once)
     tools: list[dict[str, Any]] = field(default_factory=list)      # tools-service's, fixed at the start (TL7)
+    # Set once `tools` is known. The runtime starts (and Codex lists its MCP tools) as soon as the claim
+    # writes the session file, while the start may still be looking the tools up: /mcp waits for this.
+    tools_ready: asyncio.Event = field(default_factory=asyncio.Event)
     # The running turn's caller's token (audience agent-service), exchanged for a tools-service token
     # when a tool is called (TL4). Memory only, for the turn; never sent to the sandbox (TL3).
     caller_token: str | None = field(default=None, repr=False)
@@ -117,6 +120,7 @@ class Sessions:
                 continue
             live = Live(row.id, profile, row.sandbox_id, row.capability_hash, Translator(row.id, fresh=False),
                         tools=row.tools or [])
+            live.tools_ready.set()
             turn = running.get(row.id)
             if turn is not None:
                 live.turn_id = turn.id
@@ -174,17 +178,24 @@ class Sessions:
             listing.cancel()
             await self._discard(session, new_conversation=conversation_id is None)
             raise
-        tools = await listing
         async with self.db.begin() as db:
             row = await db.get(ChatSession, session.id, with_for_update=True)
             row.sandbox_id = sandbox_id
-            row.tools = tools or None
             still_live = row.state != SessionState.ENDED
         if not still_live:                                      # ended while we claimed (the kill switch)
+            listing.cancel()
             await self.runner.release(sandbox_id)
             return row, True
-        self._remember(Live(row.id, profile, sandbox_id, capability_hash(capability), Translator(row.id),
-                            tools=tools))
+        # Paired at the gateway now: the runtime is already starting. /mcp waits for `tools_ready`.
+        live = Live(row.id, profile, sandbox_id, capability_hash(capability), Translator(row.id))
+        self._remember(live)
+        tools = await listing
+        live.tools = tools
+        live.tools_ready.set()
+        if tools:
+            async with self.db.begin() as db:
+                await db.execute(update(ChatSession).where(ChatSession.id == row.id).values(tools=tools))
+            row.tools = tools
         logger.info("session %s started (profile %s, sandbox %s, %d turn(s) carried, %d tool(s))", row.id, profile,
                     sandbox_id, len(carried), len(tools))
         return row, True
@@ -353,7 +364,7 @@ class Sessions:
             logger.info("session %s: tool budget (%d calls) used", live.session_id, p.limits.max_tool_calls)
             return tool_error(f"This session has used its {p.limits.max_tool_calls} tool calls; answer without tools.")
         try:
-            result = await self.tools.call(live.caller_token, p.mcp_tools, name, arguments)
+            result, jti = await self.tools.call(live.caller_token, p.mcp_tools, name, arguments)
         except MCPError:
             raise                                               # tools-service's own refusal, passed on
         except NoTools:
@@ -361,7 +372,9 @@ class Sessions:
         except Exception as e:
             logger.warning("session %s: tool %s: tools-service failed: %s: %s", live.session_id, name, type(e).__name__, e)
             return tool_error("The tool service is unavailable right now.")
-        logger.info("session %s: tool %s: %s (call %d)", live.session_id, name, "error" if result.is_error else "ok", used)
+        # `jti`: the exchanged token's id, also in tools-service's audit line (who asked): the join (TL12)
+        logger.info("session %s: tool %s: %s (call %d, jti %s)", live.session_id, name,
+                    "error" if result.is_error else "ok", used, jti)
         return result
 
     async def conversation(self, conversation_id: uuid.UUID, owner: str | None) -> Conversation:

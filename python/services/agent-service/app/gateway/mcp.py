@@ -10,6 +10,7 @@ capability, from its own pod), before the SDK sees it.
 
 from __future__ import annotations
 
+import asyncio
 import contextvars
 import logging
 
@@ -25,6 +26,7 @@ from app.sessions import Live, Sessions
 
 logger = logging.getLogger(__name__)
 _session: contextvars.ContextVar[Live] = contextvars.ContextVar("gateway_mcp_session")
+LIST_WAIT_SECONDS = 10          # the start's own lookup gives up after 3 s (TOOLS_START_TIMEOUT_SECONDS)
 
 
 class _Paired:
@@ -50,7 +52,12 @@ def create_mcp(sessions: Sessions) -> tuple[Server, Route]:
     """The MCP server and the gateway's /mcp route. Run `server.session_manager.run()` around serving."""
 
     async def list_tools(ctx: ServerRequestContext, params: types.PaginatedRequestParams | None) -> types.ListToolsResult:
-        return types.ListToolsResult(tools=[types.Tool.model_validate(t) for t in _session.get().tools])
+        live = _session.get()
+        try:                    # a runtime that starts fast asks before its session's start has its tools
+            await asyncio.wait_for(live.tools_ready.wait(), LIST_WAIT_SECONDS)
+        except TimeoutError:
+            logger.warning("session %s: its tools weren't known in time: listed none", live.session_id)
+        return types.ListToolsResult(tools=[types.Tool.model_validate(t) for t in live.tools])
 
     async def call_tool(ctx: ServerRequestContext, params: types.CallToolRequestParams) -> types.CallToolResult:
         return await sessions.call_tool(_session.get(), params.name, dict(params.arguments or {}))

@@ -67,10 +67,16 @@ pi-server ──turn (its token)──▶ agent-service ──▶ sandbox: Codex
    events, so each call shows in the session's events.
 
 ## The pieces
-- **Codex's configuration** (`agent-runtime`, `codex_config`), beside the model provider it has:
-  `mcp_servers.tools.url = <gateway>/mcp` and the capability as its bearer token
-  (`bearer_token_env_var = AGENT_CAPABILITY`). The exact keys are checked against the pinned Codex
-  in 5.4. No tool list in the image or the configuration.
+- **Codex's configuration** (`agent-runtime`, `codex_overrides`), beside the model provider it has,
+  checked against the pinned Codex (0.167.2: `codex mcp add --url --bearer-token-env-var` writes these
+  keys, and a bad value fails its start): `mcp_servers.tools.url = <gateway>/mcp`,
+  `bearer_token_env_var = AGENT_CAPABILITY` (the capability), `default_tools_approval_mode = "approve"`
+  (allowed and refused at the gateway, never declined by Codex's own approvals under `approval_policy =
+  never`), `startup_timeout_sec = 10`, `tool_timeout_sec = 30`. Every session gets the server; the
+  gateway's list may be empty. No tool list in the image or the configuration.
+- **The start's race:** the runtime starts, and Codex lists its MCP tools, as soon as the claim writes
+  the session file, while agent-service may still be looking the tools up. The session is paired at the
+  gateway right after the claim, and `/mcp`'s `tools/list` waits for the lookup (capped at 3 s).
 - **Tool names:** in MCP and to the model, `<namespace>_<tool>` (`weather_forecast`: the model's function
   names allow only letters, digits, `_` and `-`); in grants and profiles, `<namespace>/<tool>`, where
   `weather/` is the whole namespace (auth-service's prefix locations, so no new matching rules).
