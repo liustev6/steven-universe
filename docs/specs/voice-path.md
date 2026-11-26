@@ -77,5 +77,7 @@
   to use it: for place and time questions only, never naming the city. **The time goes with each turn**
   (since 2026-11-26): a `[now: 2026-11-26 10:31 (Wednesday, UTC-0800)]` line before the turn's text,
   not in the instructions, which start every model call's prompt: a time there changed every session's
-  prompt from that point on, so the prompt cache could share less of it (tools.md). **Web search on** (`pi`'s `tools: [web_search]`, Codex's own, run at OpenAI: the sandbox
+  prompt from that point on, so the prompt cache could share less of it (tools.md). The model then echoed
+  that line at the start of some replies (the pattern every message showed it): the profile says never
+  to write it, and pi-server never speaks bracketed text (`spoken.py`), so it can't be heard either way. **Web search on** (`pi`'s `tools: [web_search]`, Codex's own, run at OpenAI: the sandbox
   still reaches only the gateway): a weather question searched and answered in ~9 s on the Mac.
