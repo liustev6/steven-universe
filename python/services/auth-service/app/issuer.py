@@ -28,6 +28,7 @@ from service_auth.verifier import decode_claims, read_kid
 
 from .clients import ClientStore
 from .errors import (
+    invalid_details,
     invalid_grant,
     invalid_request,
     invalid_target,
@@ -247,7 +248,10 @@ class Issuer:
         requested_details = None
         if req.details_raw is not None:
             requested_details = parse_requested_details(req.details_raw, aud)
-        return (overlap if aud.grant_overlap else narrow)(allowed, req.scopes, requested_details)
+        perms = (overlap if aud.grant_overlap else narrow)(allowed, req.scopes, requested_details)
+        if aud.requires_details and not perms.details:     # e.g. only ${user} templates, and no user
+            raise invalid_details("this audience needs authorization details, and none apply")
+        return perms
 
     def _verify_subject(self, policy: Policy, token: str) -> dict[str, Any]:
         """Check a subject token issued by this server (signature, iss, exp, typ)."""

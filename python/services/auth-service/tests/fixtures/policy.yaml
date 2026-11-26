@@ -26,6 +26,7 @@ audiences:
   tools-service:                         # the agents' tools (docs/specs/agent-service/tools.md)
     scopes: [tools:call]
     grant_overlap: true                  # a request for a profile's tools gets what the client is granted
+    requires_details: true               # no tool_access = no tools: a grant must name them
     detail_types:
       tool_access:
         actions: [call]

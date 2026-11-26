@@ -53,6 +53,7 @@ audiences:
   tools-service:
     scopes: [tools:call]
     grant_overlap: true
+    requires_details: true               # every grant names its tools; none named = no tools, never all
     detail_types:
       tool_access:
         actions: [call]

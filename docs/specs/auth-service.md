@@ -134,7 +134,7 @@ which the tests use. Tokens live 10 minutes (`token_ttl_seconds: 600`), downscop
 |---|---|---|
 | `api-service` | `files:read write delete list` | none |
 | `file-management` | `files:read write delete list` | `file_access`: actions `read write delete list`, prefix locations under `public/` or `private/` (must equal file-management's buckets) |
-| `tools-service` | `tools:call` | `tool_access`: action `call`, prefix locations `<namespace>/<tool>` (`weather/` = the namespace). **`grant_overlap`:** a request for more gets the overlap ([tools.md](agent-service/tools.md) TL5) |
+| `tools-service` | `tools:call` | `tool_access`: action `call`, prefix locations `<namespace>/<tool>` (`weather/` = the namespace). **`grant_overlap`:** a request for more gets the overlap ([tools.md](agent-service/tools.md) TL5). **`requires_details`:** every grant must name its tools (the policy check refuses one that doesn't), and no token is minted without details: none named is no access, never all |
 | `secrets-manager` | `secrets:read` | none; what a login may read is OpenBao's policy, generated from the manifests |
 
 **Clients:**

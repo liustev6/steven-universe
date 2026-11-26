@@ -235,3 +235,32 @@ def test_relay_audiences_need_relaying_and_known_audiences():
     data["clients"]["agent-service"]["relay_audiences"] = ["nowhere"]
     with pytest.raises(ValueError, match="unknown audience 'nowhere'"):
         Policy.model_validate(data)
+
+
+def test_a_grant_without_tool_access_is_refused_by_the_policy_check():
+    """requires_details: at tools-service, no authorization_details means no grant, never all tools."""
+    import pytest
+    from app.policy import Policy
+
+    data = policy_data()
+    data["clients"]["hey-pi"]["grants"]["tools-service"] = {"scopes": ["tools:call"]}
+    with pytest.raises(ValueError, match="hey-pi.grants.tools-service: this audience requires authorization_details"):
+        Policy.model_validate(data)
+
+
+def test_no_token_without_details_where_they_are_required(config_dir, secrets):
+    """A grant whose only details need ${user} yields none for a service caller: refused, never a
+    token with no details (which would read as no limit)."""
+    from fastapi.testclient import TestClient
+
+    from app.core.config import Settings
+    from app.main import create_app
+
+    data = policy_data()
+    data["clients"]["hey-pi"]["grants"]["tools-service"]["authorization_details"] = [
+        {"type": "tool_access", "actions": ["call"], "locations": ["users/${user}/"]}]
+    (config_dir / "policy.yaml").write_text(yaml.safe_dump(data))
+    client = TestClient(create_app(Settings(CONFIG_DIR=config_dir, RATE_LIMIT_PER_MINUTE=10_000)))
+    response = client.post("/oauth2/token", data={"grant_type": "client_credentials", "resource": "tools-service"},
+                           auth=("hey-pi", secrets["hey-pi"]))
+    assert error_of(response) == "invalid_authorization_details"

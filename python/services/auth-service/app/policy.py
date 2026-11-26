@@ -37,6 +37,9 @@ class AudienceDef(_Strict):
     # it got: RFC 6749 §3.3) instead of a refusal. For audiences where a request is a menu, not an
     # exact need: tools-service, asked for a profile's tools (docs/specs/agent-service/tools.md TL5).
     grant_overlap: bool = False
+    # Every grant at this audience must name its resources (authorization_details), and no token is
+    # minted without them: no details = no access, never all of it (tools-service: tool_access).
+    requires_details: bool = False
 
 
 class DetailTemplate(_Strict):
@@ -117,6 +120,8 @@ class Policy(_Strict):
                 unknown = set(grant.scopes) - set(aud.scopes)
                 if unknown:
                     errors.append(f"{gwhere}: unknown scopes {sorted(unknown)}")
+                if aud.requires_details and not grant.authorization_details:
+                    errors.append(f"{gwhere}: this audience requires authorization_details")
                 for i, template in enumerate(grant.authorization_details):
                     twhere = f"{gwhere}.authorization_details[{i}]"
                     dtype = aud.detail_types.get(template.type)
