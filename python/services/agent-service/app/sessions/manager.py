@@ -56,7 +56,8 @@ from app.sessions.errors import (
     Busy, BudgetExceeded, Ended, InstructionsNotAllowed, NotFound, ProfileMismatch, Stopped, UnknownProfile,
 )
 from app.sessions.runner import NoSandbox, Runner, RunnerError
-from app.tools_service import NoTools, ToolsService
+from app.tools_service import NoTools, ToolsService, tool_instructions
+from core.agent import MCP_SERVER
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +82,6 @@ class Live:
     turn_tokens: int = 0              # the running turn's tokens, counted by the gateway (C13)
     over_budget: bool = False         # the running turn hit max_turn_tokens (reported once)
     tools: list[dict[str, Any]] = field(default_factory=list)      # tools-service's, fixed at the start (TL7)
-    # Set once `tools` is known. The runtime starts (and Codex lists its MCP tools) as soon as the claim
-    # writes the session file, while the start may still be looking the tools up: /mcp waits for this.
-    tools_ready: asyncio.Event = field(default_factory=asyncio.Event)
     # The running turn's caller's token (audience agent-service), exchanged for a tools-service token
     # when a tool is called (TL4). Memory only, for the turn; never sent to the sandbox (TL3).
     caller_token: str | None = field(default=None, repr=False)
@@ -120,7 +118,6 @@ class Sessions:
                 continue
             live = Live(row.id, profile, row.sandbox_id, row.capability_hash, Translator(row.id, fresh=False),
                         tools=row.tools or [])
-            live.tools_ready.set()
             turn = running.get(row.id)
             if turn is not None:
                 live.turn_id = turn.id
@@ -170,32 +167,25 @@ class Sessions:
                 raise
             return live, False
 
-        runtime = p.runtime(profile, context_text(carried, self.s.CARRY_CHARS), instructions or "")
-        listing = asyncio.create_task(self._session_tools(session.id, p, caller_token))
+        # The tools first: the profile may list them in the instructions the claim writes to the session
+        # file. Tens of ms on the LAN, at most TOOLS_START_TIMEOUT_SECONDS; a start never fails on them.
+        tools = await self._session_tools(session.id, p, caller_token)
+        block = tool_instructions(tools, MCP_SERVER) if p.tool_instructions == "append" else ""
+        runtime = p.runtime(profile, context_text(carried, self.s.CARRY_CHARS), instructions or "", block)
         try:
             sandbox_id = await self.runner.claim(p.template, session.id, capability, runtime.model_dump(mode="json"))
         except (NoSandbox, RunnerError):
-            listing.cancel()
             await self._discard(session, new_conversation=conversation_id is None)
             raise
         async with self.db.begin() as db:
             row = await db.get(ChatSession, session.id, with_for_update=True)
             row.sandbox_id = sandbox_id
+            row.tools = tools or None
             still_live = row.state != SessionState.ENDED
         if not still_live:                                      # ended while we claimed (the kill switch)
-            listing.cancel()
             await self.runner.release(sandbox_id)
             return row, True
-        # Paired at the gateway now: the runtime is already starting. /mcp waits for `tools_ready`.
-        live = Live(row.id, profile, sandbox_id, capability_hash(capability), Translator(row.id))
-        self._remember(live)
-        tools = await listing
-        live.tools = tools
-        live.tools_ready.set()
-        if tools:
-            async with self.db.begin() as db:
-                await db.execute(update(ChatSession).where(ChatSession.id == row.id).values(tools=tools))
-            row.tools = tools
+        self._remember(Live(row.id, profile, sandbox_id, capability_hash(capability), Translator(row.id), tools=tools))
         logger.info("session %s started (profile %s, sandbox %s, %d turn(s) carried, %d tool(s))", row.id, profile,
                     sandbox_id, len(carried), len(tools))
         return row, True

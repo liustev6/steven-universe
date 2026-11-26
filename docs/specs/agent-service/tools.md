@@ -76,12 +76,20 @@ pi-server ──turn (its token)──▶ agent-service ──▶ sandbox: Codex
   gateway's list may be empty. No tool list in the image or the configuration.
 - **Codex keeps MCP tools behind its tool search** (0.167.2: `tool_search_always_defer_mcp_tools`, not
   configurable for MCP servers): the model looks a tool up before its first call, while built-in tools
-  like `web_search` are always in hand. A profile that should prefer one of ours names it in its
-  instructions (`pi`: "for the weather, always use your weather tools…"). The lookup costs ~2 s before the
-  first tool call of a session (measured 2026-11-26).
-- **The start's race:** the runtime starts, and Codex lists its MCP tools, as soon as the claim writes
-  the session file, while agent-service may still be looking the tools up. The session is paired at the
-  gateway right after the claim, and `/mcp`'s `tools/list` waits for the lookup (capped at 3 s).
+  like `web_search` are always in hand, so a model not told about ours took a web search instead. The
+  lookup costs ~2 s before the first tool call of a session (measured 2026-11-26).
+- **The session's tools in its instructions** (`tool_instructions: append`, a profile's choice, like
+  `caller_instructions`): agent-service writes them itself from the session's tool list, one line each,
+  the name the model sees (`mcp__tools__weather_forecast`) and its description's first sentence, under
+  "prefer them over a web search whenever one fits". Sorted, so the same grants always give the same text.
+- **The tools are looked up before the claim**, so the instructions the claim writes to the session file
+  can list them (tens of ms on the LAN, at most 3 s). It also means the runtime, which starts the moment
+  that file appears, never asks `/mcp` before its tools are known.
+- **The instructions, in order, from what never changes to what changes most** (the prompt cache
+  shares the longest identical start of a prompt, across sessions too): the profile's own text, the
+  tool block (the same for the same grants), the caller's (pi-server: its city and time zone), the
+  carried-over turns. Anything that changes every session or turn goes at the end: pi-server's time
+  moved from its instructions to each turn's text.
 - **Tool names:** in MCP and to the model, `<namespace>_<tool>` (`weather_forecast`: the model's function
   names allow only letters, digits, `_` and `-`); in grants and profiles, `<namespace>/<tool>`, where
   `weather/` is the whole namespace (auth-service's prefix locations, so no new matching rules).

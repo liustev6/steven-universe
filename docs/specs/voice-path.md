@@ -73,6 +73,9 @@
   questions only. Where the panel is (Seattle, Pacific time: the first turn answered by UTC) was in the
   profile; it kept saying "Seattle", so since 2026-11-18 pi-server sends it as its own instructions
   (agent-service C15), an "Additional Client Info" block built at each session start (`timezone`,
-  `City, Country`, `now` in local time; from `PI_SERVER_TIMEZONE` and `PI_SERVER_LOCATION`), and the
-  profile's rules say how to use it: for place and time questions only, never naming the city. **Web search on** (`pi`'s `tools: [web_search]`, Codex's own, run at OpenAI: the sandbox
+  `City, Country`; from `PI_SERVER_TIMEZONE` and `PI_SERVER_LOCATION`), and the profile's rules say how
+  to use it: for place and time questions only, never naming the city. **The time goes with each turn**
+  (since 2026-11-26): a `[now: 2026-11-26 10:31 (Wednesday, UTC-0800)]` line before the turn's text,
+  not in the instructions, which start every model call's prompt: a time there changed every session's
+  prompt from that point on, so the prompt cache could share less of it (tools.md). **Web search on** (`pi`'s `tools: [web_search]`, Codex's own, run at OpenAI: the sandbox
   still reaches only the gateway): a weather question searched and answered in ~9 s on the Mac.

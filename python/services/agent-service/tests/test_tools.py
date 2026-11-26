@@ -231,25 +231,33 @@ async def test_a_slow_tools_service_doesnt_hold_up_a_start(env):
         assert (await db.get(ChatSession, row.id)).tools is None
 
 
-async def test_mcp_waits_for_tools_still_being_looked_up(env):
-    """The runtime lists its tools as soon as it starts, maybe before the start has them (5.4's race)."""
-    import asyncio
+async def test_the_session_file_lists_its_tools_after_the_profiles_own_text(env):
+    """Looked up before the claim, so the instructions the claim writes can list them (tools.md)."""
+    await env.sessions.start(ME, "tooled", caller_token="t", instructions=None)
+    instructions = env.runner.claims[-1]["profile"]["instructions"]
+    own, block = instructions.split("\n\n", 1)
+    assert own == "You answer with tools."
+    assert block.splitlines()[1:] == ["- mcp__tools__weather_current: now.", "- mcp__tools__weather_forecast: days."]
+    await env.sessions.start(ME, "chat", caller_token="t")                       # tool_instructions: none
+    assert "mcp__tools__" not in env.runner.claims[-1]["profile"]["instructions"]
 
-    async def slow(caller_token, mcp_tools):
-        await asyncio.sleep(0.4)
-        return WEATHER
-    env.tools.list = slow
-    async with env.serving():
-        start = asyncio.create_task(env.sessions.start(ME, "chat", caller_token="t"))
-        while not env.runner.claims or not env.sessions._live:       # claimed and paired, tools not known yet
-            await asyncio.sleep(0.01)
-        claim = env.runner.claims[-1]
-        assert not next(iter(env.sessions._live.values())).tools_ready.is_set()
-        headers = {"authorization": f"Bearer {claim['capability']}", "x-sandbox-id": str(claim["sandbox_id"])}
-        async with env.mcp(headers) as c:
-            names = [t.name for t in (await c.list_tools()).tools]
-        await start
-    assert names == ["weather_current", "weather_forecast"]
+
+async def test_the_order_is_from_what_never_changes_to_what_changes_most(env):
+    await env.sessions.start(ME, "listed", caller_token="t", instructions="Additional Client Info:\ncity: X")
+    parts = env.runner.claims[-1]["profile"]["instructions"].split("\n\n")
+    assert parts[0] == "You are the panel." and parts[1].startswith("Your tools for this session")
+    assert parts[2] == "Additional Client Info:\ncity: X"
+
+
+def test_the_tool_block_is_the_same_text_for_the_same_tools():
+    from app.tools_service import tool_instructions
+    tools = [{"name": "weather_forecast", "description": "The daily forecast for a place. From today, 1 to 7 days."},
+             {"name": "pi_end_conversation", "description": "End the voice\n conversation after this reply. More."}]
+    text = tool_instructions(tools)
+    assert text == tool_instructions(list(reversed(tools)))                    # sorted: order doesn't matter
+    assert text.splitlines()[1:] == ["- mcp__tools__pi_end_conversation: End the voice conversation after this reply.",
+                                     "- mcp__tools__weather_forecast: The daily forecast for a place."]
+    assert tool_instructions([]) == ""
 
 
 def test_jti_of_reads_a_tokens_id():

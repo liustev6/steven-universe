@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 
 import httpx
 
-from app.voice.agent import AgentClient, client_info
+from app.voice.agent import AgentClient, client_info, now_line
 from app.voice.assistant import State, VoiceAssistant, VoiceOptions, main_language
 from app.voice.speech import FLUSH, Heard, SpeechError
 from app.voice.spoken import SpokenText
@@ -342,14 +342,15 @@ def agent_service(log):
     return handle, state
 
 
-def client(log, instructions=None):
+def client(log, instructions=None, turn_prefix=None):
     handle, state = agent_service(log)
 
     async def token():
         return "t"
 
     http = httpx.AsyncClient(transport=httpx.MockTransport(handle), base_url="http://agent")
-    return AgentClient("http://agent", token, "pi", http=http, instructions=instructions), state
+    return AgentClient("http://agent", token, "pi", http=http, instructions=instructions,
+                       turn_prefix=turn_prefix), state
 
 
 async def all_of(agen):
@@ -463,13 +464,11 @@ def test_speech_to_text_hears_with_the_sessions_last_two_turns():
 
 
 def test_the_client_info_goes_with_every_start():
-    winter = datetime(2026, 11, 18, 10, 55, tzinfo=UTC)
-    assert client_info("Seattle, United States", "America/Los_Angeles", winter) == (
+    assert client_info("Seattle, United States", "America/Los_Angeles") == (
         "Additional Client Info:\n"
         "timezone: America/Los_Angeles\n"
-        "City, Country: Seattle, United States\n"
-        "now: 2026-11-18 02:55 (Wednesday, UTC-0800)")
-    assert client_info("", "", winter) == "Additional Client Info:\nnow: 2026-11-18 10:55 (Wednesday, UTC+0000)"
+        "City, Country: Seattle, United States")                    # no time: the same every session
+    assert client_info("", "") == "Additional Client Info:"
 
     async def go():
         log, told = [], iter(["info 1", "info 2"])
@@ -557,4 +556,18 @@ def test_a_follow_up_without_silence_is_noise_and_ends_the_session():
         await r.settle()
         assert r.agent.asked == ["what's the weather"]                # not sent to the agent
         assert r.va.state is State.IDLE and r.agent.ended == 1 and r.ui.phases[-1] == "idle"
+    run(go())
+
+
+def test_the_time_goes_with_every_turn():
+    winter = datetime(2026, 11, 18, 10, 55, tzinfo=UTC)
+    assert now_line("America/Los_Angeles", winter) == "[now: 2026-11-18 02:55 (Wednesday, UTC-0800)]"
+    assert now_line("", winter) == "[now: 2026-11-18 10:55 (Wednesday, UTC+0000)]"
+
+    async def go():
+        log, _ = [], None
+        agent, state = client(log, turn_prefix=lambda: "[now: X]")
+        await all_of(agent.turn("明天天气怎么样？"))
+        turns = [b for _, p, b in log if p.endswith("/turns")]
+        assert turns == [{"text": "[now: X]\n明天天气怎么样？"}]
     run(go())

@@ -50,6 +50,7 @@ profiles:
     instructions: You answer with tools.
     codex_instructions: false
     mcp_tools: ["weather/"]
+    tool_instructions: append
     limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000, max_tool_calls: 2}
     history: {carry_turns: 0}
 
@@ -60,5 +61,16 @@ profiles:
     instructions: You answer without tools.
     codex_instructions: false
     mcp_tools: []
+    limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
+    history: {carry_turns: 0}
+
+  # the order of the instructions: the profile's, the tools', the caller's (C15)
+  listed:
+    template: chat
+    effort: low
+    instructions: You are the panel.
+    caller_instructions: append
+    tool_instructions: append
+    codex_instructions: false
     limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
     history: {carry_turns: 0}

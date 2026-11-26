@@ -7,8 +7,9 @@ A profile holds two kinds of settings:
   (C13), how much history a new session carries (C9), and whether a caller may add instructions
   (C15). The sandbox never sees these.
 
-The agent's instructions, in order: the profile's own rules, the caller's (C15), the carried-over
-turns (C9). The profile's come first and a caller can only add to them; what an agent may *do*
+The agent's instructions, in order, from what never changes to what changes most (the prompt
+cache shares the longest identical start of a prompt): the profile's own rules, the session's tools
+(`tool_instructions`, generated from its tool list), the caller's (C15), the carried-over turns (C9). The profile's come first and a caller can only add to them; what an agent may *do*
 (model, tools, budgets) is enforced at the gateway, never by the instructions.
 
 Any caller with `chat:write` may start any profile (C2): a profile's cost is bounded by its limits.
@@ -58,6 +59,9 @@ class AgentProfile(BaseModel):
     effort: str | None = None                              # checked against protocol A's values below
     instructions: str = ""                                 # the profile's own rules; optional
     caller_instructions: Literal["none", "append"] = "none"   # may a caller add its own (C15)
+    # append: the session's tools-service tools, listed in its instructions (tools.md): Codex keeps MCP
+    # tools behind its tool search, so a model not told about them takes a built-in tool instead
+    tool_instructions: Literal["none", "append"] = "none"
     codex_instructions: bool = True                        # False: `instructions` replace Codex's own
     tools: list[Tool] = Field(default_factory=list)       # Codex's built-in tools only (web_search, ...)
     # tools-service's tools (tools.md TL5): None (the default) = the owner's whole grant there; a list
@@ -78,11 +82,12 @@ class AgentProfile(BaseModel):
         self.runtime("check")       # a profile the runtime would reject fails at load, not at a claim
         return self
 
-    def runtime(self, name: str, context: str = "", caller: str = "") -> RuntimeProfile:
-        """Protocol A's Profile for the session file: the profile's instructions, then the caller's
-        (`caller`, C15; checked by the caller of this), then `context` (the carried-over turns,
-        C9), as one text, so the runtime needs nothing new to use them."""
-        parts = (self.instructions.strip(), caller.strip(), context.strip())
+    def runtime(self, name: str, context: str = "", caller: str = "", tools: str = "") -> RuntimeProfile:
+        """Protocol A's Profile for the session file: the profile's instructions, then `tools` (the
+        session's tool block, when the profile appends it), then the caller's (`caller`, C15; checked
+        by the caller of this), then `context` (the carried-over turns, C9), as one text, so the
+        runtime needs nothing new to use them."""
+        parts = (self.instructions.strip(), tools.strip(), caller.strip(), context.strip())
         instructions = "\n\n".join(part for part in parts if part)
         return RuntimeProfile(
             name=name, model=self.model, effort=self.effort, instructions=instructions,

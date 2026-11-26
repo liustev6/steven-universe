@@ -17,7 +17,7 @@ def create(settings, ui):
     """The voice assistant from pi-server's settings, as client `pi-server` (its secret on the Pi)."""
     from service_auth import TokenClient
 
-    from app.voice.agent import AgentClient, client_info
+    from app.voice.agent import AgentClient, client_info, now_line
     from app.voice.assistant import VoiceAssistant, VoiceOptions
     from app.voice.audio import Mic, Speaker
     from app.voice.speech import SpeechClient
@@ -26,7 +26,8 @@ def create(settings, ui):
     tokens = TokenClient(settings.AUTH_ISSUER, settings.CLIENT_ID, settings.CLIENT_SECRET_FILE.read_text().strip())
     speech = SpeechClient(settings.SPEECH_URL, lambda: tokens.token("speech-service"))
     agent = AgentClient(settings.AGENT_URL, lambda: tokens.token("agent-service"), settings.AGENT_PROFILE,
-                        instructions=lambda: client_info(settings.LOCATION, settings.TIMEZONE))
+                        instructions=lambda: client_info(settings.LOCATION, settings.TIMEZONE),
+                        turn_prefix=lambda: now_line(settings.TIMEZONE))
     options = VoiceOptions(voice_en=settings.VOICE_EN, voice_zh=settings.VOICE_ZH, tts_language=settings.TTS_LANGUAGE,
                            stt_language=settings.STT_LANGUAGE, stt_context=settings.STT_CONTEXT, silence_ms=settings.SILENCE_MS,
                            window=settings.LISTEN_WINDOW_SECONDS)

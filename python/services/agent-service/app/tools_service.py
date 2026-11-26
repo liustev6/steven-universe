@@ -27,6 +27,21 @@ AUDIENCE = "tools-service"
 SCOPE = "tools:call"
 
 
+def tool_instructions(tools: list[dict[str, Any]], server: str = "tools") -> str:
+    """The session's tools, for its instructions (a profile's `tool_instructions: append`): each by the
+    name the model sees (Codex: `mcp__<server>__<tool>`) and its description's first sentence. Sorted,
+    so the same grants always give the same text (the prompt cache)."""
+    if not tools:
+        return ""
+    lines = ["Your tools for this session. Prefer them over a web search whenever one fits; if you "
+             "don't see one yet, look it up with your tool search:"]
+    for t in sorted(tools, key=lambda t: t.get("name", "")):
+        description = " ".join((t.get("description") or "").split())
+        first = description.split(". ")[0].rstrip(".")[:200]
+        lines.append(f"- mcp__{server}__{t.get('name')}: {first}.")
+    return "\n".join(lines)
+
+
 def jti_of(token: str) -> str | None:
     """A token's `jti`, for log lines only (it's auth-service's token, just minted; not a verification)."""
     try:

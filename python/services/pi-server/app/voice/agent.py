@@ -20,26 +20,33 @@ class AgentError(Exception):
     pass
 
 
-def client_info(location: str, timezone: str, now: Optional[datetime] = None) -> str:
+def client_info(location: str, timezone: str) -> str:
     """What pi-server adds to the profile's instructions (agent-service's caller instructions,
-    control-plane.md C15): facts about the panel, as a block the profile's rules refer to. Built at
-    each session start, so `now` is current (a voice session lasts minutes)."""
-    tz = ZoneInfo(timezone) if timezone else UTC
-    now = (now or datetime.now(UTC)).astimezone(tz)
+    control-plane.md C15): facts about the panel that don't change, as a block the profile's rules
+    refer to. The time isn't here: it changes every session, and the instructions are the start of
+    every model call's prompt, so it would end the part the prompt cache can share (`now_line`)."""
     lines = ["Additional Client Info:"]
     if timezone:
         lines.append(f"timezone: {timezone}")
     if location:
         lines.append(f"City, Country: {location}")
-    lines.append(f"now: {now:%Y-%m-%d %H:%M} ({now:%A}, UTC{now:%z})")
     return "\n".join(lines)
+
+
+def now_line(timezone: str, now: Optional[datetime] = None) -> str:
+    """The time, at the start of each turn's text: where it changes, at the end of the prompt."""
+    tz = ZoneInfo(timezone) if timezone else UTC
+    now = (now or datetime.now(UTC)).astimezone(tz)
+    return f"[now: {now:%Y-%m-%d %H:%M} ({now:%A}, UTC{now:%z})]"
 
 
 class AgentClient:
     def __init__(self, url: str, token: Callable[[], Awaitable[str]], profile: str,
                  http: Optional[httpx.AsyncClient] = None,
-                 instructions: Union[str, Callable[[], str], None] = None):
+                 instructions: Union[str, Callable[[], str], None] = None,
+                 turn_prefix: Optional[Callable[[], str]] = None):
         self.url, self.token, self.profile, self.instructions = url, token, profile, instructions
+        self.turn_prefix = turn_prefix          # a line put before each turn's text (the time)
         self.http = http or httpx.AsyncClient(timeout=httpx.Timeout(15, read=180))
         self.conversation_id: Optional[str] = None
         self.session_id: Optional[str] = None
@@ -65,6 +72,8 @@ class AgentClient:
         session that has ended (its limits, a restart) is replaced once, in the same conversation."""
         if self.session_id is None:
             await self.start()
+        if self.turn_prefix is not None:
+            text = f"{self.turn_prefix()}\n{text}"
         for attempt in range(2):
             async with self.http.stream("POST", f"{self.url}/v1/sessions/{self.session_id}/turns",
                                         json={"text": text}, headers=await self._headers()) as r:
