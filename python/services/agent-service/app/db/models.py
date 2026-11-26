@@ -105,6 +105,10 @@ class ChatSession(Base):
     instructions: Mapped[str | None] = mapped_column(Text)        # the caller's, if any (C15): what it was told
     next_seq: Mapped[int] = mapped_column(BigInteger, default=0)  # the next protocol B seq (one per session)
     turns_used: Mapped[int] = mapped_column(Integer, default=0)   # for max_turns (C13)
+    # tools-service's tools for this session, as its tools/list answered at the start (tools.md TL7):
+    # what the gateway's /mcp lists, fixed for the session. None or []: no tools.
+    tools: Mapped[list[Any] | None] = mapped_column(JSONB)
+    tool_calls_used: Mapped[int] = mapped_column(Integer, default=0, server_default="0")   # max_tool_calls (TL10)
     started_at: Mapped[datetime] = mapped_column(server_default=func.now())
     ready_at: Mapped[datetime | None]                             # runtime.ready arrived (startup time)
     last_activity_at: Mapped[datetime] = mapped_column(server_default=func.now())  # the idle timer (C6)

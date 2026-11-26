@@ -8,3 +8,4 @@ PyYAML==6.0.3          # profiles.yaml (C12)
 SQLAlchemy[asyncio]==2.1.9
 psycopg[binary]==3.3.9 # PostgreSQL driver (psycopg 3: async, server-side binding)
 alembic==1.20.1        # schema migrations, reviewed in git
+mcp==2.3.0             # the gateway's /mcp: an MCP server to sandboxes, a client to tools-service (tools.md)

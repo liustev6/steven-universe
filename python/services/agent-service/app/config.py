@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     LOGIN_REFRESH_HOURS: float = 6                                 # keeps the refresh token in use
     BAO_ADDR: str = "https://bao.lan.liustev6.ca:8200"             # the login's durable copy (MA3)
 
+    # ---- Tools: tools-service's MCP side (tools.md); empty = sessions get no tools-service tools --
+    TOOLS_MCP_URL: str = "https://tools.lan.liustev6.ca:8443/mcp"
+    TOOLS_START_TIMEOUT_SECONDS: float = 3.0     # a start waits at most this for its tools, else it has none
+
     # Callers and the runner: auth-service tokens (SERVICE_AUTH_ISSUER, SERVICE_AUTH_CLIENT_ID,
     # SERVICE_AUTH_CLIENT_SECRET_FILE; service-auth reads them).
 

@@ -59,12 +59,13 @@ def build_router(sessions: Sessions, auth) -> APIRouter:
 
     @router.post("")
     async def start(body: StartRequest, p: Principal = Depends(write)) -> JSONResponse:
-        row, created = await sessions.start(p.subject, body.profile, body.conversation_id, body.instructions)
+        row, created = await sessions.start(p.subject, body.profile, body.conversation_id, body.instructions,
+                                            caller_token=p.token)
         return JSONResponse(describe(row), status_code=201 if created else 200)
 
     @router.post("/{session_id}/turns")
     async def turn(session_id: uuid.UUID, body: TurnRequest, p: Principal = Depends(write)):
-        t, after = await sessions.turn(session_id, owner_scope(p), body.text)
+        t, after = await sessions.turn(session_id, owner_scope(p), body.text, caller_token=p.token)
         return stream.sse(stream.turn_events(sessions.log, session_id, t.id, after),
                           headers={"X-Turn-Id": str(t.id)})
 

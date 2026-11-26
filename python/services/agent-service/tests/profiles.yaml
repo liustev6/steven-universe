@@ -42,3 +42,23 @@ profiles:
     codex_instructions: false
     limits: {wall_seconds: 120, max_turns: 2, max_turn_tokens: 20000}
     history: {carry_turns: 0}
+
+  # tools-service's tools narrowed to weather, and a small tool budget (tools.md TL5, TL10)
+  tooled:
+    template: chat
+    effort: low
+    instructions: You answer with tools.
+    codex_instructions: false
+    mcp_tools: ["weather/"]
+    limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000, max_tool_calls: 2}
+    history: {carry_turns: 0}
+
+  # no tools-service tools at all
+  toolless:
+    template: chat
+    effort: low
+    instructions: You answer without tools.
+    codex_instructions: false
+    mcp_tools: []
+    limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
+    history: {carry_turns: 0}

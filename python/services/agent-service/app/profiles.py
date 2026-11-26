@@ -28,6 +28,8 @@ from core.types import Profile as RuntimeProfile
 from core.types import Tool
 
 NAME_PATTERN = r"^[a-z][a-z0-9-]{0,31}$"
+# tools-service locations (tools.md): a namespace ("weather/") or one tool ("weather/forecast")
+TOOL_LOCATION = re.compile(r"^[a-z][a-z0-9_]*/([a-z][a-z0-9_]*)?$")
 CALLER_INSTRUCTIONS_MAX = 4000                             # characters (C15)
 
 
@@ -40,6 +42,7 @@ class Limits(BaseModel):
     wall_seconds: int = Field(3600, gt=0, le=3600)
     max_turns: int = Field(100, gt=0)                      # turns per session
     max_turn_tokens: int = Field(200_000, gt=0)            # tokens in one turn, from the runtime's usage events
+    max_tool_calls: int = Field(20, gt=0)                  # tools-service calls per session, counted at the gateway (TL10)
 
 
 class History(BaseModel):
@@ -56,9 +59,19 @@ class AgentProfile(BaseModel):
     instructions: str = ""                                 # the profile's own rules; optional
     caller_instructions: Literal["none", "append"] = "none"   # may a caller add its own (C15)
     codex_instructions: bool = True                        # False: `instructions` replace Codex's own
-    tools: list[Tool] = Field(default_factory=list)
+    tools: list[Tool] = Field(default_factory=list)       # Codex's built-in tools only (web_search, ...)
+    # tools-service's tools (tools.md TL5): None (the default) = the owner's whole grant there; a list
+    # of locations narrows it (the overlap); [] = none. Never a second copy of the grant.
+    mcp_tools: list[str] | None = None
     limits: Limits = Field(default_factory=Limits)
     history: History = Field(default_factory=History)
+
+    @model_validator(mode="after")
+    def _mcp_tools(self) -> "AgentProfile":
+        bad = [t for t in self.mcp_tools or [] if not TOOL_LOCATION.match(t)]
+        if bad:
+            raise ValueError(f"mcp_tools: <namespace>/ or <namespace>/<tool>, lowercase: {bad}")
+        return self
 
     @model_validator(mode="after")
     def _runtime_accepts_it(self) -> "AgentProfile":

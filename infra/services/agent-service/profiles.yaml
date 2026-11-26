@@ -11,6 +11,8 @@
 #                        is, who it serves), after the profile's; none (the default): refused (C15)
 #   codex_instructions   true: added to Codex's (a coding agent); false: they replace them
 #   tools                Codex's built-in tools allowed (shell, web_search, view_image); [] = none
+#   mcp_tools            tools-service's (tools.md TL5): absent = the session owner's whole grant there;
+#                        a list of locations narrows it ("weather/"); [] = none
 #   limits               wall_seconds (the session), max_turns (per session), max_turn_tokens (per turn)
 #   history              carry_turns: the conversation's last N turns, carried into a new session (C9)
 
@@ -49,5 +51,6 @@ profiles:
     effort: low
     instructions: Reply with exactly the word the user asks for, and nothing else.
     codex_instructions: false
+    mcp_tools: []                 # no tools: smoke-test is granted some for tools-service's own smoke test
     limits: {wall_seconds: 120, max_turns: 2, max_turn_tokens: 20000}
     history: {carry_turns: 0}

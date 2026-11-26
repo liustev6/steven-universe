@@ -19,21 +19,24 @@ from app.sessions import Live, Sessions
 logger = logging.getLogger(__name__)
 
 
+def pair(sessions: Sessions, authorization: str, stamp: str) -> Live:
+    """The live session of `Authorization: Bearer <capability>`, from its own pod only (C7)."""
+    capability = authorization[7:].strip() if authorization[:7].lower() == "bearer " else ""
+    live = sessions.live_for(capability) if capability else None
+    if live is None:
+        raise HTTPException(401, "invalid session capability")
+    if not hmac.compare_digest(stamp, str(live.sandbox_id)):
+        logger.warning("session %s: its capability was used from another sandbox (%r): refused",
+                       live.session_id, stamp[:64])
+        raise HTTPException(403, "this capability isn't valid from this sandbox")
+    return live
+
+
 def runtime_dependency(sessions: Sessions):
     """A FastAPI dependency: the calling sandbox's live session."""
 
     def runtime(request: Request) -> Live:
-        auth = request.headers.get("authorization", "")
-        capability = auth[7:].strip() if auth[:7].lower() == "bearer " else ""
-        live = sessions.live_for(capability) if capability else None
-        if live is None:
-            raise HTTPException(401, "invalid session capability")
-        stamp = request.headers.get("x-sandbox-id", "")
-        if not hmac.compare_digest(stamp, str(live.sandbox_id)):
-            logger.warning("session %s: its capability was used from another sandbox (%r): refused",
-                           live.session_id, stamp[:64])
-            raise HTTPException(403, "this capability isn't valid from this sandbox")
-        return live
+        return pair(sessions, request.headers.get("authorization", ""), request.headers.get("x-sandbox-id", ""))
 
     return runtime
 

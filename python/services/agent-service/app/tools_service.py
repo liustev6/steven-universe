@@ -1,0 +1,69 @@
+"""tools-service, as agent-service reaches it for its sessions (docs/specs/agent-service/tools.md).
+
+Every request carries a token exchanged for the session's caller (TL4: RFC 8693, auth-service's
+grant 3): `sub` = the caller, `act` = agent-service, the tools = the caller's grant at tools-service,
+narrowed by the profile's `mcp_tools` when it has them (TL5). The caller's own token (audience
+agent-service) is what gets exchanged; neither token ever reaches the sandbox (TL3).
+
+    list(caller_token, mcp_tools)                 at a session's start: its tools, as tools-service lists them
+    call(caller_token, mcp_tools, name, args)     a tool call, forwarded as it came
+"""
+
+from __future__ import annotations
+
+import logging
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator, Callable
+
+import httpx2
+from mcp import Client, types
+from mcp.client.streamable_http import streamable_http_client
+from service_auth import TokenClient, TokenRequestError
+
+logger = logging.getLogger(__name__)
+AUDIENCE = "tools-service"
+SCOPE = "tools:call"
+
+
+class NoTools(Exception):
+    """The caller may use no tools here: no grant at tools-service, or none the profile wants."""
+
+
+class ToolsService:
+    def __init__(self, tokens: TokenClient, url: str, *, timeout: float = 30.0,
+                 client: Callable[[str], Any] | None = None):
+        self.tokens, self.url, self.timeout = tokens, url, timeout
+        self._client = client or self._http_client          # tests: an in-memory MCP client
+
+    def _http_client(self, token: str):
+        http = httpx2.AsyncClient(headers={"Authorization": f"Bearer {token}"}, timeout=self.timeout)
+        return Client(streamable_http_client(self.url, http_client=http))
+
+    async def token(self, caller_token: str, mcp_tools: list[str] | None) -> str:
+        """The caller's tools-service token. Raises NoTools when the caller has nothing there."""
+        if mcp_tools == []:
+            raise NoTools("the profile takes no tools-service tools")
+        details = None if mcp_tools is None else [
+            {"type": "tool_access", "actions": ["call"], "locations": list(mcp_tools)}]
+        try:
+            return await self.tokens.exchange(caller_token, AUDIENCE, scopes=[SCOPE], details=details)
+        except TokenRequestError as e:
+            if e.transient:
+                raise
+            raise NoTools(str(e)) from e                     # no grant, or nothing in common (TL5)
+
+    @asynccontextmanager
+    async def _session(self, caller_token: str, mcp_tools: list[str] | None) -> AsyncIterator[Client]:
+        async with self._client(await self.token(caller_token, mcp_tools)) as client:
+            yield client
+
+    async def list(self, caller_token: str, mcp_tools: list[str] | None) -> list[dict[str, Any]]:
+        """The tools this caller may use with this profile, as MCP tool definitions (JSON)."""
+        async with self._session(caller_token, mcp_tools) as client:
+            result = await client.list_tools()
+        return [t.model_dump(mode="json", by_alias=True, exclude_none=True) for t in result.tools]
+
+    async def call(self, caller_token: str, mcp_tools: list[str] | None, name: str,
+                   arguments: dict[str, Any]) -> types.CallToolResult:
+        async with self._session(caller_token, mcp_tools) as client:
+            return await client.call_tool(name, arguments)

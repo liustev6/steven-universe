@@ -152,13 +152,14 @@ starting ──runtime.ready──▶ ready ◀──turn.completed── busy
   the pod.
 
 ## The gateway (8443, sandboxes)
-Reached only through a pod's proxy (R12), which stamps `X-Sandbox-Id`. Code: `app/gateway/` (`pairing.py`, `runtime.py`, `model.py`).
+Reached only through a pod's proxy (R12), which stamps `X-Sandbox-Id`. Code: `app/gateway/` (`pairing.py`, `runtime.py`, `model.py`, `mcp.py`).
 
 | Route | What |
 |---|---|
 | `GET /v1/runtime/turns?wait=` | the runtime's long poll: turns, interrupts, end (at most 30 s) |
 | `POST /v1/runtime/events` | protocol A events (a batch, at most 1 MB): each parsed alone (a bad one is dropped), translated to B, written (C4), sent on |
 | `/model/{path}` | to OpenAI with your token (C11); the profile's model enforced; C13's budgets (a request at most 16 MB) |
+| `/mcp` | the session's tools (CP5, [tools.md](tools.md)): an MCP server (stateless Streamable HTTP). `tools/list` is the list stored when the session started; `tools/call` goes to tools-service with a token exchanged for the turn's caller, within `max_tool_calls` |
 
 **Every request:** capability hash → its live session (from memory, rebuilt at start; else 401);
 `X-Sandbox-Id` must be that session's pod (else 403, logged). `X-Sandbox-Id`, `X-Forwarded-For`,
