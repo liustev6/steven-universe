@@ -30,3 +30,7 @@ hosts:
     address: 192.168.50.34
     user: root
     host_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP+XYWYCm2A4u8zS697n1GEuu8HjpHp9ymQ5qalsEoE6"
+  tools-host:                          # CT 109: runs tools-service (CP5)
+    address: 192.168.50.116
+    user: root
+    host_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMxHvZC8NMgiFR7SX6CvRsFzwyD4tBH87V6Ses1AjVcI"
