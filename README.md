@@ -75,7 +75,7 @@ the voice part of CP4 is planned step by step in [voice-path.md](docs/specs/voic
 |---|---|---|
 | 1–3 | the runtime, the sandbox worker, the control plane | Done (2026-11-12, 11-13, 11-17) |
 | 4 | **voice:** speech-service, then pi-server → agent-service → speech-service on the Pi | **In progress** |
-| 5 | tools: the gateway's MCP route, weather, Home Assistant, confirmations, budgets | Planned (web search, Codex's own, is already on for the `pi` profile since 2026-11-18) |
+| 5 | tools ([tools.md](docs/specs/agent-service/tools.md)): tools-service (one MCP server, weather first), the gateway's `/mcp`, each session's tools = its profile ∩ its owner's grants, budgets, `end_conversation`; Home Assistant and confirmations later | **Next** (agreed 2026-11-26; web search, Codex's own, is already on for the `pi` profile since 2026-11-18) |
 | 6 | files and mounts ([files-and-mounts.md](docs/specs/agent-service/files-and-mounts.md)) | Planned |
 | 7 | summaries and memory | Planned |
 | 8 | knowledge (RAG over my documents); replaces stevenai-service | Planned |
