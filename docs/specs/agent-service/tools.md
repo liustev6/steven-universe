@@ -89,7 +89,10 @@ pi-server ──turn (its token)──▶ agent-service ──▶ sandbox: Codex
   shares the longest identical start of a prompt, across sessions too): the profile's own text, the
   tool block (the same for the same grants), the caller's (pi-server: its city and time zone), the
   carried-over turns. Anything that changes every session or turn goes at the end: pi-server's time
-  moved from its instructions to each turn's text.
+  moved from its instructions to each turn's text. **Measured** (2026-11-26, the first turn of fresh `pi`
+  sessions, a weather question, ~27k input tokens over its model calls): cached 5.6k, 15.0k, 17.2k with the
+  time in the instructions; 17.4k, 17.3k, 17.4k with it per turn: steady at ~64%. Every first question and
+  follow-up used the weather tools, none a web search.
 - **Tool names:** in MCP and to the model, `<namespace>_<tool>` (`weather_forecast`: the model's function
   names allow only letters, digits, `_` and `-`); in grants and profiles, `<namespace>/<tool>`, where
   `weather/` is the whole namespace (auth-service's prefix locations, so no new matching rules).
