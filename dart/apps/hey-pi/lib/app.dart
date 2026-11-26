@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'connection/message_router.dart';
 import 'display/dashboard_view.dart';
+import 'display/speech_view.dart';
 import 'display/sleep_view.dart';
 import 'display/touch_guard.dart';
 import 'state/handler/event_dispatcher.dart';
-import 'state/app_state.dart';
-import 'state/types/display_state.dart';
+import 'protocol/messages.dart';
+import 'state/store/app_store.dart';
+import 'state/store/ui_mode.dart';
 import 'ui/theme.dart';
 
 class HeyPiApp extends ConsumerWidget {
@@ -29,23 +32,26 @@ class HeyPiApp extends ConsumerWidget {
   }
 }
 
-/// Switches between the dashboard and the sleep view.
+/// Shows what [uiModeProvider] says: pi-server's speech state over the app's own mode.
 class PanelRoot extends ConsumerWidget {
   const PanelRoot({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Creates the dispatcher at startup (its idle timer must run from boot)
-    // and keeps it alive.
+    // and keeps it alive; and the link to pi-server, alive from boot too.
     ref.watch(eventDispatcherProvider);
-    final mode = ref.watch(appStoreProvider.select((s) => s.display.mode));
+    ref.watch(serverLinkProvider);
+    final mode = ref.watch(uiModeProvider);
     return Scaffold(
       body: TouchGuard(
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 250),
           child: switch (mode) {
-            DisplayMode.active => const DashboardView(),
-            DisplayMode.sleep => const SleepView(),
+            UiMode.dashboard => const DashboardView(),
+            UiMode.idle => const SleepView(),
+            UiMode.listening => const SpeechView(SpeechState.listening),
+            UiMode.speaking => const SpeechView(SpeechState.speaking),
           },
         ),
       ),

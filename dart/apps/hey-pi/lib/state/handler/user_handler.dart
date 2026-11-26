@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart' show ThemeMode;
 
 import '../events/app_event.dart';
-import '../types/display_state.dart';
-import 'event_dispatcher.dart';
+import '../types/app_mode.dart';
+import '../store/handler_context.dart';
 
 /// Handlers for every [UserEvent] (events/user_events.dart). The dispatcher
 /// has already restarted the idle timer before any of these run.
@@ -14,14 +14,14 @@ void handleUserUncategorizedClick(
   UserUncategorizedClick event,
   HandlerContext ctx,
 ) {
-  if (ctx.state.display.mode == DisplayMode.sleep) {
-    ctx.store.setDisplay(const DisplayState(mode: DisplayMode.active));
+  if (ctx.state.mode == AppMode.idle) {
+    ctx.store.setMode(AppMode.dashboard);
   }
 }
 
 /// The Sleep tile: go to sleep now.
 void handleSleepClick(SleepClick event, HandlerContext ctx) {
-  ctx.store.setDisplay(const DisplayState(mode: DisplayMode.sleep));
+  ctx.store.setMode(AppMode.idle);
 }
 
 // Settings -----------------------------------------------------------------

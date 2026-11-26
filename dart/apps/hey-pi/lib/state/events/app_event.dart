@@ -8,13 +8,15 @@
 ///   (a timer).
 ///
 /// Every event has one source type ([UserEvent] or [SystemEvent], via
-/// `extends`) and may also have effect types ([DisplayEvent], via
-/// `implements`), e.g. `SleepClick extends UserEvent implements DisplayEvent`.
+/// `extends`) and may also have effect types ([AppModeEvent], via
+/// `implements`), e.g. `SleepClick extends UserEvent implements AppModeEvent`.
 ///
 /// They're `part`s of this one library so [AppEvent] can stay `sealed`: the
 /// dispatcher's `switch` must then handle every event, or it won't compile.
 /// Handlers: `state/handler/user_handler.dart` and `system_handler.dart`.
 library;
+
+import '../../protocol/messages.dart';
 
 part 'user_events.dart';
 part 'system_events.dart';
@@ -36,5 +38,8 @@ sealed class SystemEvent extends AppEvent {
 // Effect types: what an event affects. An event can have any number of these
 // alongside its source type.
 
-/// Changes the display state (dashboard / sleep).
-sealed class DisplayEvent implements AppEvent {}
+/// Changes the app's own mode (dashboard / idle): the app store.
+sealed class AppModeEvent implements AppEvent {}
+
+/// Changes what the app knows of pi-server: the server store.
+sealed class ServerStateEvent implements AppEvent {}

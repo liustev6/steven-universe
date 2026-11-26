@@ -7,12 +7,12 @@ part of 'app_event.dart';
 
 /// A touch anywhere on the screen. Wakes the panel if it's asleep.
 /// Handler: `handleUserUncategorizedClick`.
-final class UserUncategorizedClick extends UserEvent implements DisplayEvent {
+final class UserUncategorizedClick extends UserEvent implements AppModeEvent {
   const UserUncategorizedClick();
 }
 
 /// The Sleep tile was tapped: go to sleep now. Handler: `handleSleepClick`.
-final class SleepClick extends UserEvent implements DisplayEvent {
+final class SleepClick extends UserEvent implements AppModeEvent {
   const SleepClick();
 }
 

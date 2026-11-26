@@ -1,49 +1,51 @@
 """
-Debug endpoints for pushing test messages to connected hey-pi screens:
+Debug endpoints:
 
-    curl -X POST localhost:8765/debug/display/sleep
-    curl -X POST localhost:8765/debug/lab/offline
-    curl -X POST "localhost:8765/debug/assistant?text=turn+on+the+lights"
-    curl -X POST localhost:8765/debug/voice/listen        # a spoken turn: listening now
+    curl -X POST localhost:8765/debug/speech/listening    # tell the screens a speech state (no voice needed)
+    curl -X POST "localhost:8765/debug/say?text=明天天气怎么样"   # a typed turn, spoken (voice on)
+    curl -X POST localhost:8765/debug/voice/listen        # a spoken turn: listening now (voice on)
     curl -X POST localhost:8765/debug/voice/commit        # done talking (else the silence ends it)
-    curl -X POST localhost:8765/debug/voice/cancel
+    curl -X POST localhost:8765/debug/voice/cancel        # end the voice session
 
 Only mounted when PI_SERVER_DEBUG_ENDPOINTS is true.
 """
 
 from typing import Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
+
+from app.protocol import SpeechState
 
 router = APIRouter(prefix="/debug", tags=["debug"])
 
 
-@router.post("/display/{state}")
-async def push_display_state(state: Literal["active", "sleep"], request: Request):
-    await request.app.state.pi.set_display(state)
-    return {"sent": {"type": "display_state", "state": state}}
+def _voice(request: Request):
+    voice = request.app.state.pi.voice
+    if voice is None:
+        raise HTTPException(409, "the voice assistant is off (PI_SERVER_VOICE)")
+    return voice
 
 
-@router.post("/lab/{status}")
-async def push_lab_status(status: Literal["online", "offline"], request: Request):
-    await request.app.state.pi.set_lab_online(status == "online")
-    return {"sent": {"type": "connection", "lab": status}}
+@router.post("/speech/{state}")
+async def push_speech(state: SpeechState, request: Request):
+    """For the screen alone: the voice assistant's next change overrides it."""
+    await request.app.state.pi.set_speech(state)
+    return {"sent": {"type": "speech", "state": state}}
 
 
-@router.post("/assistant")
-async def start_assistant_turn(request: Request, text: str = "what's the weather"):
-    await request.app.state.pi.say(text)
-    return {"started": text}
+@router.post("/say")
+async def say(request: Request, text: str = "what's the weather"):
+    await _voice(request).say(text)
+    return {"said": text}
 
 
 @router.post("/voice/{action}")
 async def voice(action: Literal["listen", "commit", "cancel"], request: Request):
-    """As push-to-talk would (assistant_ptt start/stop, assistant_cancel), until the wake word."""
-    pi = request.app.state.pi
+    v = _voice(request)
     if action == "listen":
-        await pi.listen()
+        await v.listen()
     elif action == "commit":
-        await pi.commit()
+        v.commit()
     else:
-        await pi._cancel_turn()
-    return {"voice": action, "real": pi.voice is not None, "turn_id": pi.turn_id}
+        await v.cancel()
+    return {"voice": action}

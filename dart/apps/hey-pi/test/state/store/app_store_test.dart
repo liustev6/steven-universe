@@ -4,8 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hey_pi/app.dart';
 import 'package:hey_pi/state/events/app_event.dart';
 import 'package:hey_pi/state/handler/event_dispatcher.dart';
-import 'package:hey_pi/state/app_state.dart';
-import 'package:hey_pi/state/types/display_state.dart';
+import 'package:hey_pi/state/store/app_store.dart';
+import 'package:hey_pi/state/types/app_mode.dart';
 import 'package:hey_pi/ui/theme.dart';
 import 'package:hey_pi/widgets/theme_mode_tile.dart';
 
@@ -17,17 +17,14 @@ void main() {
       final store = container.read(appStoreProvider.notifier);
 
       expect(container.read(appStoreProvider), AppState.initial);
-      expect(AppState.initial.display.mode, DisplayMode.active);
+      expect(AppState.initial.mode, AppMode.dashboard);
       expect(AppState.initial.themeMode, ThemeMode.dark);
 
       store.setThemeMode(ThemeMode.light);
-      store.setDisplay(const DisplayState(mode: DisplayMode.sleep));
+      store.setMode(AppMode.idle);
       expect(
         container.read(appStoreProvider),
-        const AppState(
-          display: DisplayState(mode: DisplayMode.sleep),
-          themeMode: ThemeMode.light,
-        ),
+        const AppState(mode: AppMode.idle, themeMode: ThemeMode.light),
       );
     });
 
@@ -40,7 +37,7 @@ void main() {
         (_, _) => themeUpdates++,
       );
       final store = container.read(appStoreProvider.notifier);
-      store.setDisplay(const DisplayState(mode: DisplayMode.sleep));
+      store.setMode(AppMode.idle);
       expect(themeUpdates, 0);
       store.setThemeMode(ThemeMode.light);
       expect(themeUpdates, 1);
@@ -59,10 +56,10 @@ void main() {
       expect(state().themeMode, ThemeMode.dark);
 
       dispatcher.dispatch(const SleepClick());
-      expect(state().display.mode, DisplayMode.sleep);
+      expect(state().mode, AppMode.idle);
 
       dispatcher.dispatch(const UserUncategorizedClick());
-      expect(state().display.mode, DisplayMode.active);
+      expect(state().mode, AppMode.dashboard);
 
       // Cancel the dispatcher's timers before flutter_test checks for them.
       container.dispose();
@@ -71,16 +68,16 @@ void main() {
     testWidgets('every user event restarts the idle timer', (tester) async {
       final container = ProviderContainer();
       final dispatcher = container.read(eventDispatcherProvider);
-      DisplayMode mode() => container.read(appStoreProvider).display.mode;
+      AppMode mode() => container.read(appStoreProvider).mode;
 
       // A settings event (not a touch) 90 s in pushes the sleep back: still
       // awake 3 minutes after start, asleep 2 minutes after the event.
       await tester.pump(const Duration(seconds: 90));
       dispatcher.dispatch(const ThemeModeClick());
       await tester.pump(const Duration(seconds: 90));
-      expect(mode(), DisplayMode.active);
+      expect(mode(), AppMode.dashboard);
       await tester.pump(const Duration(seconds: 30));
-      expect(mode(), DisplayMode.sleep);
+      expect(mode(), AppMode.idle);
 
       container.dispose();
     });
@@ -90,14 +87,14 @@ void main() {
     ) async {
       final container = ProviderContainer();
       final dispatcher = container.read(eventDispatcherProvider);
-      DisplayMode mode() => container.read(appStoreProvider).display.mode;
+      AppMode mode() => container.read(appStoreProvider).mode;
 
       await tester.pump(const Duration(minutes: 1));
       dispatcher.dispatch(const UserUncategorizedClick());
       await tester.pump(const Duration(seconds: 90));
-      expect(mode(), DisplayMode.active);
+      expect(mode(), AppMode.dashboard);
       await tester.pump(const Duration(seconds: 30));
-      expect(mode(), DisplayMode.sleep);
+      expect(mode(), AppMode.idle);
 
       container.dispose();
     });

@@ -14,6 +14,6 @@ async def get_health(request: Request):
         "status": "healthy",
         "version": server.settings.APP_VERSION,
         "clients": len(server.hub.clients),
-        "lab": "online" if server.lab_online else "offline",
-        "mock": server.settings.MOCK,
+        "voice": server.voice is not None,
+        "speech": server.speech,
     }

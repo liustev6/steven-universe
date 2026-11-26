@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../state/events/app_event.dart';
 import '../state/handler/event_dispatcher.dart';
 import '../layout/panel_widget.dart';
-import '../state/app_state.dart';
+import '../state/store/app_store.dart';
 import '../ui/glass.dart';
 import '../ui/sizing.dart';
 import '../ui/theme.dart';

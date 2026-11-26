@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../app_state.dart';
 import '../events/app_event.dart';
+import '../store/handler_context.dart';
 import 'system_handler.dart';
 import 'user_handler.dart';
 
@@ -51,6 +51,8 @@ class EventDispatcher {
     ThemeModeClick() => handleThemeModeClick(event, _ctx),
     // system events → system_handler.dart
     IdleTimeout() => handleIdleTimeout(event, _ctx),
+    ServerSpeech() => handleServerSpeech(event, _ctx),
+    ServerDisconnected() => handleServerDisconnected(event, _ctx),
   };
 
   void _restartIdleTimer() {
@@ -59,21 +61,4 @@ class EventDispatcher {
   }
 
   void dispose() => _idleTimer?.cancel();
-}
-
-/// Everything a handler may use: read the state, change it through the
-/// store's setters, and raise further events.
-class HandlerContext {
-  HandlerContext(this._ref, {required this.dispatch});
-
-  final Ref _ref;
-
-  /// Raise another event (goes through the dispatcher like any other).
-  final void Function(AppEvent event) dispatch;
-
-  /// The current state.
-  AppState get state => _ref.read(appStoreProvider);
-
-  /// The store's setters.
-  AppStore get store => _ref.read(appStoreProvider.notifier);
 }

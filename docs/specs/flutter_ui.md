@@ -5,7 +5,8 @@ A full-screen Flutter touch UI for a wall/desk home control panel. It runs on a 
 **flutter-pi** (no desktop; draws straight to the display through KMS/DRM).
 
 The UI's only peer is **pi-server**, a local Python service on the Pi (`python/services/pi-server`,
-FastAPI; mock data for now) reached over `ws://127.0.0.1:8765/ws`. The UI never calls Home Assistant, the LLM, a weather API, or any
+FastAPI; it runs the voice assistant) reached over `ws://127.0.0.1:8765/ws`. **The protocol has one
+message today** (since 2026-11-26): pi-server tells the UI its speech state (see "Protocol"). The UI never calls Home Assistant, the LLM, a weather API, or any
 lab service directly, holds no secrets, and has no hardware code. This spec covers the app, its dev
 loop, the Pi install, and deployment.
 
@@ -25,8 +26,8 @@ Phone (future):  Flutter app ──wss via VPN──▶ web-gateway ──▶ ho
 | Component | Owns | Does not do |
 |---|---|---|
 | **Flutter UI** (this spec) | Rendering, touch, local UI state | Hardware, fetching, holding secrets |
-| **pi-server** (`python/services/pi-server`) | Wake word, mic streaming / TTS playback, backlight, external wake/sleep triggers (e.g. wake word, night schedule) → `display_state`, the device's lab credential, **relaying client-protocol messages** between UI and home-hub, reporting relay health | Weather, HA calls, LLM, any business logic |
-| **home-hub** (lab, out of scope) | The client API for every client (panel and phone): feeds, snapshots, HA actions, assistant turns; calls to HA / weather / LLM; device identity | Anything specific to one client's hardware |
+| **pi-server** (`python/services/pi-server`) | The voice assistant: wake word, mic, speaker, the voice turn ([voice-path.md](voice-path.md)), the device's lab credential; **tells the UI the speech state**. Later: relaying data for the dashboard | Weather, HA calls, LLM, any business logic |
+| **home-hub** (lab, future; not in the protocol yet) | The client API for every client (panel and phone): feeds, snapshots, HA actions, assistant turns; calls to HA / weather / LLM; device identity | Anything specific to one client's hardware |
 | **Home Assistant** | Devices and automations | — |
 
 Neither client registers with Home Assistant. Both register with home-hub as devices: the panel's
@@ -38,14 +39,15 @@ Enclosure: `models/3d-print/home-control-frame/`.
 ## Locked decisions
 | # | Decision |
 |---|---|
-| D1 | Two display states: **`active`** (dashboard) and **`sleep`** (ambient clock view). No separate black state; if pi-server turns the backlight off, the UI keeps rendering the sleep view. **The UI owns the idle timer** (2 min without a touch → `sleep`; a touch → `active`); pi-server can force a state with `display_state`. |
-| D2 | **All data fetching lives in home-hub** (home lab): weather, Home Assistant, assistant. **pi-server is a hardware layer + thin relay.** The UI declares what it needs via `subscribe` (derived from the dashboard layout) and renders what is pushed. |
-| D3 | **Riverpod 3** (`flutter_riverpod`), **no code generation** (no `riverpod_generator`/`build_runner`). Zustand-style: one store (state + setters), **events** describe what happened, **handlers** decide the new state and call the setters. |
-| D4 | **Data:** a full `snapshot` (from home-hub, via pi-server) arrives on every (re)connect. **No database on the Pi.** pi-server keeps live data in memory and **owns device settings** (e.g. theme mode) in one atomically-written JSON file (`~/.local/share/pi-server/settings.json`). The UI keeps no files (its app dir is replaced on every deploy). History and anything shared with other devices belongs in home-hub (where PostgreSQL makes sense). |
+| D1 | **The app's own mode, app-only (never in the protocol):** **`dashboard`** (the widgets) and **`idle`** (the ambient clock view). **The UI owns the idle timer:** 2 min without a touch → `idle`; a touch → `dashboard`. No separate black state (2026-11-26: renamed from active/sleep; pi-server no longer forces it). |
+| D2 | **All data fetching lives in the lab** (home-hub, or tools-service's REST API for weather), never in the UI. **Future:** the dashboard's data reaches the UI through pi-server as new protocol messages; none exist yet. |
+| D3 | **Riverpod 3** (`flutter_riverpod`), **no code generation** (no `riverpod_generator`/`build_runner`). Zustand-style stores (state + setters), **one store per owner** (`lib/state/store/`): the **app store** is the app's own slice; the **server store** is what pi-server tells the app (today its speech state; one field per protocol message). **Every change goes through an event:** events describe what happened (a touch, a timer, a pi-server message), handlers decide the new state and call the setters; nothing else changes a store. The two meet only in derived providers (`uiModeProvider`) (2026-11-26). |
+| D4 | **No database on the Pi, no files in the UI** (its app dir is replaced on every deploy). The theme is app-only and not kept across a restart yet (2026-11-26: pi-server's settings file was removed with the old protocol). History and anything shared with other devices belongs in the lab. |
 | D5 | **One transport, one router:** a single WebSocket client plus a typed message router (sealed classes, exhaustive `switch`). No HTTP clients in the app. |
 | D6 | Device pixel ratio ≈ **1.0**; the logical canvas is 1024×600 on both Pi and Mac. |
 | D7 | Pure-Dart packages only, no plugins with native code. |
-| D8 | **Protocol is split** into a *client protocol* (spoken by home-hub; pi-server passes it through) and a *device protocol* (pi-server only). The data layer (`protocol/`, `connection/`, `feeds/`, `cache/`, non-display state) is **portable**: it must not import panel-only code, so it can later move to `dart/libs/home_client/` and be shared with a phone app that connects to home-hub directly. |
+| D8 | **The protocol starts minimal and grows by adding message types** (2026-11-26: the first design's client/device split, mock feeds, settings and assistant messages were removed). Today: one message, `speech`, pi-server → UI; the UI sends nothing. `protocol/` and `connection/server_client.dart` stay **pure Dart**, so they can be shared later. |
+| D9 | **What the screen shows is derived, never stored:** pi-server's speech state when it isn't idle (`listening`, `speaking`), else the app's own mode (`dashboard`, `idle`) (2026-11-26). |
 
 ## Hardware / display
 - Raspberry Pi 5, Raspberry Pi OS 64-bit (Bookworm). The current Pi runs the **desktop** image
@@ -80,181 +82,80 @@ Enclosure: `models/3d-print/home-control-frame/`.
 
 ## Architecture
 ```
-pi-server ⇄ AgentClient ──▶ MessageRouter ──▶ Notifiers (Riverpod) ──▶ Widgets
-           (transport)      (decode/route)    display / assistant /      │
-               ▲                              ha / feeds / connection    │ actions
-               │                                     │                   │
-               └──────────── send(UiMessage) ◀───────┼───────────────────┘
+pi-server ──ws──▶ ServerClient ──▶ message_router ──┐ system events
+            (transport, pure Dart)                   ▼
+touches, timers ───────────────────────────────▶ dispatcher ──▶ handlers ──▶ app store ──┐
+                              user / system events                     └──▶ server store ─┴─▶ uiModeProvider ──▶ PanelRoot
 ```
 
-### AgentClient (transport): `lib/connection/agent_client.dart`
-- `dart:io` `WebSocket` (no package), `pingInterval` 5 s to detect a hung pi-server.
-- Endpoint and enabled protocols are constructor config, not hard-coded: the panel uses
-  `ws://127.0.0.1:8765/ws` with client + device protocol; a future phone app would use home-hub's URL
-  with the client protocol only.
+### ServerClient (transport): `lib/connection/server_client.dart`
+- `dart:io` `WebSocket` (no package), `pingInterval` 5 s to detect a hung pi-server. Pure Dart.
+- **Receive-only:** the protocol has nothing for the UI to send.
 - Reconnect with exponential backoff: 0.5 s → 10 s cap, reset after a successful connect.
-- On every connect: send `hello`, then `subscribe` (feeds from the layout), then wait for `snapshot`.
-- **No outbound queue.** While disconnected, actions fail immediately with visible feedback
-  (toggle rolls back, assistant shows "offline"); `user_activity` is dropped.
-- Exposes connection status (`connecting | connected | disconnected`) to `connectionProvider`.
+- Exposes the link status (`connecting | connected | disconnected`) and the decoded messages.
+- The address is `ws://127.0.0.1:8765/ws` (the Pi's loopback), or `--dart-define=PI_SERVER_URL=…`.
 
-### MessageRouter: `lib/connection/message_router.dart`
-- Decodes JSON into sealed `AgentMessage` subclasses (from `protocol/messages.dart`) and dispatches
-  each to its Notifier via one exhaustive `switch`; a new message type that isn't handled is a compile error.
-- Unknown `type`s and unknown fields are logged and ignored, never crash.
-- Malformed JSON is logged and dropped; it does not drop the connection.
+### Message router: `lib/connection/message_router.dart`
+- `serverClientProvider` (the one client; not started under `flutter test`, where tests override it)
+  and `serverLinkProvider` (alive from boot: `PanelRoot` watches it).
+- **It changes no store:** each message becomes a `SystemEvent` (`speech` → `ServerSpeech(state)`),
+  dispatched like any other event; its handler changes the server store. One exhaustive `switch` over
+  the sealed `ServerMessage`: a new message type nobody handles is a compile error. Unknown types and
+  malformed JSON are logged by the client and dropped; they never close the connection.
+- **Not connected → `ServerDisconnected`**, whose handler sets speech `idle`: with pi-server gone,
+  there's no voice session the UI can know of.
 
-### Feeds: `lib/feeds/feed_registry.dart`
-- Each `PanelWidget` declares the feeds it needs (later: a `feeds` getter, e.g. the Home widget
-  built with a list of entity ids). Feed ids: `weather`, `ha:<entity_id>`.
-- The union of all widgets' feeds is sent in `subscribe` on every connect (and again if the layout changes).
-- Tracks per feed: last data, `fetchedAt` (from the message `ts` set by home-hub, else arrival time), and a
-  staleness threshold (weather 30 min, HA 5 min; overridable per widget in the layout).
-  Widgets show their own "stale" state, separate from the global offline badge.
+## App state (Riverpod 3, D3)
+Stores live in `lib/state/store/`. Widgets watch slices (`ref.watch(provider.select(...))`) and only
+ever **dispatch events**; the router turns pi-server's messages into system events too. **Only
+handlers change a store.**
 
-### No UI-side cache
-Dropped (D4): pi-server holds the latest data and settings and sends them on every connect, so the
-UI keeps nothing on disk.
-
-## State management (Riverpod 3, D3)
-- **Store** (`state/app_state.dart`): one `AppState` plus plain setters on `AppStore`; no logic.
-  Widgets watch slices with `ref.watch(appStoreProvider.select(...))`.
-- **Events** (`state/events/`): every event is a `UserEvent` or a `SystemEvent` (source) and may
-  also be a `DisplayEvent` (effect). Widgets only ever **dispatch events**.
-- **Handlers** (`state/handler/user_handler.dart`, `system_handler.dart`): one function per event;
-  read the state, call the store's setters. The dispatcher routes events to handlers (exhaustive
-  over the sealed `AppEvent`), restarts the idle timer for every `UserEvent`, and owns side effects
-  (timers; later, network sends).
-- Tests run events through the dispatcher and check the store (e.g. the display table in
-  `test/state/handler/display_handlers_test.dart`).
-- Providers:
-
-| Provider | Kind | Holds | Layer (D8) |
-|---|---|---|---|
-| `agentClientProvider` | `Provider` | the `AgentClient` instance | portable |
-| `connectionProvider` | `Notifier` | socket status, last message time, protocol mismatch flag | portable |
-| `relayProvider` | `Notifier` | relay-to-home-hub `online/offline` (from `connection`) | panel |
-| `assistantProvider` | `Notifier` | assistant state (below) | portable |
-| `haProvider` | `Notifier` | entity states + pending optimistic actions | portable |
-| `feedsProvider` | `Notifier` | feed registry (weather + staleness) | portable |
-| `appStoreProvider` | `Notifier` | the app store (Zustand-style), **state + setters only**: `AppState` = display state (`active / sleep`) + settings (`themeMode`); setters `setDisplay`, `setThemeMode`. Widgets watch slices with `.select` | panel |
-| `eventDispatcherProvider` | `Provider` | `dispatch(AppEvent)`: routes each event to its handler, which works out the new state and calls the store's setters; owns side effects (the idle timer). Widgets send events here, never call setters directly | panel |
-| `screenProvider` | `Provider` (derived) | what to render (below); never stored | panel |
-
-- Portable providers live in `state/client_providers.dart`; panel state lives in the app store,
-  `state/app_state.dart` (plus `state/app_time.dart` for the clock tick).
-  Portable code never imports panel code; panel code may import portable code.
-- Tests override `agentClientProvider` with a fake client.
-
-### Display state (D1)
-| State | Renders |
-|---|---|
-| `active` | Widget dashboard. |
-| `sleep` | Ambient view: big time (h:mm) with AM/PM stacked over the seconds on its right, date below, small current weather; dark navy radial background, soft white→grey time gradient, grey details. **No animations.** Everything redraws at most once per minute **except the seconds digits**, which redraw every second in their own repaint boundary. Shift the clock a few px every few minutes (LCD image-retention mitigation). |
-
-- Cold start (no connection yet): `active`.
-- **Idle timer (UI-owned):** 2 min without a touch → `sleep`; any touch → `active` and restarts the
-  timer. Works the same with or without pi-server.
-- **pi-server overrides:** a `display_state` message (e.g. wake word → `active`, night schedule →
-  `sleep`) is applied immediately; the idle timer keeps running from the last touch.
-- **No wake-tap swallowing:** we assume a single tap. The tap that wakes the panel lands on the
-  sleep view (no controls), so it can't press anything on the dashboard.
-- Every touch anywhere sends `user_activity`, throttled to ≤ 1/s.
-
-### Assistant state
-State: `phase` (`idle | listening | thinking | speaking`), `turnId`, `transcript`, `reply`, `error`.
-
-```
-idle ──wake word / PTT──▶ listening ──end of speech──▶ thinking ──first reply──▶ speaking ──done──▶ idle
-  ▲                           │                          │                         │
-  └──── cancel / watchdog / disconnect ────────────────────┴─────────────────────────┘
-```
-
-| Event | Source | Effect |
+| Store | Holds | Changed by |
 |---|---|---|
-| `assistant` message | home-hub via pi-server (pi-server may emit `listening` itself on wake word) | **Authoritative:** apply `phase` as sent. New `turn_id` → reset `transcript`/`reply`. `transcript` replaces; `reply_delta` appends. |
-| PTT press / release | UI | Send `assistant_ptt start/stop`. Phase changes only when pi-server says so. |
-| Cancel tap (overlay ✕ or tap during `speaking`) | UI | Send `assistant_cancel`; go `idle` locally. |
-| Watchdog: no `assistant` message for 30 s while not `idle` | UI | `idle` + error "assistant didn't respond". |
-| Socket disconnect while not `idle` | UI | `idle` + error "offline". |
+| `appStoreProvider` (`store/app_store.dart`) | `AppMode` (`dashboard`, `idle`; D1) + theme mode: **app-only**, never sent | handlers, for user events (touches, the Sleep tile, the theme tile) and the idle timer |
+| `serverStoreProvider` (`store/server_store.dart`) | `ServerState`: what pi-server tells the app, one field per protocol message; today `speech` (`idle`, `listening`, `speaking`) | handlers, for the router's system events: `ServerSpeech` (each `speech` message), `ServerDisconnected` (`speech` → `idle`) |
+| `uiModeProvider` (`store/ui_mode.dart`) | `UiMode` (`dashboard`, `idle`, `listening`, `speaking`), **derived, never stored** (D9) | — |
 
-### Screen derivation (`screenProvider`)
-1. `assistant.phase != idle` → **assistant overlay** on top of the dashboard (pi-server is expected
-   to also send `display_state: active` so the backlight is on).
-2. else `display == active` → **dashboard**.
-3. else → **sleep view**.
+- **Events** (`state/events/`): each is a `UserEvent` or a `SystemEvent` (source) and may also have
+  effect types: `AppModeEvent` (changes the app store), `ServerStateEvent` (changes the server store). **Handlers** (`state/handler/`): one function per event; through their
+  `HandlerContext` (`store/handler_context.dart`) they read the state, call the store's setters and
+  raise further events. The dispatcher routes events to handlers (exhaustive over the sealed
+  `AppEvent`) and owns the idle timer (every `UserEvent` restarts it).
+- **The idle timer keeps running during speech.** When speech goes back to `idle`, the screen shows
+  the app's mode as it is by then (`dashboard`, or `idle` if nobody touched it for 2 min).
+- `PanelRoot` renders `uiModeProvider`: `dashboard` → the dashboard, `idle` → the ambient clock,
+  `listening` / `speaking` → the speech view (a placeholder until its design).
+- Tests: events through the dispatcher and the store (`test/state/handler/`), the derivation table
+  (`test/state/store/ui_mode_test.dart`), the speech view over both app modes
+  (`test/display/panel_root_test.dart`).
 
-The overlay stays up for ~5 s after returning to `idle` so the final reply can be read, unless dismissed.
-
-### HA optimistic toggles (`haProvider`)
-- Tap → flip the tile immediately, send `ha_action` with a fresh `id`, mark pending.
-- Confirmed by `ha_action_result{ok:true}` **or** a matching `ha_state`, whichever comes first.
-- `ok:false`, or neither within 3 s → roll back + brief error on the tile.
-- Disconnected → don't send; brief "offline" on the tile.
+### The ambient clock (`idle`)
+Big time (h:mm) with AM/PM stacked over the seconds on its right, date below, small current weather;
+dark navy radial background, soft white→grey time gradient, grey details. **No animations.**
+Everything redraws at most once per minute **except the seconds digits**, which redraw every second in
+their own repaint boundary. Shift the clock a few px every few minutes (LCD image-retention
+mitigation). The tap that wakes the panel lands on the clock view (no controls), so it can't press
+anything on the dashboard.
 
 ## Protocol (JSON over WebSocket; panel endpoint `ws://127.0.0.1:8765/ws`)
-All models live in **one file**, `lib/protocol/messages.dart`, **pure Dart** (no `package:flutter`),
-so the mock agent, a future phone app, and a future cross-language schema (JSON Schema alongside
-`js/libs/shared-schemas` / `python/libs/shared-schemas`, so home-hub's Python can't drift) can reuse
-it. Each message class is tagged as client or device protocol (D8). `protocol_version: 1`.
-`ts` = unix epoch milliseconds when home-hub fetched the data (optional).
+Models: `lib/protocol/messages.dart` (pure Dart) and pi-server's `app/protocol.py`, kept in sync.
 
-### Client protocol: home-hub's API (pi-server passes through mostly unchanged)
-home-hub → client
+**One message, pi-server → UI**, on connect and on every change:
 ```json
-{"type":"snapshot","protocol_version":1,
- "assistant":{"phase":"idle","turn_id":null},
- "widgets":{"weather":{"data":{...},"ts":1762290000000}},
- "ha_states":[{"entity_id":"light.living_room","state":"on","attributes":{...},"ts":1762290000000}]}
-{"type":"widget_update","widget":"weather","data":{...},"ts":1762290000000}
-{"type":"ha_state","entity_id":"light.living_room","state":"on","attributes":{...},"ts":1762290000000}
-{"type":"ha_action_result","id":"a1b2","ok":true,"error":null}
-{"type":"assistant","turn_id":"t42","phase":"idle|listening|thinking|speaking","transcript":"...","reply_delta":"..."}
+{"type": "speech", "state": "idle | listening | speaking"}
 ```
 
-client → home-hub
-```json
-{"type":"hello","protocol_version":1,"client":"hey-pi"}
-{"type":"subscribe","feeds":["weather","ha:light.living_room","ha:scene.movie"]}
-{"type":"ha_action","id":"a1b2","entity_id":"light.living_room","service":"light.toggle","data":{}}
-{"type":"assistant_text","text":"turn off the kitchen lights"}
-{"type":"assistant_cancel"}
-```
+| State | Means | pi-server's voice assistant |
+|---|---|---|
+| `idle` | no voice session | `IDLE` |
+| `listening` | the session waits for you, or hears you | `WAITING`, `LISTENING` |
+| `speaking` | its turn: from the end of what you said until its reply has played (thinking included) | `REPLYING` |
 
-### Device protocol: pi-server only (panel)
-pi-server → UI
-```json
-{"type":"display_state","state":"active|sleep"}
-{"type":"connection","lab":"online|offline"}
-{"type":"settings","theme_mode":"dark|light"}
-```
-`connection.lab` = whether pi-server's relay to home-hub is up (not the UI↔pi-server socket, which
-the UI tracks itself).
-
-UI → pi-server
-```json
-{"type":"user_activity"}
-{"type":"assistant_ptt","action":"start|stop"}
-{"type":"settings_update","theme_mode":"dark|light"}
-```
-`settings` is pi-server's saved copy of the device settings: sent on connect and to every screen
-after any `settings_update`. The UI applies it; it doesn't persist settings itself.
-
-### Sequencing
-- Connect: right after the socket opens, pi-server sends `connection` and `settings`. Then UI
-  `hello` → UI `subscribe` → `snapshot` → updates. (No `display_state` on connect: the UI owns its
-  idle timer; pi-server sends `display_state` only to force a change, e.g. wake word.)
-- A `snapshot` is re-sent after any later `subscribe`.
-- `snapshot.protocol_version` ≠ UI's → status strip shows "protocol mismatch"; the UI continues
-  best-effort (unknown fields/types ignored).
-
-### What the UI expects of pi-server as a relay
-- Forwards client-protocol messages both ways, attaching the device identity on its upstream connection.
-- While the relay is down: sends `connection{lab:"offline"}` and answers `ha_action` /
-  `assistant_text` with failure (`ha_action_result{ok:false}`, assistant `idle`) rather than
-  queuing them. The UI keeps showing its cached data, marked stale.
-- When the relay comes back: sends `connection{lab:"online"}` and replays the UI's last `subscribe`
-  upstream so a fresh `snapshot` arrives.
+**The UI sends nothing.** What it shows when speech is `idle` is its own mode (D1, D9).
+Unknown message types and states are ignored, so pi-server can add messages before the UI knows
+them. **Removed on 2026-11-26** (mock, or a first design never used for real): `hello`, `subscribe`,
+`snapshot`, `widget_update`, `ha_*`, `assistant*`, `display_state`, `connection`, `settings*`,
+`user_activity`.
 
 ## Widgets (v1)
 A grid of **square cells**: always **12 columns**; the cell size is the width
@@ -284,15 +185,12 @@ span ≥ 2×2.
    rows 1–2 **location arrow + city** (regular body text); rows 3–5 **current temperature**
    ("18°C", medium weight, left); rows 3–6 **condition icon** (square, right; coloured Material
    Icons, sun/moon layered behind a cloud for partly cloudy, cloud over drops for rain); row 6
-   **today's low / high** ("12°C / 23°C", left). Feed `weather` (contract below). Uses a random
-   mock (`MockWeather`, new values every 5 s) until the feed exists.
-3. **HA quick controls**: lights/scenes as toggle tiles. Constructor `entities: [...]` → feeds `ha:<id>`.
-4. **Assistant panel**: phase indicator, live transcript, streamed reply, push-to-talk button
-   (press = start, release = stop), text input via the in-app on-screen keyboard (flutter-pi has no
-   system IME). Rendered as the assistant overlay (see Screen derivation); an optional dashboard
-   tile opens it.
-5. **Status** (connection, relay, last update, protocol mismatch): the fixed top status strip was
-   **removed**; it will come back as a grid widget.
+   **today's low / high** ("12°C / 23°C", left). Uses a random mock in the app (`MockWeather`, new
+   values every 5 s) until a weather message exists in the protocol (contract below).
+3. **HA quick controls**: lights/scenes as toggle tiles (later, with Home Assistant).
+4. **Assistant**: not a tile: while speech isn't `idle`, the speech view replaces the screen (App
+   state). Its design (and anything shown of what was said) comes later.
+5. **Status** (connection): will come back as a grid widget.
 6. **Sleep tile** (1×1): puts the panel to sleep immediately.
 7. **`PlaceholderTile(title, icon, columns, rows)`**: stand-in of any size for widgets that don't
    exist yet (icon only at 1×1, icon + title when one cell wide or tall, full card otherwise).
@@ -310,12 +208,14 @@ r6   Sleep Lock Fan Theme|Sun 2×1|Air 2×1| 2×2 | 2×2
 ```
 
 ## Weather feed contract
-home-hub fetches weather and pushes it; the app only renders it. Model: `lib/weather/weather_data.dart`
+**Not in the protocol yet** (2026-11-26): the shape a future weather message will carry; the app
+renders it from its own mock until then. The lab fetches weather (tools-service has it) and pushes
+it; the app only renders it. Model: `lib/weather/weather_data.dart`
 (pure Dart, moves into `protocol/messages.dart` later). Provider: `weatherProvider`
 (`lib/weather/weather_provider.dart`); the mock is swapped for a feed-backed notifier later, widgets
 don't change.
 
-Message (also used for the `weather` entry in `snapshot.widgets`):
+The data (as the old mock protocol sent it):
 ```json
 {"type": "widget_update", "widget": "weather", "ts": 1762290000000,
  "data": {"location": {"name": "San Francisco"},
@@ -360,37 +260,35 @@ dart/apps/hey-pi/
 │   └── fonts/inter/             # Inter (OFL), weights 200–700
 ├── lib/
 │   ├── main.dart                # ProviderScope, env config, runApp
-│   ├── app.dart                 # MaterialApp, theme, screenProvider switch
-│   ├── protocol/                # [P]
-│   │   └── messages.dart        # ALL protocol models + JSON, tagged client/device
-│   ├── connection/              # [P]
-│   │   ├── agent_client.dart    # WebSocket, ping, reconnect/backoff; endpoint is config
-│   │   └── message_router.dart  # decode → dispatch to notifiers
-│   ├── weather/                 # [P] weather_data.dart (model + JSON), weather_provider.dart (mock for now)
-│   ├── feeds/                   # [P]
-│   │   └── feed_registry.dart   # feed ids, fetchedAt, staleness
+│   ├── app.dart                 # MaterialApp, theme; PanelRoot: uiModeProvider → the screen
+│   ├── protocol/
+│   │   └── messages.dart        # the protocol (pure Dart): `speech`, mirroring pi-server's protocol.py
+│   ├── connection/
+│   │   ├── server_client.dart   # WebSocket, ping, reconnect/backoff, receive-only (pure Dart)
+│   │   └── message_router.dart  # serverClientProvider, serverLinkProvider; messages → system events
+│   ├── weather/                 # weather_data.dart (model + JSON), weather_provider.dart (mock for now)
 │   ├── state/
-│   │   ├── app_state.dart          # global app store: AppState (display + settings) + setters
 │   │   ├── app_time.dart           # global clock: per-second / per-minute time
-│   │   ├── types/                  # state data types
-│   │   │   └── display_state.dart     # DisplayMode, DisplayState
+│   │   ├── store/                  # the stores
+│   │   │   ├── app_store.dart         # AppState (AppMode + theme mode) + setters: app-only
+│   │   │   ├── server_store.dart      # ServerState: what pi-server says (set by handlers)
+│   │   │   ├── ui_mode.dart           # UiMode, derived: speech over the app's mode
+│   │   │   └── handler_context.dart   # what a handler may use: state, setters, dispatch
+│   │   ├── types/
+│   │   │   └── app_mode.dart          # AppMode: dashboard | idle
 │   │   ├── events/                 # what can happen (definitions only)
 │   │   │   ├── app_event.dart         # sealed AppEvent; source: UserEvent | SystemEvent (extends);
-│   │   │   │                          # effect: DisplayEvent (implements); the files below are parts
+│   │   │   │                          # effects: AppModeEvent, ServerStateEvent (implements)
 │   │   │   ├── user_events.dart       # UserUncategorizedClick, SleepClick, ThemeModeClick
-│   │   │   └── system_events.dart     # IdleTimeout
-│   │   ├── handler/                # what each event does
-│   │   │   ├── event_dispatcher.dart  # dispatch(event) → handler; owns the idle timer (UserEvents
-│   │   │   │                          # restart it); HandlerContext (state, setters, dispatch)
-│   │   │   ├── user_handler.dart      # handlers for every UserEvent
-│   │   │   └── system_handler.dart    # handlers for every SystemEvent
-│   │   ├── assistant_machine.dart  # [P] pure reducer (planned)
-│   │   ├── ha_machine.dart         # [P] pure reducer (optimistic/pending, planned)
-│   │   └── client_providers.dart   # [P] connection / assistant / ha / feeds notifiers (planned)
+│   │   │   └── system_events.dart     # IdleTimeout; ServerSpeech, ServerDisconnected (the router's)
+│   │   └── handler/                # what each event does
+│   │       ├── event_dispatcher.dart  # dispatch(event) → handler; owns the idle timer
+│   │       ├── user_handler.dart      # handlers for every UserEvent
+│   │       └── system_handler.dart    # handlers for every SystemEvent
 │   ├── display/
 │   │   ├── dashboard_view.dart  # grid from layout
-│   │   ├── sleep_view.dart      # ambient clock, 1/min redraw, pixel shift
-│   │   ├── assistant_overlay.dart
+│   │   ├── sleep_view.dart      # the ambient clock (`idle`), 1/min redraw, pixel shift
+│   │   ├── speech_view.dart     # listening / speaking (placeholder)
 │   │   └── touch_guard.dart     # every touch → UserUncategorizedClick (wake + idle reset)
 │   ├── layout/
 │   │   ├── panel_widget.dart    # abstract PanelWidget: columns, rows (≤4), expandable
@@ -399,8 +297,6 @@ dart/apps/hey-pi/
 │   ├── widgets/
 │   │   ├── clock_widget.dart
 │   │   ├── weather_widget.dart
-│   │   ├── ha_controls_widget.dart
-│   │   ├── assistant_panel.dart
 │   │   ├── sleep_tile.dart      # 1×1 sleep button
 │   │   └── placeholder_tile.dart # stand-in of any size
 │   └── ui/
@@ -408,9 +304,9 @@ dart/apps/hey-pi/
 │       ├── sizing.dart          # 12 mm tap target, spacing scale
 │       └── keyboard/            # on-screen keyboard
 ├── test/
-│   ├── protocol/                # JSON round-trip for every message
-│   ├── state/                   # store, events, handler tables (display, …)
-│   ├── connection/              # router + fake socket reconnect
+│   ├── protocol/                # decoding every message, never throwing
+│   ├── state/                   # stores, events, handler tables, the UI-mode derivation
+│   ├── connection/              # the client on a fake socket (reconnect), the router
 │   └── widgets/                 # dashboard at 1024×600, sleep view, overlay
 ├── macos/                       # generated; window size fixed in MainFlutterWindow.swift
 ├── deploy/                      # files that get INSTALLED ON THE PI
@@ -425,17 +321,12 @@ dart/apps/hey-pi/
 Dependencies: `flutter_riverpod` (3.x), `intl`. Everything else from the SDK (`dart:io`
 WebSocket and files). Only the `macos` platform folder exists; flutter-pi builds don't need `linux/`.
 
-## pi-server mock mode (`python/services/pi-server`)
-Until home-hub exists, pi-server itself serves mock data (`PI_SERVER_MOCK=true`, the default), so
-the UI is always developed against the real service:
-- weather pushed as `widget_update` every 5 s (same shape as the weather contract, incl. `today`);
-- Home Assistant entities (`light.living_room`, `light.kitchen`, `light.bedroom`, `scene.movie`)
-  that answer `ha_action` with `ha_action_result` + `ha_state`;
-- assistant turns (thinking → speaking with streamed `reply_delta` → idle) for `assistant_text`
-  and push-to-talk;
-- `/debug/*` HTTP endpoints to push `display_state`, toggle lab online/offline, or start an
-  assistant turn from `curl`;
-- `GET /health` for systemd and debugging.
+## pi-server for the UI (`python/services/pi-server`)
+- On the Pi: the voice assistant on (`PI_SERVER_VOICE=true`); every change of its state is a
+  `speech` message.
+- Anywhere else (e.g. the Mac): voice off (the default), speech `idle`, and
+  `curl -X POST localhost:8765/debug/speech/listening` (or `speaking`, `idle`) to drive the screen.
+- `GET /health` (clients, voice, speech) for systemd and debugging.
 
 Details: `python/services/pi-server/README.md`.
 
@@ -450,14 +341,18 @@ Details: `python/services/pi-server/README.md`.
 - Record the working Flutter + flutterpi_tool versions in the README.
 
 ## Dev loop
-- **Mac (default):** run pi-server locally (`.venv/bin/uvicorn app.main:app --port 8765` in
-  `python/services/pi-server`) in one terminal; `flutter run -d macos` (or F5
-  with the `hey-pi (macOS)` launch config) in another. The macOS window is fixed at 1024×600 in
+- **Mac, local pi-server:** run pi-server (`.venv/bin/uvicorn app.main:app --port 8765` in
+  `python/services/pi-server`; voice off) in one terminal, drive the speech state with
+  `curl -X POST localhost:8765/debug/speech/<state>`; `flutter run -d macos` (or F5 with the
+  `hey-pi (macOS)` launch config) in another. The macOS window is fixed at 1024×600 in
   `macos/Runner/MainFlutterWindow.swift`.
+- **Mac, the Pi's real pi-server:** `ssh -N -L 18765:127.0.0.1:8765 pi` (pi-server stays
+  loopback-only on the Pi), then `flutter run -d macos --dart-define=PI_SERVER_URL=ws://127.0.0.1:18765/ws`:
+  say 小派小派 to the Pi and the Mac's window follows.
 - **On the Pi with hot reload:** register once with
-  `flutterpi_tool devices add <user>@panel.local --id=panel --display-size=269x158`
+  `flutterpi_tool devices add <user>@raspberrypi.local --id=pi --display-size=269x158`
   (269 mm gives flutter-pi's pixel-ratio formula ≈ 1.0, matching release), then
-  `flutterpi_tool run -d panel`. Stop the `hey-pi` service first; only one process can own the display.
+  `flutterpi_tool run -d pi`. Stop the `hey-pi` service first; only one process can own the display.
 
 ## Pi setup (one-time, `deploy/pi-setup.sh`, run on the Pi)
 1. Boot to console: `sudo raspi-config nonint do_boot_behaviour B1`.
@@ -526,15 +421,13 @@ No network calls besides the pi-server socket; no data fetching; no secrets; no
 backlight/GPIO/audio code; no app-store packaging; no `linux/` desktop target; no database.
 
 ## Done when
-- Dashboard renders cleanly at 1024×600 on the Mac against the mock.
-- `active` ↔ `sleep` switch on touch, on 2 min idle, and on `display_state`.
-- Connect sequence works; snapshot replaces cached data; stale indicators appear when feeds age out.
-- Cold start with pi-server down shows the offline state and recovers when it comes up.
-- HA toggles round-trip; rollback works on `ok:false`, on a dropped confirmation, and when offline.
-- Assistant overlay follows the phase machine: streamed reply, PTT, cancel, watchdog, and disconnect.
-- Survives mock kill/restart and malformed messages without crashing.
-- Reducer tables and protocol round-trips are unit-tested.
-- A test fails if any `[P]` file imports panel-only code (D8).
+- Dashboard renders cleanly at 1024×600 on the Mac.
+- `dashboard` ↔ `idle` switch on touch and on 2 min idle.
+- The speech view shows over both app modes while speech isn't `idle`, and the app's mode is back
+  after it ✅ (tests, 2026-11-26).
+- Cold start with pi-server down shows the app's mode, and the speech state follows once pi-server
+  comes up; a pi-server restart mid-reply returns to the app's mode ✅ (tests).
+- Malformed or unknown messages never crash it or close the socket ✅ (tests).
 - `pi-setup.sh` + `deploy.sh` take a fresh Pi OS Lite install to the app running under systemd.
 - README covers toolchain, dev loop, Pi setup, build/deploy, and the protocol.
 
@@ -543,4 +436,5 @@ backlight/GPIO/audio code; no app-store packaging; no `linux/` desktop target; n
   Confirm the active area from the panel datasheet; if the pixels really aren't square, round/square
   shapes will look ~7% squashed (Flutter can't compensate).
 - Weather location and the HA entity list for the Home widget.
-- Keep the on-screen keyboard in v1, or ship PTT-only first?
+- The speech view's design, and whether it shows what was said and the reply (the protocol would grow
+  a message for them).

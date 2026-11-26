@@ -1,9 +1,9 @@
 """
 pi-server - the local service hey-pi talks to.
 
-hey-pi (the Flutter UI on the Pi) connects to the WebSocket at /ws. pi-server
-answers with device state and, for now, mock data; later it relays to
-home-hub in the lab and owns the Pi's hardware (wake word, mic, backlight).
+hey-pi (the Flutter UI on the Pi) connects to the WebSocket at /ws and is told
+the speech state (app/protocol.py). pi-server runs the voice assistant: the
+wake word, the mic and the speaker, the voice turn (docs/specs/voice-path.md).
 
 Run: uvicorn app.main:app --host 127.0.0.1 --port 8765
 """
@@ -29,7 +29,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        logger.info("Starting %s v%s (mock=%s)", settings.APP_NAME, settings.APP_VERSION, settings.MOCK)
+        logger.info("Starting %s v%s (voice=%s)", settings.APP_NAME, settings.APP_VERSION, settings.VOICE)
         await app.state.pi.start()
         yield
         await app.state.pi.stop()

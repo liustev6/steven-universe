@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'types/display_state.dart';
+import '../types/app_mode.dart';
 
 /// The app's single store, in the spirit of Zustand: state plus plain
 /// setters, nothing else. What should happen when something occurs (a touch,
@@ -16,35 +16,31 @@ import 'types/display_state.dart';
 final appStoreProvider = NotifierProvider<AppStore, AppState>(AppStore.new);
 
 class AppState {
-  const AppState({required this.display, required this.themeMode});
+  const AppState({required this.mode, required this.themeMode});
 
   static const initial = AppState(
-    display: DisplayState.initial,
+    mode: AppMode.dashboard,
     themeMode: ThemeMode.dark,
   );
 
-  /// Dashboard or sleep, and whether touches are blocked.
-  final DisplayState display;
+  /// The app's own mode: dashboard, or idle after no touch (app-only: never sent).
+  final AppMode mode;
 
   /// Light or dark mode, for both the dashboard and the sleep view.
   final ThemeMode themeMode;
 
-  AppState copyWith({DisplayState? display, ThemeMode? themeMode}) => AppState(
-    display: display ?? this.display,
-    themeMode: themeMode ?? this.themeMode,
-  );
+  AppState copyWith({AppMode? mode, ThemeMode? themeMode}) =>
+      AppState(mode: mode ?? this.mode, themeMode: themeMode ?? this.themeMode);
 
   @override
   bool operator ==(Object other) =>
-      other is AppState &&
-      other.display == display &&
-      other.themeMode == themeMode;
+      other is AppState && other.mode == mode && other.themeMode == themeMode;
 
   @override
-  int get hashCode => Object.hash(display, themeMode);
+  int get hashCode => Object.hash(mode, themeMode);
 
   @override
-  String toString() => 'AppState($display, $themeMode)';
+  String toString() => 'AppState($mode, $themeMode)';
 }
 
 /// The store: [AppState] and its setters.
@@ -52,8 +48,7 @@ class AppStore extends Notifier<AppState> {
   @override
   AppState build() => AppState.initial;
 
-  void setDisplay(DisplayState display) =>
-      state = state.copyWith(display: display);
+  void setMode(AppMode mode) => state = state.copyWith(mode: mode);
 
   void setThemeMode(ThemeMode themeMode) =>
       state = state.copyWith(themeMode: themeMode);

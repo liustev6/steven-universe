@@ -16,7 +16,7 @@ async def hey_pi_socket(ws: WebSocket):
     server = ws.app.state.pi
     await ws.accept()
     client = server.hub.add(ws)
-    logger.info("Client connected (%d total)", len(server.hub.clients))
+    logger.info("a screen connected (%d)", len(server.hub.clients))
     try:
         await server.on_connect(client)
         while True:
@@ -25,4 +25,4 @@ async def hey_pi_socket(ws: WebSocket):
         pass
     finally:
         server.hub.remove(client)
-        logger.info("%s disconnected (%d left)", client.name, len(server.hub.clients))
+        logger.info("a screen disconnected (%d left)", len(server.hub.clients))

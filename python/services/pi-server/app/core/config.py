@@ -7,7 +7,6 @@ Every setting has a default, so the service runs with no configuration.
 from pathlib import Path
 from typing import Optional
 
-from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,19 +25,12 @@ class Settings(BaseSettings):
     HOST: str = "127.0.0.1"
     PORT: int = 8765
 
-    # Where device settings are saved (settings.json).
-    DATA_DIR: Path = Path("~/.local/share/pi-server")
-
-    # Mock data until home-hub exists.
-    MOCK: bool = True
-    MOCK_WEATHER_INTERVAL: float = 5.0
-    MOCK_REPLY_WORD_DELAY: float = 0.15
-
-    # /debug/* endpoints for pushing test messages with curl.
+    # /debug/* endpoints (a speech state for the screen, a typed or spoken turn) with curl.
     DEBUG_ENDPOINTS: bool = True
 
     # The voice turn (docs/specs/voice-path.md): the mic, speech-service, agent-service, the speaker.
-    # Off: the mock assistant answers (MOCK). On the Pi: deploy/pi-server.env turns it on.
+    # Off (the default, e.g. on a Mac): no mic, the screen is told `idle`. On the Pi:
+    # deploy/pi-server.env turns it on.
     VOICE: bool = False
     AUTH_ISSUER: str = "https://auth.lan.liustev6.ca"
     CLIENT_ID: str = "pi-server"
@@ -61,11 +53,6 @@ class Settings(BaseSettings):
     SILENCE_MS: int = 700                        # the turn ends after this much silence
     MIC_DEVICE: str = "plughw:CARD=Speakerphone,DEV=0"
     SPEAKER_DEVICE: str = "plughw:CARD=Speakerphone,DEV=0"
-
-    @field_validator("DATA_DIR")
-    @classmethod
-    def _expand_home(cls, value: Path) -> Path:
-        return value.expanduser()
 
 
 settings = Settings()

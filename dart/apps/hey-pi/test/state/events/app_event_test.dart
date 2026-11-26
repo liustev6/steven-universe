@@ -1,19 +1,32 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hey_pi/protocol/messages.dart';
 import 'package:hey_pi/state/events/app_event.dart';
 
 void main() {
   test('each event has one source type and its effect types', () {
-    final cases = <(AppEvent, {bool user, bool display})>[
-      (const UserUncategorizedClick(), user: true, display: true),
-      (const SleepClick(), user: true, display: true),
-      (const ThemeModeClick(), user: true, display: false),
-      (const IdleTimeout(), user: false, display: true),
+    final cases = <(AppEvent, {bool user, bool mode, bool server})>[
+      (const UserUncategorizedClick(), user: true, mode: true, server: false),
+      (const SleepClick(), user: true, mode: true, server: false),
+      (const ThemeModeClick(), user: true, mode: false, server: false),
+      (const IdleTimeout(), user: false, mode: true, server: false),
+      (
+        const ServerSpeech(SpeechState.listening),
+        user: false,
+        mode: false,
+        server: true,
+      ),
+      (const ServerDisconnected(), user: false, mode: false, server: true),
     ];
-    for (final (event, :user, :display) in cases) {
+    for (final (event, :user, :mode, :server) in cases) {
       final name = event.runtimeType.toString();
       expect(event is UserEvent, user, reason: '$name is UserEvent');
       expect(event is SystemEvent, !user, reason: '$name is SystemEvent');
-      expect(event is DisplayEvent, display, reason: '$name is DisplayEvent');
+      expect(event is AppModeEvent, mode, reason: '$name is AppModeEvent');
+      expect(
+        event is ServerStateEvent,
+        server,
+        reason: '$name is ServerStateEvent',
+      );
     }
   });
 }

@@ -1,102 +1,63 @@
-import json
+"""The protocol: one message, `speech`, pi-server -> hey-pi (app/protocol.py)."""
 
-from tests.conftest import connect, receive_until
+import asyncio
+
+from app.core.config import Settings
+from app.server import PiServer
 
 
 def test_health(client):
     body = client.get("/health").json()
-    assert body["status"] == "healthy"
-    assert body["clients"] == 0
-    assert body["lab"] == "online"
+    assert body == {"status": "healthy", "version": "0.1.0", "clients": 0, "voice": False, "speech": "idle"}
 
 
-def test_connect_sends_device_state_first(client):
+def test_a_screen_is_told_the_speech_state_when_it_connects(client):
     with client.websocket_connect("/ws") as ws:
-        assert ws.receive_json() == {"type": "connection", "lab": "online"}
-        assert ws.receive_json() == {"type": "settings", "theme_mode": "dark"}
+        assert ws.receive_json() == {"type": "speech", "state": "idle"}
 
 
-def test_subscribe_returns_a_snapshot(client):
-    with connect(client, feeds=["weather", "ha:light.kitchen"]) as (ws, snapshot):
-        assert snapshot["protocol_version"] == 1
-        assert snapshot["assistant"] == {"phase": "idle"}
-        weather = snapshot["widgets"]["weather"]["data"]
-        assert weather["location"] == {"name": "San Francisco"}
-        assert set(weather["current"]) == {"temperature_c", "condition", "is_day"}
-        assert weather["today"]["low_c"] < weather["current"]["temperature_c"]
-        entity_ids = {s["entity_id"] for s in snapshot["ha_states"]}
-        assert "light.kitchen" in entity_ids
+def test_every_screen_hears_each_change_and_only_changes(client):
+    with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
+        a.receive_json(), b.receive_json()
+        client.post("/debug/speech/listening")
+        client.post("/debug/speech/listening")                      # no change: nothing sent
+        client.post("/debug/speech/speaking")
+        for ws in (a, b):
+            assert ws.receive_json() == {"type": "speech", "state": "listening"}
+            assert ws.receive_json() == {"type": "speech", "state": "speaking"}
+        assert client.get("/health").json()["speech"] == "speaking"
+    with client.websocket_connect("/ws") as late:                    # a new screen: the state now
+        assert late.receive_json() == {"type": "speech", "state": "speaking"}
 
 
-def test_ha_toggle_answers_and_pushes_the_new_state(client):
-    with connect(client, feeds=["ha:light.kitchen"]) as (ws, snapshot):
-        before = next(s for s in snapshot["ha_states"] if s["entity_id"] == "light.kitchen")
-        ws.send_json({
-            "type": "ha_action", "id": "a1",
-            "entity_id": "light.kitchen", "service": "light.toggle", "data": {},
-        })
-        assert receive_until(ws, "ha_action_result") == {
-            "type": "ha_action_result", "id": "a1", "ok": True,
-        }
-        state = receive_until(ws, "ha_state")
-        assert state["entity_id"] == "light.kitchen"
-        assert state["state"] != before["state"]
-
-
-def test_ha_action_on_unknown_entity_fails_cleanly(client):
-    with connect(client) as (ws, _):
-        ws.send_json({
-            "type": "ha_action", "id": "a2",
-            "entity_id": "light.nope", "service": "light.toggle",
-        })
-        result = receive_until(ws, "ha_action_result")
-        assert result["ok"] is False
-        assert "unknown entity" in result["error"]
-
-
-def test_assistant_text_streams_a_reply(client):
-    with connect(client) as (ws, _):
-        ws.send_json({"type": "assistant_text", "text": "turn off the kitchen lights"})
-        thinking = receive_until(ws, "assistant")
-        assert thinking["phase"] == "thinking"
-        assert thinking["transcript"] == "turn off the kitchen lights"
-
-        reply = ""
-        while True:
-            message = receive_until(ws, "assistant")
-            assert message["turn_id"] == thinking["turn_id"]
-            if message["phase"] == "idle":
-                break
-            reply += message.get("reply_delta", "")
-        assert "turn off the kitchen lights" in reply
-
-
-def test_settings_update_is_saved_and_pushed(client, settings):
-    with connect(client) as (ws, _):
-        ws.send_json({"type": "settings_update", "theme_mode": "light"})
-        assert receive_until(ws, "settings") == {"type": "settings", "theme_mode": "light"}
-        saved = json.loads((settings.DATA_DIR / "settings.json").read_text())
-        assert saved == {"theme_mode": "light"}
-
-    # A new connection gets the saved setting.
-    with client.websocket_connect("/ws") as ws2:
-        assert receive_until(ws2, "settings")["theme_mode"] == "light"
-
-
-def test_bad_messages_are_dropped_without_closing(client):
-    with connect(client) as (ws, _):
+def test_whatever_a_screen_sends_is_dropped_and_the_socket_stays(client):
+    with client.websocket_connect("/ws") as ws:
+        ws.receive_json()
         ws.send_text("not json")
-        ws.send_json({"type": "no_such_message"})
-        ws.send_json({"type": "ha_action"})  # missing fields
-        # The connection still works.
-        ws.send_json({"type": "subscribe", "feeds": []})
-        assert receive_until(ws, "snapshot")["type"] == "snapshot"
+        ws.send_json({"type": "user_activity"})                     # the old protocol: gone
+        client.post("/debug/speech/listening")
+        assert ws.receive_json() == {"type": "speech", "state": "listening"}
 
 
-def test_debug_endpoints_push_to_clients(client):
-    with connect(client) as (ws, _):
-        client.post("/debug/display/sleep")
-        assert receive_until(ws, "display_state") == {"type": "display_state", "state": "sleep"}
-        client.post("/debug/lab/offline")
-        assert receive_until(ws, "connection") == {"type": "connection", "lab": "offline"}
-        assert client.get("/health").json()["lab"] == "offline"
+def test_the_voice_assistants_phases_become_the_speech_state():
+    """idle -> idle; listening -> listening; thinking and speaking -> speaking (its turn)."""
+    server = PiServer(Settings(VOICE=False))
+    sent = []
+
+    async def broadcast(message):
+        sent.append(message.state)
+    server.hub.broadcast = broadcast
+
+    async def go():
+        for phase in ("listening", "listening", "thinking", "speaking", "listening", "idle"):
+            await server.phase("v1", phase)
+        await server.reply_delta("v1", "ignored")
+        await server.awake()
+    asyncio.run(go())
+    assert sent == ["listening", "speaking", "listening", "idle"]
+
+
+def test_voice_debug_endpoints_need_the_voice(client):
+    assert client.post("/debug/voice/listen").status_code == 409
+    assert client.post("/debug/say", params={"text": "hi"}).status_code == 409
+    assert client.post("/debug/speech/thinking").status_code == 422   # not a speech state
