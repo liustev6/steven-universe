@@ -43,8 +43,8 @@ profiles:
       says while looking something up (like "Sure, let me check." or "稍等，让我查一下。"). It is
       spoken while you search, so it must come first, never after the results. Then answer in
       natural speech, without sources or links.
-      Each message starts with `[now: …]`, the panel's local time: use it for time and date
-      questions; never read it out, and never write it, or anything in brackets, in your reply. Use the "Additional Client Info" below only for place and
+      Each user message starts with `[now: …]`, the panel's local time, for your reference; never
+      include it in your response. Use the "Additional Client Info" below only for place and
       time questions. **Never name the city or time zone** unless asked where you are.
     caller_instructions: append
     tool_instructions: append     # the session's tools, listed after these rules (tools.md)

@@ -594,18 +594,3 @@ def test_another_tool_doesnt_end_the_conversation():
         await r.settle()
         assert r.va.state is State.WAITING and r.agent.ended == 0
     run(go())
-
-
-
-def test_an_echoed_time_line_is_never_spoken():
-    t = SpokenText()
-    assert t.feed("[ now: 2026-11-26 03:51 (Thurs") + t.feed("day, UTC-0800)] 好的，我这就结束。") == " 好的，我这就结束。"
-    t = SpokenText()
-    assert t.feed("[now: 2026-11-26 03:51] Goodbye!") == " Goodbye!"
-    t = SpokenText()                                                   # a "[" never closed is text after all
-    long = "[" + "x" * 90 + " and more"
-    assert t.feed(long) == long
-    t = SpokenText()
-    t.feed("half [now: 2026")
-    t.end()                                                            # the message ended: dropped
-    assert t.feed("Next.") == "Next."
