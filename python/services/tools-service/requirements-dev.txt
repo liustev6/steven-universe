@@ -1,0 +1,5 @@
+# Local development and tests
+-r requirements.txt
+-e ../../libs/service-auth[fastapi]   # token verification (Principal, ServiceAuth)
+
+pytest==9.2.0

@@ -129,7 +129,7 @@ clients:
       tools-service:                     # what Hey Pi's agent may use (its agent sessions get all of this unless a profile's mcp_tools narrows it)
         scopes: [tools:call]
         authorization_details:
-          - {type: tool_access, actions: [call], locations: ["weather/"]}
+          - {type: tool_access, actions: [call], locations: ["weather/", "pi/"]}   # pi/: Hey Pi's own (end_conversation)
       file-management:
         scopes: [files:read, files:write, files:delete, files:list]
         authorization_details:
@@ -142,6 +142,10 @@ clients:
     grants:
       speech-service:                    # its deploy's smoke test: a sentence spoken, a clip heard
         scopes: [speech:create, speech:transcribe]
+      tools-service:                     # its deploy's smoke test: one tool, so the filter shows
+        scopes: [tools:call]
+        authorization_details:
+          - {type: tool_access, actions: [call], locations: ["weather/forecast"]}
       api-service:
         scopes: [chat:read, chat:write]
       agent-service:

@@ -1,0 +1,8 @@
+# tools-service runtime dependencies (the image also installs ../../libs/service-auth)
+fastapi==0.162.2
+uvicorn[standard]==0.54.0
+pydantic-settings==2.16.2
+httpx==0.28.1            # Open-Meteo (service-auth uses it too)
+
+# MCP: the official Python SDK, its own resource-server auth and Streamable HTTP (tools.md TL1)
+mcp==2.3.0

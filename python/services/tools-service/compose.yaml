@@ -1,0 +1,34 @@
+# tools-service on its LXC. Spec: docs/specs/agent-service/tools.md (TL1, TL13).
+# Deployed by infra/deployment/deploy.sh tools-service, then the pipeline.
+#
+# Host layout (owner 10001, mode 700 directories, 600 files):
+#   /etc/tools-service/config.env           from infra/services/tools-service/, by every deploy
+#   /etc/tools-service/tls/cert.pem, key.pem tools.lan.liustev6.ca (both listeners)
+# No credentials: tools-service calls no LAN service (Open-Meteo needs no key). Home Assistant's
+# token joins as a secret when its tools do.
+name: tools-service
+
+services:
+  tools-service:
+    image: ghcr.io/liustev6/steven-universe/tools-service:${IMAGE_TAG:-local}   # IMAGE_TAG: set by deploy-target.sh (deployer spec D1a)
+    build:
+      context: ../..                    # python/, so libs/service-auth is included
+      dockerfile: services/tools-service/Dockerfile
+      args:
+        REVISION: ${REVISION:-unknown}
+    restart: unless-stopped
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    # Two listeners (TL13). Host 443 -> 8443: the REST API, for apps.
+    # Host 8443 -> 9443: MCP, for agents (the gateway; Claude Code for tests).
+    ports: ["443:8443", "8443:9443"]
+    stop_grace_period: 15s
+    env_file: /etc/tools-service/config.env
+    volumes:
+      - /etc/tools-service/tls:/etc/tools-service/tls:ro
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}
