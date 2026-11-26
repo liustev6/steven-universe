@@ -15,7 +15,7 @@ from jwt.algorithms import ECAlgorithm
 from service_auth.fastapi_auth import ServiceAuth
 from service_auth.verifier import JWKSCache, TokenVerifier
 
-from app import pi_tools
+from app.pi import tools as pi_tools
 from app.api import create_api
 from app.mcp_server import create_mcp
 from app.registry import Registry

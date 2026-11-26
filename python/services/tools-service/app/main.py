@@ -19,7 +19,7 @@ import httpx
 import uvicorn
 from service_auth.fastapi_auth import ServiceAuth
 
-from app import pi_tools
+from app.pi import tools as pi_tools
 from app.api import create_api
 from app.config import Settings
 from app.mcp_server import AUDIENCE, create_mcp

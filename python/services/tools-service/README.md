@@ -21,7 +21,7 @@ and audited. No details in a token means no tools.
 
 **Code:** `app/registry.py` (each tool once, and the one call path: check, arguments, run, audit),
 `app/access.py` (the decision), `app/api.py` and `app/mcp_server.py` (the two interfaces),
-`app/weather/` (Open-Meteo, the dashboard's format), `app/main.py` (both listeners).
+`app/<namespace>/`: one folder per tool namespace, its `tools.py` registering them (`app/weather/`: Open-Meteo in the dashboard's format; `app/pi/`: Hey Pi's own), `app/main.py` (both listeners).
 
 **Develop:**
 
