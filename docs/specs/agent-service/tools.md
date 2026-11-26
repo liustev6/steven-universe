@@ -36,7 +36,7 @@ pi-server ──turn (its token)──▶ agent-service ──▶ sandbox: Codex
 | TL8 | **Skills are filtered by the same set:** a skill declares `requires_tools` in its frontmatter; a session gets a profile's skill only if all of them are in its tools | No skill tells the model to use a tool it doesn't have |
 | TL9 | **Each tool declares a class:** `read`, `reversible` or `sensitive` (G12), with MCP's `readOnlyHint` and `destructiveHint` set to match (trusted here: tools-service is our code). **Confirmations come with the first sensitive tool** (Home Assistant), not in CP5 | The class is the tool's own fact; confirming needs something worth confirming |
 | TL10 | **Tool calls are budgeted at the gateway** (G14): `limits.max_tool_calls` per session; past it, `/mcp` refuses | The sandbox's own limits are a courtesy (C13) |
-| TL11 | **Tools that act on the session are the gateway's own**, served by the same `/mcp` beside tools-service's: `end_conversation` (the agent ends the voice session: voice-path.md 4.13). The profile's `tools` lists them, with Codex's own | They change agent-service's state, not an outside service's: no token exchange, nothing to call |
+| TL11 | **A client's own tools are tools-service tools in its namespace:** `pi/end_conversation` (MCP `pi_end_conversation`): the agent ends the voice session (voice-path.md 4.13). tools-service only acknowledges the call; **pi-server**, which owns the voice session, sees it in the turn's events (protocol B) and ends the session once the reply is spoken. Granted to pi-server alone (`pi/`), so only its sessions see it. The gateway has no tools of its own | One kind of tool and one rule for all of them (TL5: the client's grant, a profile's optional `mcp_tools`). The client that owns an action carries it out; tools-service and the grant decide who may ask for it |
 | TL12 | **Audit:** tools-service logs `sub`, `act`, the token's `jti`, the tool, the outcome and duration (never the arguments or the result: they can be personal); the gateway logs the session with each `jti` | Every call traced to its session and requester, without copying what was said |
 | TL13 | **Two interfaces, two listeners, one filter** (2026-11-26). One process and one tool registry, served on two ports, as agent-service's two listeners (C1): **443, the REST API** for apps (Hey Pi's dashboard through pi-server, the phone through api-service), resource-style (`GET /v1/weather/current?place=…`, `GET /v1/weather/forecast?place=…&days=…`, `GET /v1/tools`); **8443, MCP** for agents (the gateway, Claude Code). **Each tool is registered once** with its location (`weather/forecast`), its MCP name (`weather_forecast`) and its API route; both sides call the same function and check the same `tool_access` location with the same code, scope `tools:call` on both. A tool's logic is its own module (`app/weather/`), behind both. Domain logic stays out of api-service (the edge holds none; E6: LAN services never call through it) | One grant per tool for every way of using it: what pi-server may ask by voice it may also show on its screen, and nothing more. Separate ports let the firewall decide who reaches which side later (the agents' side need not be open to the whole LAN). No second service with one caller (home-hub): the weather module moves there if home-hub is ever built, with its routes and grants unchanged |
 
@@ -74,10 +74,11 @@ pi-server ──turn (its token)──▶ agent-service ──▶ sandbox: Codex
 - **Tool names:** in MCP and to the model, `<namespace>_<tool>` (`weather_forecast`: the model's function
   names allow only letters, digits, `_` and `-`); in grants and profiles, `<namespace>/<tool>`, where
   `weather/` is the whole namespace (auth-service's prefix locations, so no new matching rules).
-- **Profiles** (`profiles.yaml`): `tools` lists the agent side's own tools, Codex's (`web_search`) and
-  the gateway's (`end_conversation`), as today ([] = none); tools-service's come from the owner's grant,
-  narrowed only by the optional `mcp_tools` (locations: `[weather/]`; `[]` = none); `limits.max_tool_calls`;
-  skills with `requires_tools`.
+- **Profiles** (`profiles.yaml`): `tools` lists **Codex's built-in tools only** (`web_search`), as today
+  ([] = none): run by Codex and OpenAI, never mixed with tools-service's. tools-service's (`weather/`,
+  `pi/`) come from the owner's grant, **required and an allowlist** (no grant: no tools), narrowed only by
+  the profile's optional `mcp_tools` (locations; `[]` = none); `limits.max_tool_calls`; skills with
+  `requires_tools`.
 - **auth-service** (`policy.yaml`): the audience `tools-service` (`scopes: [tools:call]`, the detail type
   `tool_access`: `actions: [call]`, locations = tool names, prefix match on `.`); agent-service gets
   `can_relay_clients` with `relay_audiences: [tools-service]`; the audience has `grant_overlap`; each
@@ -88,10 +89,10 @@ pi-server ──turn (its token)──▶ agent-service ──▶ sandbox: Codex
 |---|---|---|
 | 5.1 | **auth-service:** the `tools-service` audience and `tool_access`; agent-service relays; the overlap granted (TL5) | an exchange returns the grant ∩ what was asked; its audit line shows `sub` and `act` |
 | 5.2 | **tools-service** on its LXC, through the pipeline: the weather module on Open-Meteo (`weather/current`, `weather/forecast`); the REST API (443) and MCP (8443), one registry, one filter (TL13) | Claude Code on the Mac, with a test client's token, sees only that client's tools; the same token gets 403 from the API route of a tool it isn't granted |
-| 5.3 | **the gateway's `/mcp`:** the session's list (TL7), the exchange per turn, the budget, `end_conversation` (TL11) | a sandbox lists and calls weather; another pod's capability gets 403; a session over its tool budget is refused |
+| 5.3 | **the gateway's `/mcp`:** the session's list (TL7), the exchange per turn, the budget | a sandbox lists and calls weather; another pod's capability gets 403; a session over its tool budget is refused |
 | 5.4 | **the runtime and profiles:** Codex's MCP configuration; the optional `mcp_tools`, `max_tool_calls`, skills' `requires_tools` | "明天天气怎么样" on the Pi is answered by `weather_forecast`, not a web search |
 | 5.5 | **the safety checks:** an instruction injected through a web page or a tool result can't call a tool outside the session's list; the budget holds | both refused and logged |
-| 5.6 | **`end_conversation`** in the voice path: pi-server ends the session when the agent calls it | "好了，谢谢" ends the session |
+| 5.6 | **`pi/end_conversation`** (TL11): tools-service's tool, pi-server's grant; pi-server ends the voice session when the agent's call shows in the events | "好了，谢谢" ends the session |
 
 **Later (not CP5):** Home Assistant's tools (`home.*`) with their classes, and confirmations (G12):
 "turn off the kitchen lights" works, "unlock the door" asks you first on Hey Pi.

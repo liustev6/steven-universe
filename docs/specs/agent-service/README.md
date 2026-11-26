@@ -202,7 +202,7 @@ session capability and the pod's `X-Sandbox-Id`:
 |---|---|---|
 | `GET /v1/runtime/turns`, `POST /v1/runtime/events` | the runtime's long poll, and its events (protocol A) | built |
 | `/model/…` (OpenAI's Responses API) | your subscription's token added (the auth broker); the profile's model and token budget enforced | built |
-| `/mcp` (streamable HTTP MCP) | the session's tools, fixed at its start (the owner's grant, narrowed by the profile's optional `mcp_tools`), forwarded to tools-service with a token exchanged for the owner, plus the gateway's own (`end_conversation`); tool budgets; later confirmations (`POST /v1/sessions/{id}/confirmations/{call_id}` on the callers' side). [tools.md](tools.md) | CP5 |
+| `/mcp` (streamable HTTP MCP) | the session's tools, fixed at its start (the owner's grant, narrowed by the profile's optional `mcp_tools`), forwarded to tools-service with a token exchanged for the owner (`pi/end_conversation` included: a tools-service tool granted to pi-server); tool budgets; later confirmations (`POST /v1/sessions/{id}/confirmations/{call_id}` on the callers' side). [tools.md](tools.md) | CP5 |
 | `/files/…` (WebDAV reads, for the mounter), `POST /publish` | file-management with the session's narrowed token ([files-and-mounts.md](files-and-mounts.md)) | later |
 
 ## Tools and skills
