@@ -44,6 +44,7 @@ from app.voice.speech import FLUSH, SpeechClient
 from app.voice.spoken import SpokenText
 
 logger = logging.getLogger(__name__)
+END_CONVERSATION = "pi_end_conversation"   # the agent ends the voice session (tools-service's pi/end_conversation)
 
 PREROLL_FRAMES = 5                    # 500 ms kept before a voice starts a turn
 CONTEXT_TURNS = 2                     # the last turns given to speech-to-text as context
@@ -256,8 +257,13 @@ class VoiceAssistant:
                 if not self._claim.cancelled() and self._claim.exception():
                     logger.warning("claiming the agent session: %s (the turn tries again)", self._claim.exception())
                 self._claim = None
-            await self._reply(turn_id, text, heard_at, voice)
+            agent_ended = await self._reply(turn_id, text, heard_at, voice)
             self._replied = True
+            if agent_ended:                              # its goodbye has played: no follow-up window
+                logger.info("turn %s: the agent ended the conversation", turn_id)
+                self._turn = None                        # this task is the turn: _end mustn't cancel it
+                self._ending = self._end("ended by the agent")
+                return
         except asyncio.CancelledError:
             raise
         except Exception as e:                           # V8: this turn ends, the session goes on
@@ -323,9 +329,11 @@ class VoiceAssistant:
             await asyncio.wait([turn])
 
     # ---- the reply ---------------------------------------------------------------------------------
-    async def _reply(self, turn_id: str, text: str, heard_at: float, voice: str) -> None:
-        """The agent's reply, spoken while it's written."""
+    async def _reply(self, turn_id: str, text: str, heard_at: float, voice: str) -> bool:
+        """The agent's reply, spoken while it's written. True if the agent ended the conversation
+        (its `pi/end_conversation` tool, tools.md TL11): the caller ends the session once it has played."""
         timings: dict[str, int] = {}
+        agent_ended = False
 
         def mark(name: str) -> None:
             timings.setdefault(name, round((self.clock() - heard_at) * 1000))
@@ -364,7 +372,7 @@ class VoiceAssistant:
 
         async def write() -> None:
             """The agent's turn, its text into the speech as it comes."""
-            nonlocal agent_done
+            nonlocal agent_done, agent_ended
             async with contextlib.aclosing(self.agent.turn(text)) as events:
                 async for event in events:
                     kind = event.get("type")
@@ -378,6 +386,8 @@ class VoiceAssistant:
                     elif kind == "message.completed":
                         spoken.end()
                         texts.put_nowait(FLUSH)     # speak this message whole now: a search may come before the next
+                    elif kind == "tool.started" and str(event.get("name", "")).endswith(END_CONVERSATION):
+                        agent_ended = True                  # tools-service only acknowledges it; ending is ours
                     elif kind == "turn.completed":
                         agent_done = True
                         mark("agent_done")
@@ -404,6 +414,7 @@ class VoiceAssistant:
             self._recent.append((text, "".join(reply).strip()))
             logger.info("turn %s (%s): timings (ms from heard) %s; the wake word's highest score while speaking %.2f",
                         turn_id, voice, timings, self.wake.peak)
+            return agent_ended
         except BaseException:
             writing.cancel()
             speaking.cancel()

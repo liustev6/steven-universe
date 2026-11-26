@@ -20,7 +20,7 @@ def register(registry: Registry) -> None:
     registry.add(Tool(
         location="pi/end_conversation", title="End the conversation", arguments=EndConversation,
         run=end_conversation, read_only=False, destructive=False,
-        description=("End the voice conversation after this reply, so the panel stops listening for a "
-                     "follow-up. Call it when the user says goodbye or is clearly done ('that's all', "
-                     "'好了，谢谢'). Say your short goodbye in the reply as usual."),
+        description=("End the voice conversation after this reply when the user says goodbye or is clearly "
+                     "done ('that's all', 'thanks, bye', '好了，谢谢', '没事了'), so the panel stops listening "
+                     "for a follow-up. Say your short goodbye in the reply as usual; never call it otherwise."),
     ))

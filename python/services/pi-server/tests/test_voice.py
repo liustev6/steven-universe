@@ -113,8 +113,8 @@ class Agent:
 
     async def turn(self, text):
         self.asked.append(text)
-        for d in self.deltas:
-            yield {"type": "message.completed"} if d is None else {"type": "message.delta", "text": d}
+        for d in self.deltas:          # text; None: the message ends; a dict: that event as is
+            yield d if isinstance(d, dict) else ({"type": "message.completed"} if d is None else {"type": "message.delta", "text": d})
         if self.hang:
             await asyncio.sleep(3600)
         yield {"type": "turn.completed", "status": "completed"}
@@ -571,3 +571,27 @@ def test_the_time_goes_with_every_turn():
         turns = [b for _, p, b in log if p.endswith("/turns")]
         assert turns == [{"text": "[now: X]\n明天天气怎么样？"}]
     run(go())
+
+
+def test_the_agent_ends_the_conversation_after_its_goodbye():
+    """pi/end_conversation (tools.md TL11): the goodbye plays whole, then the session ends at once, with
+    no follow-up window; the agent session is released and Hey Pi goes idle."""
+    async def go():
+        bye = {"type": "tool.started", "tool_id": "t1", "name": "tools.pi_end_conversation", "input": {}}
+        r = Rig(speech=Speech(heard=["好了，谢谢"]), agent=Agent(deltas=("不客气，再见！", None, bye)))
+        await r.frames(WAKE, QUIET, QUIET, QUIET, *VOICE, QUIET)
+        await r.settle()
+        assert "".join(r.speech.spoken).strip() == "不客气，再见！" and r.speaker.drained
+        assert r.va.state is State.IDLE and r.agent.ended == 1 and r.ui.phases[-1] == "idle"
+    run(go())
+
+
+def test_another_tool_doesnt_end_the_conversation():
+    async def go():
+        other = {"type": "tool.started", "tool_id": "t1", "name": "tools.weather_forecast", "input": {}}
+        r = Rig(agent=Agent(deltas=("Let me check.", None, other, "Rain tomorrow.")))
+        await r.frames(WAKE, QUIET, QUIET, QUIET, *VOICE, QUIET)
+        await r.settle()
+        assert r.va.state is State.WAITING and r.agent.ended == 0
+    run(go())
+
