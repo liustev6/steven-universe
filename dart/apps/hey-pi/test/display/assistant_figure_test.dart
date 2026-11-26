@@ -15,7 +15,11 @@ Widget _app(Widget child, Brightness b, {bool still = false}) => MaterialApp(
 
 void main() {
   for (final b in Brightness.values) {
-    for (final s in [SpeechState.listening, SpeechState.speaking]) {
+    for (final s in [
+      SpeechState.listening,
+      SpeechState.thinking,
+      SpeechState.speaking,
+    ]) {
       testWidgets('$s in ${b.name} mode: the palette shade, animating', (
         tester,
       ) async {
@@ -28,8 +32,8 @@ void main() {
             : PanelPalette.light;
         expect(figure.shade, palette.assistant);
         expect(tester.hasRunningAnimations, isTrue);
-        // Through a whole loop and a bit.
-        for (var i = 0; i < 13; i++) {
+        // Through a whole loop (4.8 s) and a bit.
+        for (var i = 0; i < 25; i++) {
           await tester.pump(const Duration(milliseconds: 200));
         }
         expect(tester.takeException(), isNull);

@@ -15,7 +15,7 @@ void main() {
 
   test('never throws: unknown, malformed, the wrong shape', () {
     for (final raw in [
-      '{"type":"speech","state":"thinking"}', // not a speech state
+      '{"type":"speech","state":"talking"}', // not a speech state
       '{"type":"speech"}',
       '{"type":"assistant","phase":"idle"}', // the old protocol
       'not json',

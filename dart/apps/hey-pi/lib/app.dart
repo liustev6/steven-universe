@@ -51,6 +51,7 @@ class PanelRoot extends ConsumerWidget {
             UiMode.dashboard => const DashboardView(),
             UiMode.idle => const SleepView(),
             UiMode.listening => const SpeechView(SpeechState.listening),
+            UiMode.thinking => const SpeechView(SpeechState.thinking),
             UiMode.speaking => const SpeechView(SpeechState.speaking),
           },
         ),

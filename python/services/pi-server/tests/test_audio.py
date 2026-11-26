@@ -111,3 +111,18 @@ def test_a_speaker_that_dies_is_an_error(tmp_path):
         await s.stop()
 
     run(go())
+
+
+def test_it_knows_when_what_it_was_given_has_played(tmp_path):
+    """audio_ends: about now plus the audio not yet played; once past it, only silence plays."""
+    async def go():
+        s, _ = speaker(tmp_path)
+        await s.open()
+        t0 = time.monotonic()
+        await s.write(audio(0.5))
+        assert abs(s.audio_ends() - (t0 + 0.5)) < 0.1
+        await asyncio.sleep(0.8)
+        assert s.audio_ends() <= time.monotonic() + 0.01             # played: what's left is silence
+        await s.stop()
+
+    run(go())

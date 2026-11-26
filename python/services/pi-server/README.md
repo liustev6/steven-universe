@@ -21,11 +21,12 @@ assistant: [voice-path.md](../../../docs/specs/voice-path.md); the wake word: [w
 ## Protocol
 pi-server → Hey Pi, on connect and on every change (`app/protocol.py`):
 ```json
-{"type": "speech", "state": "idle | listening | speaking"}
+{"type": "speech", "state": "idle | listening | thinking | speaking"}
 ```
-`idle`: no voice session. `listening`: the session waits for you, hears you, or works out its reply.
-`speaking`: its voice, from the reply's first sound until it has played. The voice assistant's
-phases map onto it in `app/server.py` (`thinking` is `listening`).
+`idle`: no voice session. `listening`: the session waits for you, or hears you. `thinking`: you've
+finished, and it works out its reply (again mid-reply while a tool runs, once what it said before
+has played: `Speaker.audio_ends`). `speaking`: its voice, from the reply's first sound until it
+has played. The voice assistant's phases, one for one (`app/server.py`).
 
 Hey Pi → pi-server, its voice button:
 ```json
@@ -41,7 +42,7 @@ never closes the connection.
 |---|---|
 | `ws://127.0.0.1:8765/ws` | Hey Pi's connection |
 | `GET /health` | status, version, connected screens, voice on or off, the speech state |
-| `POST /debug/speech/{idle\|listening\|speaking}` | tell the screens a speech state (no voice needed: the UI's dev loop) |
+| `POST /debug/speech/{idle\|listening\|thinking\|speaking}` | tell the screens a speech state (no voice needed: the UI's dev loop) |
 | `POST /debug/say?text=...` | a typed turn, spoken (voice on) |
 | `POST /debug/voice/{listen\|commit\|cancel}` | start a spoken turn, end it, end the session (voice on) |
 

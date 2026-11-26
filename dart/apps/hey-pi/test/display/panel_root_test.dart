@@ -103,6 +103,9 @@ void main() {
       speech(SpeechState.listening);
       await tester.pump();
       expect(figure(SpeechState.listening), findsOneWidget);
+      speech(SpeechState.thinking);
+      await tester.pump();
+      expect(figure(SpeechState.thinking), findsOneWidget);
       speech(SpeechState.speaking);
       await tester.pump();
       expect(figure(SpeechState.speaking), findsOneWidget);

@@ -59,7 +59,7 @@ def test_the_voice_button_wakes_the_voice_assistant():
 
 
 def test_the_voice_assistants_phases_become_the_speech_state():
-    """idle -> idle; listening and thinking -> listening; speaking -> speaking (its voice heard)."""
+    """One for one, each change once."""
     server = PiServer(Settings(VOICE=False))
     sent = []
 
@@ -73,10 +73,10 @@ def test_the_voice_assistants_phases_become_the_speech_state():
         await server.reply_delta("v1", "ignored")
         await server.awake()
     asyncio.run(go())
-    assert sent == ["listening", "speaking", "listening", "idle"]
+    assert sent == ["listening", "thinking", "speaking", "listening", "thinking", "idle"]
 
 
 def test_voice_debug_endpoints_need_the_voice(client):
     assert client.post("/debug/voice/listen").status_code == 409
     assert client.post("/debug/say", params={"text": "hi"}).status_code == 409
-    assert client.post("/debug/speech/thinking").status_code == 422   # not a speech state
+    assert client.post("/debug/speech/talking").status_code == 422    # not a speech state

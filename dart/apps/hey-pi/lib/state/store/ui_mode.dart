@@ -9,10 +9,11 @@ import 'app_store.dart';
 import 'server_store.dart';
 import '../types/app_mode.dart';
 
-enum UiMode { dashboard, idle, listening, speaking }
+enum UiMode { dashboard, idle, listening, thinking, speaking }
 
 UiMode uiModeOf(AppMode app, SpeechState speech) => switch (speech) {
   SpeechState.listening => UiMode.listening,
+  SpeechState.thinking => UiMode.thinking,
   SpeechState.speaking => UiMode.speaking,
   SpeechState.idle => switch (app) {
     AppMode.dashboard => UiMode.dashboard,

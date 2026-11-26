@@ -5,7 +5,7 @@ import '../ui/ambient_background.dart';
 import '../ui/theme.dart';
 import 'assistant_figure.dart';
 
-/// The screen while the voice assistant listens or speaks: its character on the
+/// The screen while the voice assistant listens, thinks or speaks: its character on the
 /// idle screens' background, shaded and dimmed like the sleep clock.
 class SpeechView extends StatelessWidget {
   const SpeechView(this.speech, {super.key});
@@ -21,7 +21,11 @@ class SpeechView extends StatelessWidget {
       child: SizedBox(
         height: figureHeight,
         child: Semantics(
-          label: speech == SpeechState.listening ? 'Listening' : 'Speaking',
+          label: switch (speech) {
+            SpeechState.listening => 'Listening',
+            SpeechState.thinking => 'Thinking',
+            _ => 'Speaking',
+          },
           child: AssistantFigure(speech, shade: context.palette.assistant),
         ),
       ),

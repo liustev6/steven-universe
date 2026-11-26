@@ -5,14 +5,14 @@ import 'package:path_parsing/path_parsing.dart';
 
 import '../protocol/messages.dart';
 
-/// The voice assistant's character, listening or speaking, shaded with [shade]
+/// The voice assistant's character, listening, thinking or speaking, shaded with [shade]
 /// like the clock's time digits.
 ///
-/// The design source is `assets/svgs/assistant-listening.svg` and
-/// `assistant-speaking.svg` (viewBox 360×320). They animate with CSS
+/// The design source is `assets/svgs/assistant-listening.svg`,
+/// `assistant-thinking.svg` and `assistant-speaking.svg` (viewBox 360×320). They animate with CSS
 /// (`@keyframes`, `var(--outline-color)`, `d: path()`), which Flutter's SVG
 /// renderer doesn't run, so this painter draws the same paths and plays the same
-/// 2.4 s keyframes (CSS `ease-in-out` between each pair). Change the SVGs, then
+/// keyframes (CSS `ease-in-out` between each pair). Change the SVGs, then
 /// mirror the change here.
 class AssistantFigure extends StatefulWidget {
   const AssistantFigure(this.speech, {super.key, required this.shade});
@@ -27,8 +27,9 @@ class AssistantFigure extends StatefulWidget {
   /// [shade] starts and ends, as the clock's spans its digits.
   static const double drawingTop = 39, drawingBottom = 258;
 
-  /// One loop of every animation.
-  static const loop = Duration(milliseconds: 2400);
+  /// One loop of every animation: the thinking head's 4.8 s; the rest loop
+  /// every 2.4 s, twice in it.
+  static const loop = Duration(milliseconds: 4800);
 
   @override
   State<AssistantFigure> createState() => _AssistantFigureState();
@@ -100,10 +101,13 @@ class _FigurePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.scale(size.width / _viewBox.width, size.height / _viewBox.height);
-    final t = still ? null : time.value;
+    final slow = still ? null : time.value; // the 4.8 s loop
+    final t = slow == null ? null : (slow * 2) % 1; // the 2.4 s loop
     switch (speech) {
       case SpeechState.listening:
         _listening(canvas, t);
+      case SpeechState.thinking:
+        _thinking(canvas, t, slow);
       case SpeechState.speaking:
         _speaking(canvas, t);
       case SpeechState.idle:
@@ -149,6 +153,47 @@ class _FigurePainter extends CustomPainter {
     );
     // .va-listen-wave: incoming voice; the second 0.16 s later.
     _waves(c, t, [_lWaveNear, _lWaveFar]);
+  }
+
+  // assistant-thinking.svg ----------------------------------------------------
+
+  void _thinking(Canvas c, double? t, double? slow) {
+    // .va-thinking-head: tilted -3°, pondering to -6° and back (4.8 s); the
+    // hands go with it.
+    _transformed(
+      c,
+      const Offset(176, 190),
+      deg: slow == null ? -3 : _ponder.at(slow),
+      () {
+        _stroke(c, _sAntennae, 14);
+        _stroke(c, _sHead, 14);
+        // .va-thinking-eyes: a glance up and to the right.
+        _transformed(
+          c,
+          Offset.zero,
+          dx: _glanceX.at(slow),
+          dy: _glanceY.at(slow),
+          () => _stroke(c, _tEyes, 14),
+        );
+        _stroke(c, _tMouth, 12);
+        _hand(
+          c,
+          const Rect.fromLTWH(44, 205, 20, 34),
+          -12,
+          const Offset(54, 222),
+        );
+        c.drawPath(_tChinHand, Paint()..color = color); // under the chin
+      },
+    );
+    // .va-thinking-dot: three thought dots pulse, 0.25 s apart.
+    for (final (i, (centre, radius)) in _tDots.indexed) {
+      final opacity = t == null ? 0.65 : _thought.at((t - i * 250 / 2400) % 1);
+      c.drawCircle(
+        centre,
+        radius,
+        Paint()..color = color.withValues(alpha: color.a * opacity),
+      );
+    }
   }
 
   // assistant-speaking.svg ----------------------------------------------------
@@ -307,6 +352,26 @@ const _wave = _Track([
   (1, .12),
 ]); // va-incoming, va-outgoing
 
+const _ponder = _Track([
+  (0, -3),
+  (.45, -6),
+  (.65, -6),
+  (1, -3),
+]); // va-ponder (4.8 s)
+const _glanceX = _Track([
+  (0, 0),
+  (.35, 4),
+  (.65, 4),
+  (1, 0),
+]); // va-glance (4.8 s)
+const _glanceY = _Track([(0, 0), (.35, -3), (.65, -3), (1, 0)]);
+const _thought = _Track([
+  (0, .25),
+  (.30, 1),
+  (.70, .25),
+  (1, .25),
+]); // va-thought
+
 // The SVGs' paths (built once, on first use).
 final _lAntennae = _path('m139 77-19-31m81 31 19-31');
 final _lHead = _path(
@@ -321,6 +386,18 @@ final _lCupHand = _path('M319 158c5 25-3 43-23 48');
 final _lCupThumb = _path('m307 188-1-13');
 final _lWaveNear = _path('M315 117q8 7 9 17');
 final _lWaveFar = _path('M326 105q13 11 16 27');
+
+// Thinking: the antennae and head are the speaking ones.
+final _tEyes = _path('M137 139v10M225 132v10');
+final _tMouth = _path('M164 191q12-4 24 0');
+final _tChinHand = _path(
+  'M205 258c-2-6 3-11 9-10l9 2 6-18c2-7 13-4 11 4l-4 17c-1 11-10 19-21 18-8-1-13-6-10-13Z',
+);
+const _tDots = [
+  (Offset(278, 62), 4.0),
+  (Offset(298, 49), 5.0),
+  (Offset(323, 43), 6.0),
+];
 
 final _sAntennae = _path('m145 77-19-31m81 31 19-31');
 final _sHead = _path(

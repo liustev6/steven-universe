@@ -90,12 +90,13 @@ class Speaker:
         self._pending = bytearray()           # the reply's audio not yet written to aplay
         self._draining = False
         self._error: AudioError | None = None
+        self._audio_until = 0.0               # when the reply's audio written so far has played (clock)
 
     async def open(self) -> None:
         self._proc = await asyncio.create_subprocess_exec(
             *self.command, stdin=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         self._pending.clear()
-        self._draining, self._error = False, None
+        self._draining, self._error, self._audio_until = False, None, 0.0
         self._pump = asyncio.create_task(self._feed(self._proc))
 
     async def write(self, pcm: bytes) -> None:
@@ -103,6 +104,11 @@ class Speaker:
             await self.open()
         self._raise()
         self._pending += pcm
+
+    def audio_ends(self) -> float:
+        """When the reply's audio given so far will have played, by `clock` (aplay adds its 40 ms start).
+        Past it, only silence plays: what was said has been heard."""
+        return max(self._audio_until, self.clock()) + len(self._pending) / (SPEAKER_RATE * 2)
 
     async def drain(self) -> None:
         if self._proc is None:
@@ -147,7 +153,8 @@ class Speaker:
                 if ahead < 0:                            # fell behind (the loop was held up): from now
                     start, written, ahead = self.clock(), 0.0, 0.0
                 audio = len(self._pending) >= 2                      # a whole sample, at least
-                if audio and ahead < AUDIO_LEAD:
+                is_audio = audio and ahead < AUDIO_LEAD
+                if is_audio:
                     n = min(len(self._pending), chunk) & ~1
                     data = bytes(self._pending[:n])
                     del self._pending[:n]
@@ -164,6 +171,8 @@ class Speaker:
                 proc.stdin.write(data)
                 await proc.stdin.drain()
                 written += len(data) / (SPEAKER_RATE * 2)
+                if is_audio:
+                    self._audio_until = start + written
         except (BrokenPipeError, ConnectionResetError) as e:
             err = (await proc.stderr.read()).decode(errors="replace").strip()
             self._error = AudioError(f"the speaker stopped: {err or e}")

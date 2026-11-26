@@ -3,8 +3,7 @@ pi-server's core: the voice assistant (when PI_SERVER_VOICE is on), what hey-pi 
 state) and what it asks (its voice button) (app/protocol.py).
 
 The voice assistant reports its phases (app/voice/assistant.py: idle, listening, thinking, speaking);
-here they become the speech state: `speaking` only once its voice is heard; working out the reply
-(`thinking`) still looks like `listening`.
+here they become the speech state, one for one.
 """
 
 import asyncio
@@ -19,7 +18,7 @@ from app.voice.assistant import VoiceAssistant
 logger = logging.getLogger(__name__)
 
 SPEECH_OF: dict[str, SpeechState] = {
-    "idle": "idle", "listening": "listening", "thinking": "listening", "speaking": "speaking",
+    "idle": "idle", "listening": "listening", "thinking": "thinking", "speaking": "speaking",
 }
 
 

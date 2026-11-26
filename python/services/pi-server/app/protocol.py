@@ -4,10 +4,11 @@ object per message, tagged by "type". Mirrors hey-pi's lib/protocol/messages.dar
 
 pi-server -> hey-pi, on connect and on every change:
 
-    {"type": "speech", "state": "idle" | "listening" | "speaking"}
+    {"type": "speech", "state": "idle" | "listening" | "thinking" | "speaking"}
 
     idle       no voice session
-    listening  the session waits for you, hears you, or works out its reply
+    listening  the session waits for you, or hears you
+    thinking   you've finished: it works out its reply (the agent, its tools)
     speaking   its voice: from the reply's first sound until it has played
 
 hey-pi -> pi-server, its voice button:
@@ -25,7 +26,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-SpeechState = Literal["idle", "listening", "speaking"]
+SpeechState = Literal["idle", "listening", "thinking", "speaking"]
 
 
 class Speech(BaseModel):

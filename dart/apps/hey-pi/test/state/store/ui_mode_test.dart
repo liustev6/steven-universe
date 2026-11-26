@@ -15,6 +15,8 @@ void main() {
         (AppMode.idle, SpeechState.idle): UiMode.idle,
         (AppMode.dashboard, SpeechState.listening): UiMode.listening,
         (AppMode.idle, SpeechState.listening): UiMode.listening,
+        (AppMode.dashboard, SpeechState.thinking): UiMode.thinking,
+        (AppMode.idle, SpeechState.thinking): UiMode.thinking,
         (AppMode.dashboard, SpeechState.speaking): UiMode.speaking,
         (AppMode.idle, SpeechState.speaking): UiMode.speaking,
       };

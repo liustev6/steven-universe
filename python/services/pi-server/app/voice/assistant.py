@@ -19,8 +19,9 @@
     Only the wake word listens meanwhile (V6): heard over the reply, it's a barge-in: the reply stops
     at once (the speaker, the speech; the agent's turn interrupted, which agent-service ignores for a
     turn already complete) and the session waits for what the user says next
-Hey Pi sees `listening` for the whole session between turns, `thinking` and `speaking` in a turn,
-`idle` when it ends (V7), and the screen wakes at the wake word. Hey Pi's voice button is the wake
+Hey Pi sees `listening` for the whole session between turns, `thinking` and `speaking` in a turn
+(back to `thinking` while a tool runs once what was said before it has played), `idle` when it ends
+(V7), and the screen wakes at the wake word. Hey Pi's voice button is the wake
 word pressed (`woken`): the same session, the same rules. Push-to-talk and the debug endpoints use
 the same session (`listen`, `commit`, `say`, `cancel`). A hop that fails ends that turn, logged;
 the session goes on (V8).
@@ -51,6 +52,8 @@ PREROLL_FRAMES = 5                    # 500 ms kept before a voice starts a turn
 CONTEXT_TURNS = 2                     # the last turns given to speech-to-text as context
 CONTEXT_TURN_CHARS = 300              # each side of a turn, at most
 HOLDOFF_SECONDS = 0.3                 # after the wake word and after a reply: not yet a new voice
+QUIET_SECONDS = 0.3                   # a tool running and the speaker this long past what was said: thinking
+WATCH_SECONDS = 0.1                   # ... checked this often
 FRAME_MS = 100                        # the mic's frames (audio.py)
 
 
@@ -354,6 +357,14 @@ class VoiceAssistant:
             timings.setdefault(name, round((self.clock() - heard_at) * 1000))
 
         await self.ui.phase(turn_id, "thinking", transcript=text)
+        shown = "thinking"
+        tools: set[str] = set()                                        # the agent's tools running now
+
+        async def show(phase: str) -> None:
+            nonlocal shown
+            if phase != shown:
+                shown = phase
+                await self.ui.phase(turn_id, phase)
         self.wake.peak = 0.0                                           # how close its own voice comes to waking it
         texts: asyncio.Queue[Optional[str]] = asyncio.Queue()
         reply: list[str] = []
@@ -371,7 +382,7 @@ class VoiceAssistant:
         async def received(pcm: bytes) -> None:
             if "first_audio" not in timings:
                 mark("first_audio")
-                await self.ui.phase(turn_id, "speaking")
+            await show("speaking")                                     # again, after a tool's thinking
             audio.put_nowait(pcm)
 
         async def play() -> None:
@@ -401,9 +412,15 @@ class VoiceAssistant:
                     elif kind == "message.completed":
                         spoken.end()
                         texts.put_nowait(FLUSH)     # speak this message whole now: a search may come before the next
-                    elif kind == "tool.started" and str(event.get("name", "")).endswith(END_CONVERSATION):
-                        agent_ended = True                  # tools-service only acknowledges it; ending is ours
+                    elif kind == "tool.started":
+                        if str(event.get("name", "")).endswith(END_CONVERSATION):
+                            agent_ended = True              # tools-service only acknowledges it; ending is ours
+                        else:
+                            tools.add(str(event.get("tool_id") or event.get("name")))
+                    elif kind == "tool.completed":
+                        tools.discard(str(event.get("tool_id")))
                     elif kind == "turn.completed":
+                        tools.clear()
                         agent_done = True
                         mark("agent_done")
                         if event.get("status") != "completed":
@@ -412,7 +429,16 @@ class VoiceAssistant:
                         logger.warning("turn %s: the agent: %s", turn_id, event)
             texts.put_nowait(None)
 
+        async def thinking_again() -> None:
+            """Speaking, a tool running, and what was said before it heard: `thinking` until the next
+            audio (a search after "let me check")."""
+            while True:
+                await asyncio.sleep(WATCH_SECONDS)
+                if shown == "speaking" and tools and self.clock() >= speaker.audio_ends() + QUIET_SECONDS:
+                    await show("thinking")
+
         writing = asyncio.create_task(write())
+        watching = asyncio.create_task(thinking_again())
         try:
             # Side by side; the first to fail ends the turn (the speech refused: don't wait for the agent).
             await asyncio.wait([writing, speaking], return_when=asyncio.FIRST_EXCEPTION)
@@ -439,3 +465,5 @@ class VoiceAssistant:
             if not agent_done:                                         # don't leave it writing
                 await self.agent.cancel()
             raise
+        finally:
+            watching.cancel()

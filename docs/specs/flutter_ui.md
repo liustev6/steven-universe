@@ -47,7 +47,7 @@ Enclosure: `models/3d-print/home-control-frame/`.
 | D6 | Device pixel ratio ≈ **1.0**; the logical canvas is 1024×600 on both Pi and Mac. |
 | D7 | Pure-Dart packages only, no plugins with native code. |
 | D8 | **The protocol starts minimal and grows by adding message types** (2026-11-26: the first design's client/device split, mock feeds, settings and assistant messages were removed). Today: `speech`, pi-server → UI; `wake` (the voice button), UI → pi-server. `protocol/` and `connection/server_client.dart` stay **pure Dart**, so they can be shared later. |
-| D9 | **What the screen shows is derived, never stored:** pi-server's speech state when it isn't idle (`listening`, `speaking`), else the app's own mode (`dashboard`, `idle`) (2026-11-26). |
+| D9 | **What the screen shows is derived, never stored:** pi-server's speech state when it isn't idle (`listening`, `thinking`, `speaking`), else the app's own mode (`dashboard`, `idle`) (2026-11-26). |
 
 ## Hardware / display
 - Raspberry Pi 5, Raspberry Pi OS 64-bit (Bookworm). The current Pi runs the **desktop** image
@@ -114,8 +114,8 @@ handlers change a store.**
 | Store | Holds | Changed by |
 |---|---|---|
 | `appStoreProvider` (`store/app_store.dart`) | `AppMode` (`dashboard`, `idle`; D1) + theme mode: **app-only**, never sent | handlers, for user events (touches, the Sleep tile, the theme tile) and the idle timer |
-| `serverStoreProvider` (`store/server_store.dart`) | `ServerState`: what pi-server tells the app, one field per protocol message; today `speech` (`idle`, `listening`, `speaking`) | handlers, for the router's system events: `ServerSpeech` (each `speech` message), `ServerDisconnected` (`speech` → `idle`) |
-| `uiModeProvider` (`store/ui_mode.dart`) | `UiMode` (`dashboard`, `idle`, `listening`, `speaking`), **derived, never stored** (D9) | — |
+| `serverStoreProvider` (`store/server_store.dart`) | `ServerState`: what pi-server tells the app, one field per protocol message; today `speech` (`idle`, `listening`, `thinking`, `speaking`) | handlers, for the router's system events: `ServerSpeech` (each `speech` message), `ServerDisconnected` (`speech` → `idle`) |
+| `uiModeProvider` (`store/ui_mode.dart`) | `UiMode` (`dashboard`, `idle`, `listening`, `thinking`, `speaking`), **derived, never stored** (D9) | — |
 
 - **Events** (`state/events/`): each is a `UserEvent` or a `SystemEvent` (source) and may also have
   effect types: `AppModeEvent` (changes the app store), `ServerStateEvent` (changes the server store). **Handlers** (`state/handler/`): one function per event; through their
@@ -148,14 +148,15 @@ Models: `lib/protocol/messages.dart` (pure Dart) and pi-server's `app/protocol.p
 
 **pi-server → UI**, on connect and on every change:
 ```json
-{"type": "speech", "state": "idle | listening | speaking"}
+{"type": "speech", "state": "idle | listening | thinking | speaking"}
 ```
 
 | State | Means | pi-server's voice assistant |
 |---|---|---|
 | `idle` | no voice session | `IDLE` |
-| `listening` | the session waits for you, hears you, or works out its reply | `WAITING`, `LISTENING`, and `REPLYING` until the reply's first sound (its `thinking` phase) |
-| `speaking` | its voice: from the reply's first sound until it has played | `REPLYING`, from its first audio (its `speaking` phase) |
+| `listening` | the session waits for you, or hears you | `WAITING`, `LISTENING` |
+| `thinking` | you've finished: it works out its reply (the agent, its tools); again mid-reply while a tool runs, once what it said before has played | `REPLYING`, until the reply's first audio, and while a tool runs with the speaker past what was said (+0.3 s) (its `thinking` phase) |
+| `speaking` | its voice: from the reply's first sound until it has played | `REPLYING`, from its first audio, and again at the audio after a tool (its `speaking` phase) |
 
 **UI → pi-server, the voice button** (2026-11-26):
 ```json
@@ -206,12 +207,13 @@ span ≥ 2×2.
 3. **HA quick controls**: lights/scenes as toggle tiles (later, with Home Assistant).
 4. **Assistant**: not a tile: while speech isn't `idle`, the speech view replaces the screen (App
    state): the assistant's character (`AssistantFigure`, 480 px tall of the 600), listening (head tilted to a
-   cupped ear, incoming waves) or speaking (mouth moving, outgoing waves), on the sleep view's
+   cupped ear, incoming waves), thinking (head tilted, a hand under the chin, eyes glancing up,
+   three thought dots) or speaking (mouth moving, outgoing waves), on the sleep view's
    background (`AmbientBackground`: same vignette, same 15% dim over everything, figure included, as over
-   the sleep clock). Design source: `assets/svgs/assistant-{listening,speaking}.svg`. They animate with CSS
+   the sleep clock). Design source: `assets/svgs/assistant-{listening,thinking,speaking}.svg`. They animate with CSS
    (`@keyframes`, `var(--outline-color)`, `d: path()`), which flutter_svg doesn't run, so the
-   figure is a `CustomPainter` with the same paths (parsed by `path_parsing`) and the same 2.4 s
-   keyframes; an SVG change is mirrored there. Coloured like the clock's time digits: the palette's
+   figure is a `CustomPainter` with the same paths (parsed by `path_parsing`) and the same
+   keyframes (2.4 s loops; the thinking head's 4.8 s); an SVG change is mirrored there. Coloured like the clock's time digits: the palette's
    `assistant` gradient (the SVGs' `--outline-color`; today the same shaded white / near-black as
    `primary`), stretched over the drawing's own height (antennae to chin) as the clock's spans its
    digits. Reduced motion (`disableAnimations`): drawn still, as the SVGs'
@@ -315,7 +317,7 @@ dart/apps/hey-pi/
 │   ├── display/
 │   │   ├── dashboard_view.dart  # grid from layout
 │   │   ├── sleep_view.dart      # the ambient clock (`idle`), 1/min redraw, pixel shift
-│   │   ├── speech_view.dart     # listening / speaking: the figure on the ambient background
+│   │   ├── speech_view.dart     # listening / thinking / speaking: the figure on the ambient background
 │   │   ├── assistant_figure.dart # the character, painted from assets/svgs/assistant-*.svg
 │   │   └── touch_guard.dart     # every touch → UserUncategorizedClick (wake + idle reset)
 │   ├── layout/

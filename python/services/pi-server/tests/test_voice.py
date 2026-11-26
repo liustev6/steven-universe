@@ -53,6 +53,10 @@ class Voice:
 class Speaker:
     def __init__(self):
         self.audio, self.drained, self.stopped = b"", False, False
+        self.ends = 1e9                         # audio_ends: never played out, unless a test says so
+
+    def audio_ends(self):
+        return self.ends
 
     async def open(self):
         pass
@@ -113,7 +117,10 @@ class Agent:
 
     async def turn(self, text):
         self.asked.append(text)
-        for d in self.deltas:          # text; None: the message ends; a dict: that event as is
+        for d in self.deltas:          # text; None: the message ends; a dict: that event as is; an Event: wait
+            if isinstance(d, asyncio.Event):
+                await d.wait()
+                continue
             yield d if isinstance(d, dict) else ({"type": "message.completed"} if d is None else {"type": "message.delta", "text": d})
         if self.hang:
             await asyncio.sleep(3600)
@@ -632,4 +639,34 @@ def test_another_tool_doesnt_end_the_conversation():
         await r.frames(WAKE, QUIET, QUIET, QUIET, *VOICE, QUIET)
         await r.settle()
         assert r.va.state is State.WAITING and r.agent.ended == 0
+    run(go())
+
+
+def test_a_tool_after_speaking_shows_thinking_once_the_words_have_played():
+    """"Let me check", then a search: `speaking` while the words play, `thinking` once they have (and the
+    tool still runs), `speaking` again with the answer's audio."""
+    async def go():
+        gate = asyncio.Event()
+        started = {"type": "tool.started", "tool_id": "t1", "name": "tools.weather_current", "input": {}}
+        done = {"type": "tool.completed", "tool_id": "t1", "is_error": False, "output": "{}", "truncated": False}
+        r = Rig(agent=Agent(deltas=("Let me check.", None, started, gate, done, "Sunny.")))
+        await r.frames(WAKE, QUIET, QUIET, QUIET, *VOICE, QUIET)
+        await asyncio.sleep(0.25)
+        assert r.ui.phases[-1] == "speaking"                         # its words still playing
+        r.speaker.ends = r.now[0] - 1                                # ... played
+        await asyncio.sleep(0.25)
+        assert r.ui.phases[-1] == "thinking"
+        gate.set()                                                   # the tool done: the answer
+        await r.settle()
+        assert r.ui.phases == ["listening", "thinking", "speaking", "thinking", "speaking", "listening"]
+    run(go())
+
+
+def test_no_tool_running_no_thinking_in_a_pause():
+    async def go():
+        r = Rig()
+        r.speaker.ends = 0.0                                         # played out at once
+        await r.frames(WAKE, QUIET, QUIET, QUIET, *VOICE, QUIET)
+        await r.settle()
+        assert r.ui.phases == ["listening", "thinking", "speaking", "listening"]
     run(go())

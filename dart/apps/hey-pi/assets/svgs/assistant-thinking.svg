@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 320" fill="none" role="img" aria-labelledby="thinking-title thinking-desc">
+  <title id="thinking-title">Voice assistant — thinking</title>
+  <desc id="thinking-desc">A thoughtful outline character tilts its head, glances upward, and rests one solid hand under its chin. Three thought dots pulse gently. Set --outline-color to change the entire character's color.</desc>
+  <style>
+    .va-thinking-head{transform-origin:176px 190px;transform:rotate(-3deg);animation:va-ponder 4.8s ease-in-out infinite}
+    .va-thinking-eyes{animation:va-glance 4.8s ease-in-out infinite}
+    .va-thinking-dot{opacity:.25;animation:va-thought 2.4s ease-in-out infinite}
+    .va-thinking-dot.two{animation-delay:.25s}
+    .va-thinking-dot.three{animation-delay:.5s}
+    @keyframes va-ponder{0%,100%{transform:rotate(-3deg)}45%,65%{transform:rotate(-6deg)}}
+    @keyframes va-glance{0%,100%{transform:translate(0,0)}35%,65%{transform:translate(4px,-3px)}}
+    @keyframes va-thought{0%,70%,100%{opacity:.25}30%{opacity:1}}
+    @media(prefers-reduced-motion:reduce){.va-thinking-head,.va-thinking-eyes,.va-thinking-dot{animation:none}.va-thinking-dot{opacity:.65}}
+  </style>
+  <g class="va-thinking-head">
+    <g stroke="var(--outline-color, currentColor)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m145 77-19-31m81 31 19-31"/>
+      <path d="M122 77h108q47 0 47 47v80q0 47-47 47H122q-47 0-47-47v-80q0-47 47-47"/>
+      <g class="va-thinking-eyes">
+        <path d="M137 139v10M225 132v10"/>
+      </g>
+      <path d="M164 191q12-4 24 0" stroke-width="12"/>
+    </g>
+    <g fill="var(--outline-color, currentColor)">
+      <rect x="44" y="205" width="20" height="34" rx="10" transform="rotate(-12 54 222)"/>
+      <path d="M205 258c-2-6 3-11 9-10l9 2 6-18c2-7 13-4 11 4l-4 17c-1 11-10 19-21 18-8-1-13-6-10-13Z"/>
+    </g>
+  </g>
+  <g fill="var(--outline-color, currentColor)">
+    <circle class="va-thinking-dot" cx="278" cy="62" r="4"/>
+    <circle class="va-thinking-dot two" cx="298" cy="49" r="5"/>
+    <circle class="va-thinking-dot three" cx="323" cy="43" r="6"/>
+  </g>
+</svg>

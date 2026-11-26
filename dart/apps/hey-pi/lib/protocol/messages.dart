@@ -4,7 +4,7 @@
 /// pi-server → hey-pi, on connect and on every change:
 ///
 /// ```json
-/// {"type": "speech", "state": "idle" | "listening" | "speaking"}
+/// {"type": "speech", "state": "idle" | "listening" | "thinking" | "speaking"}
 /// ```
 ///
 /// hey-pi → pi-server, the voice button (as if the wake word were heard):
@@ -23,8 +23,11 @@ enum SpeechState {
   /// No voice session: the app shows its own mode.
   idle,
 
-  /// The session waits for you, hears you, or works out its reply.
+  /// The session waits for you, or hears you.
   listening,
+
+  /// You've finished: it works out its reply (the agent, its tools), until the reply's first sound.
+  thinking,
 
   /// Its voice: from the reply's first sound until it has played.
   speaking;
