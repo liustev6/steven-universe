@@ -119,6 +119,24 @@ pi-server ──turn (its token)──▶ agent-service ──▶ sandbox: Codex
 **Later (not CP5):** Home Assistant's tools (`home.*`) with their classes, and confirmations (G12):
 "turn off the kitchen lights" works, "unlock the door" asks you first on Hey Pi.
 
+## Safety (checked live, 5.5, 2026-11-26)
+**The threat model:** the sandbox is compromised. A prompt injection (in what the user says, a web page,
+a tool's result) or the model's own code (Codex's `functions.exec` runs in the sandbox) can send the
+gateway anything. So the checks don't depend on the model behaving: they're the gateway's and
+tools-service's, on every request, whoever wrote it.
+
+| Attack | Stopped by | Live result |
+|---|---|---|
+| an injected instruction to call a tool the session doesn't have | the session's list (TL7): the model has no such tool, and the gateway refuses the name anyway | the model refused; `home_unlock`, `admin_shell` sent straight from the pod: "Unknown tool", logged, never forwarded |
+| a real tool, called by code between turns | no caller token outside a turn (TL4) | refused, nothing forwarded |
+| a caller with no grant, using a profile that has tools | the exchange (no grant at tools-service) | 0 tools; its pod's call: "Unknown tool" |
+| a loop of calls | `max_tool_calls`, counted in PostgreSQL (TL10) | 20 answered, then refused; tools-service saw exactly 20 |
+| the capability used from another pod | pairing (C7) | 403, logged (5.3) |
+| a token in the sandbox | none ever enters it (TL3) | the sandbox holds only its capability |
+
+Not staged: an injection inside a real tool result (tools-service's are our own) or a web page. The
+checks above don't depend on where an instruction came from.
+
 ## Open questions
 - **A turn longer than the token** (10 minutes, `exp` ≤ the caller's token's): tools stop working
   mid-turn. Voice turns are seconds; a long task profile will need agent-service to exchange again
