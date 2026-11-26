@@ -24,8 +24,8 @@ pi-server → Hey Pi, on connect and on every change (`app/protocol.py`):
 {"type": "speech", "state": "idle | listening | thinking | speaking"}
 ```
 `idle`: no voice session. `listening`: the session waits for you, or hears you. `thinking`: you've
-finished, and it works out its reply (again mid-reply while a tool runs, once what it said before
-has played: `Speaker.audio_ends`). `speaking`: its voice, from the reply's first sound until it
+finished, and it works out its reply (again between its messages, once what it said has played:
+`Speaker.audio_ends`). `speaking`: its voice, from the reply's first sound until it
 has played. The voice assistant's phases, one for one (`app/server.py`).
 
 Hey Pi → pi-server, its voice button:

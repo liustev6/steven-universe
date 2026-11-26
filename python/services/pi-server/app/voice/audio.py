@@ -107,7 +107,10 @@ class Speaker:
 
     def audio_ends(self) -> float:
         """When the reply's audio given so far will have played, by `clock` (aplay adds its 40 ms start).
-        Past it, only silence plays: what was said has been heard."""
+        Past it, only silence plays: what was said has been heard (it stays put while nothing new comes,
+        so `clock() - audio_ends()` is how long ago that was)."""
+        if not self._pending:
+            return self._audio_until
         return max(self._audio_until, self.clock()) + len(self._pending) / (SPEAKER_RATE * 2)
 
     async def drain(self) -> None:

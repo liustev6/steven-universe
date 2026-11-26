@@ -642,31 +642,35 @@ def test_another_tool_doesnt_end_the_conversation():
     run(go())
 
 
-def test_a_tool_after_speaking_shows_thinking_once_the_words_have_played():
-    """"Let me check", then a search: `speaking` while the words play, `thinking` once they have (and the
-    tool still runs), `speaking` again with the answer's audio."""
+def test_between_messages_thinking_once_the_words_have_played():
+    """"Let me check", then a search: `speaking` while the words play, `thinking` once they have (the
+    search, the model writing the answer), `speaking` again with the answer's audio."""
     async def go():
         gate = asyncio.Event()
-        started = {"type": "tool.started", "tool_id": "t1", "name": "tools.weather_current", "input": {}}
-        done = {"type": "tool.completed", "tool_id": "t1", "is_error": False, "output": "{}", "truncated": False}
-        r = Rig(agent=Agent(deltas=("Let me check.", None, started, gate, done, "Sunny.")))
+        started = {"type": "tool.started", "tool_id": "t1", "name": "web_search", "input": {}}
+        done = {"type": "tool.completed", "tool_id": "t1", "is_error": False, "output": "", "truncated": False}
+        r = Rig(agent=Agent(deltas=("Let me check.", None, started, done, gate, "Sunny.")))
         await r.frames(WAKE, QUIET, QUIET, QUIET, *VOICE, QUIET)
         await asyncio.sleep(0.25)
         assert r.ui.phases[-1] == "speaking"                         # its words still playing
-        r.speaker.ends = r.now[0] - 1                                # ... played
+        r.speaker.ends = r.now[0] - 1                                # ... played; the tool already done
         await asyncio.sleep(0.25)
-        assert r.ui.phases[-1] == "thinking"
-        gate.set()                                                   # the tool done: the answer
+        assert r.ui.phases[-1] == "thinking"                         # the model writing the answer
+        gate.set()
         await r.settle()
         assert r.ui.phases == ["listening", "thinking", "speaking", "thinking", "speaking", "listening"]
     run(go())
 
 
-def test_no_tool_running_no_thinking_in_a_pause():
+def test_a_pause_within_a_message_stays_speaking():
     async def go():
-        r = Rig()
-        r.speaker.ends = 0.0                                         # played out at once
+        gate = asyncio.Event()
+        r = Rig(agent=Agent(deltas=("Sunny, ", gate, "and warm.")))
         await r.frames(WAKE, QUIET, QUIET, QUIET, *VOICE, QUIET)
+        r.speaker.ends = r.now[0] - 1                                # played out mid-message
+        await asyncio.sleep(0.25)
+        assert r.ui.phases[-1] == "speaking"
+        gate.set()
         await r.settle()
         assert r.ui.phases == ["listening", "thinking", "speaking", "listening"]
     run(go())

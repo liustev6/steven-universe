@@ -122,7 +122,8 @@ def test_it_knows_when_what_it_was_given_has_played(tmp_path):
         await s.write(audio(0.5))
         assert abs(s.audio_ends() - (t0 + 0.5)) < 0.1
         await asyncio.sleep(0.8)
-        assert s.audio_ends() <= time.monotonic() + 0.01             # played: what's left is silence
+        quiet_for = time.monotonic() - s.audio_ends()                 # played: silence since, ~0.3 s
+        assert 0.2 < quiet_for < 0.4
         await s.stop()
 
     run(go())

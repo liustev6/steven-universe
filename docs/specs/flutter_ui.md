@@ -155,8 +155,8 @@ Models: `lib/protocol/messages.dart` (pure Dart) and pi-server's `app/protocol.p
 |---|---|---|
 | `idle` | no voice session | `IDLE` |
 | `listening` | the session waits for you, or hears you | `WAITING`, `LISTENING` |
-| `thinking` | you've finished: it works out its reply (the agent, its tools); again mid-reply while a tool runs, once what it said before has played | `REPLYING`, until the reply's first audio, and while a tool runs with the speaker past what was said (+0.3 s) (its `thinking` phase) |
-| `speaking` | its voice: from the reply's first sound until it has played | `REPLYING`, from its first audio, and again at the audio after a tool (its `speaking` phase) |
+| `thinking` | you've finished: it works out its reply (the agent, its tools); again between its messages, once what it said has played ("let me check", then its searches and the answer being written) | `REPLYING`, until the reply's first audio, and between messages with the speaker past what was said (+0.3 s) (its `thinking` phase) |
+| `speaking` | its voice: from the reply's first sound until it has played | `REPLYING`, from its first audio, and again at the next message's audio (its `speaking` phase) |
 
 **UI → pi-server, the voice button** (2026-11-26):
 ```json
