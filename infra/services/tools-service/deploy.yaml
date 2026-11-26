@@ -4,7 +4,7 @@
 # Spec: docs/specs/agent-service/tools.md.
 service: tools-service
 host: tools-host
-pipeline: false                        # by hand until the deployer knows the host (lxc-setup.md step 13)
+pipeline: true                         # since 2026-11-26, after its first hand deploy (CP5 5.2)
 wave: 1
 code: python/services/tools-service
 libs: [service-auth]                   # in the image (its Dockerfile copies it; CI checks)
