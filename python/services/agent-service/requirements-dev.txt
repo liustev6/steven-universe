@@ -2,6 +2,7 @@
 -r requirements.txt
 -e ../../libs/service-auth[fastapi]   # token checks (ServiceAuth) and tokens (TokenClient)
 -e ../../libs/agent-runtime           # protocol A (core.types)
+-e ../../libs/shared-schemas          # protocol B (shared_schemas.agent_service)
 pytest==9.2.0
 pytest-asyncio==1.5.0
 testcontainers[postgres]==4.15.0     # a real PostgreSQL 17 for the tests (needs Docker)
