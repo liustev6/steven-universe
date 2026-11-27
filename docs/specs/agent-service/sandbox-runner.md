@@ -8,10 +8,12 @@ agent-service, and the pods' proxies forward to agent-service's gateway
 gateway in that place.
 The worker VM exists (VM 200, [sandbox-worker-setup.md](../../sandbox-worker-setup.md)); gVisor
 measured (below).
-**Planned paths:**
-- `python/services/sandbox-runner/`: the runner;
-- `python/services/egress-proxy/`, or a stock proxy with config: the sandboxes' only way out;
-- `infra/services/sandbox-runner/`: manifest and config.
+**Paths:**
+- `python/services/sandbox-runner/`: the runner (`app/pool.py` the pods, `egress.py` the proxy's config,
+  `mounts.py` the mounters' folders, `backend.py` Docker);
+- `infra/services/sandbox-runner/`: manifest, config and `templates.yaml`.
+The proxy and the mounter are stock images, configured at start (no Dockerfile of ours): "A pod in
+detail" below.
 
 Part of [agent-service](README.md). Related: [deployer.md](../deployer.md), [lxc-setup.md](../../lxc-setup.md)
 (host setup pattern), [boot.md](../boot.md).
@@ -33,8 +35,8 @@ pve01
         │                   forwards only to agent-service's gateway
         ├── sandbox-N       agent-runtime under runsc; reaches only egress-proxy-N, by IP (R11);
         │                   /workspace = /srv/workspaces/<id> on the XFS disk, under a quota (R13)
-        └── mounter-N       milestone 2: rclone mount of the session's files, bind-mounted
-                            read-only into sandbox-N at /workspace/inputs
+        └── mounter-N       rclone mount of the session's files (the gateway's /dav), bind-mounted
+                            read-only into sandbox-N at /workspace/inputs (R10, CP6)
 ```
 
 ## Decisions
@@ -93,6 +95,87 @@ starting ──(agent-runtime ready)──▶ warm ──claim──▶ claimed 
 
 The setup steps follow [lxc-setup.md](../../lxc-setup.md), adapted for a VM: `qm` instead of `pct`,
 plus the gVisor install. A runbook gets written when it's built.
+
+## A pod in detail: containers, host folders, network
+Checked on VM 200 (2026-11-27). A pod isn't a Docker object: it's the runner's name for the
+containers that share one network and one lifecycle (the idea of a Kubernetes pod), tied together
+by their names (`proxy-`, `mounter-`, `sandbox-<id>`), labels, and network `pod-<id>`.
+
+```
+LAN 192.168.50.0/24
+├── CT 107 agent-service: the gateway, https://agent.lan.liustev6.ca:8443   SERVER, outside the VM
+├── CT 103 file-management                                                  SERVER, outside the VM
+└── VM 200 "sandbox-worker" 192.168.50.95   (Debian, Docker, gVisor)
+    ├── container sandbox-runner     SERVER: :8443, published as the VM's :443 (agent-service calls it)
+    │     runc, privileged, the Docker socket; network sandbox-runner_default (172.18.0.0/16)
+    │     creates and destroys everything below
+    └── one pod (6 at most), created by the runner at warm-up
+          network pod-<id>: a /28 of 172.29.0.0/16, internal, no address on the VM
+          ├── container proxy-<id>     SERVER: nginx on :8080, for its own pod only      runc
+          │     .2 on the pod network, and on sandbox-egress (its only way to the gateway)
+          ├── container mounter-<id>   CLIENT: rclone (FUSE) → http://.2:8080/dav/     runc, SYS_ADMIN, /dev/fuse
+          │     .4
+          └── container sandbox-<id>   CLIENT: agent-runtime, Codex its child process  runsc (gVisor), no capabilities
+                .3                    listens on nothing; calls only http://.2:8080/…
+```
+
+**The containers:**
+
+| Container | Image | Built by | Configured by |
+|---|---|---|---|
+| `proxy-<id>` | `nginxinc/nginx-unprivileged:stable-alpine` (stock, `PROXY_IMAGE`) | NGINX | `nginx.conf` from `egress.py`, bound read-only over the image's own |
+| `mounter-<id>` | `rclone/rclone:1.69.1` (stock, `MOUNTER_IMAGE`) | rclone | its command line (`mounts.py` `mounter_command`) and the session folder |
+| `sandbox-<id>` | `agent-runtime`, by digest (`templates.yaml`) | our CI (`python/libs/agent-runtime/Dockerfile`, R8) | the session file it waits for (R7) |
+| `sandbox-runner` | ours, by commit | our CI (`python/services/sandbox-runner/Dockerfile`) | `config.env`, `templates.yaml` |
+
+The runner pulls the stock images itself at start. Every container gets a read-only root, no
+capabilities, `no-new-privileges`, limits and capped logs; the mounter alone adds back `SYS_ADMIN`,
+`/dev/fuse` and AppArmor unconfined (what FUSE needs, R10).
+
+**The host folders:** directories on the VM, made by the runner and bind-mounted into the pod's
+containers at fixed paths. They are how the runner talks to a container (it writes a file; it never
+opens a connection into a pod or execs into one), and how containers share (the mounter's mount
+reaches the sandbox only because both are given part of the same folder).
+
+| On the VM | Into | As | Written by | Read by |
+|---|---|---|---|---|
+| `/srv/workspaces/<id>/` (XFS, a quota) | sandbox | `/workspace` (rw) | the agent | the agent (`work/`, `outputs/`; R13) |
+| `/run/sandbox-runner/sessions/<id>/` | sandbox, mounter | `/run/session` (ro) | the runner: `capability` empty at warm-up; at the claim `capability`, then `session.json` | agent-runtime, rclone (R7, R10) |
+| `/run/sandbox-runner/proxies/<id>.conf` | proxy | `/etc/nginx/nginx.conf` (ro) | the runner, at warm-up | nginx |
+| `/run/sandbox-runner/mounts/<id>/` | mounter | `/mnt` (rw, rshared) | rclone's FUSE mount | the VM, the runner (bound rshared too) |
+| `…/mounts/<id>/inputs` | sandbox | `/workspace/inputs` (ro) | rclone | the agent |
+
+`/run` is a tmpfs: a reboot leaves none of these behind; the workspace is deleted with its pod.
+
+**Who wires it together: the runner, at warm-up** (`pool.py` `_create`), in order: the workspace;
+the network; the proxy's config (the **real** gateway URL, the runner's `GATEWAY_URL`, and the pod's
+id) and the proxy on both networks; the mounter, pointed at the proxy; the sandbox. At the claim it
+writes `session.json`, whose `gateway_url` is **the proxy's address** (`http://<.2>:8080`,
+`Pod.gateway_url`): the sandbox and Codex call it "the gateway" but never learn the real one, which
+only the proxy's config holds. And they can't go around it: the pod network is `internal` (no route,
+no NAT), so from `.3` only `.2` (and `.4`) answer. The proxy forwards every request, whatever its URL
+or Host, to the one upstream, replacing `X-Sandbox-Id` with its pod's id, verifying the gateway's
+TLS certificate and streaming both ways (R12); the gateway pairs the capability with that stamp (C7).
+
+**The networks on VM 200:**
+
+| Network | Kind | On it | Reaches |
+|---|---|---|---|
+| the VM's interface | 192.168.50.95 | the VM | the LAN, behind the Proxmox firewall (R5) |
+| `sandbox-runner_default` | Docker bridge | the runner | the LAN (NAT); its `:8443` published as the VM's `:443` |
+| `sandbox-egress` | Docker bridge | **only the proxies** | the LAN (NAT): the gateway |
+| `pod-<id>`, one per pod | Docker bridge, `internal`, a /28 | its proxy `.2`, sandbox `.3`, mounter `.4` | **only each other** |
+
+- **No address on the VM** for a pod's bridge (`inhibit_ipv4`; checked: no `172.29.x` address on
+  the VM): a sandbox can't reach the VM's own ports, its SSH included (CP2 found that hole).
+- **One bridge per pod:** pods can't see each other or each other's mounters.
+- **The proxy is the only container on two networks:** the pod's one door. It resolves the
+  gateway's name through Docker's DNS (`127.0.0.11`).
+- **A request's path** (Codex asking the model): sandbox `.3` → `http://.2:8080/model/responses` →
+  proxy (+ `X-Sandbox-Id`) → `sandbox-egress`, NAT out of 192.168.50.95 →
+  `https://agent.lan.liustev6.ca:8443` (CT 107) → the gateway checks the capability and the stamp →
+  OpenAI with your login. rclone's `/dav` takes the same road from `.4`; the gateway, not the pod,
+  then reads file-management (CT 103) with a token exchanged for the session's caller.
 
 ## Measured through the deployed runner (CP2 2.8, 2026-11-13)
 The dev gateway (agent-service's stand-in) claimed from `https://sandbox-runner.lan.liustev6.ca`
@@ -165,6 +248,10 @@ turns, an interrupt, then a benchmark inside the sandbox.
 | agent-service starting containers itself | it would hold credentials and control Docker at once |
 
 ## Open questions
+- **Pin the stock images by digest:** the sandbox image is pinned by digest, but `PROXY_IMAGE`
+  (`stable-alpine`, a moving tag) and `MOUNTER_IMAGE` (`1.69.1`, a version tag that could be
+  re-pushed) only by tag; `image@sha256:…` would make every pod's proxy and mounter reproducible
+  (R12 says the proxy is "pinned by digest"; the code doesn't, yet).
 - VM size and pool sizes, after measuring what a sandbox needs (Codex and its tools).
 - **Network for tools** (decided in outline, built later): web search is Codex's server-side tool
   (no sandbox network); screenshots of an app inside the sandbox need a browser template, not a
