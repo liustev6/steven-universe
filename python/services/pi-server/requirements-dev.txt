@@ -3,6 +3,7 @@
 # Include base requirements
 -r requirements.txt
 -e ../../libs/service-auth
+-e ../../libs/shared-schemas      # protocol B: agent-service's events
 
 # Tests (FastAPI's TestClient needs httpx)
 pytest==8.3.5
