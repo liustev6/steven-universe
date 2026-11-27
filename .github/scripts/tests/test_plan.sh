@@ -115,4 +115,27 @@ printf '    labels: {cfg: "${CONFIG_FILES_SHA:-none}"}\n' >>python/services/a/co
 C12="$(commit "now it does")"
 o="$(run "$C12" push "$C11" "")"
 expect_eq "with the hash in its compose, it plans (and deploys a)" "$(svcs wave1 "$o")" "a"
+
+# Syncs (D21): a folder mirrored when it or its manifest changes; a manual run by name.
+syncs() { sed -n 's/^syncs=//p' <<<"$1" | jq -r 'join(",")'; }
+mkdir -p infra/syncs docs/specs && echo spec >docs/specs/s.md
+printf 'sync: specs\nsource: docs/specs\ndestination: public/x/specs/\n' >infra/syncs/specs.yaml
+C13="$(commit "a sync")"
+o="$(run "$C13" push "$C12" "")"
+expect_eq "a new sync manifest: it runs" "$(syncs "$o")" "specs"
+echo spec2 >docs/specs/s.md; C14="$(commit "a spec edited")"
+o="$(run "$C14" push "$C13" "")"
+expect_eq "its folder changed: it runs, and deploys nothing" "$(syncs "$o")/$(svcs wave1 "$o")/$(svcs wave2 "$o")" "specs//"
+echo doc3 >docs/x.md; C15="$(commit "another doc")"
+o="$(run "$C15" push "$C14" "")"
+expect_eq "a file next to its folder (docs/x.md): no sync" "$(syncs "$o")" ""
+mkdir -p docs/specsx && echo x >docs/specsx/a.md; C16="$(commit "a folder with the same start")"
+o="$(run "$C16" push "$C15" "")"
+expect_eq "docs/specsx/ isn't docs/specs/: no sync" "$(syncs "$o")" ""
+o="$(run "$C16" workflow_dispatch "" "specs")"
+expect_eq "a manual run names it: it runs (and deploys nothing)" "$(syncs "$o")/$(svcs wave1 "$o")" "specs/"
+printf 'sync: other\nsource: docs/specs\ndestination: public/x/\n' >infra/syncs/specs.yaml
+C17="$(commit "a manifest named wrong")"
+o="$(run "$C17" push "$C16" "")"
+expect_contains "a manifest whose sync isn't its file name fails the plan" "$o$(cat "$T/log")" "sync must equal the file name"
 finish

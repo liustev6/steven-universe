@@ -82,3 +82,17 @@ def test_deployer_down_is_502(deployer, client):
     deployer.fail = True
     r = deploy(client)
     assert r.status_code == 502 and r.json()["message"] == "the deployer is unavailable"
+
+
+def test_a_sync_is_forwarded_unchanged(client, deployer):
+    """POST /deploy/v1/syncs -> the deployer's /v1/syncs (D21), with the same edge checks."""
+    deployer.chunks = (b'{"sync": "specs", "status": "succeeded"}',)
+    token = fake_jwt(sha="b" * 40)
+    r = client.post("/deploy/v1/syncs", headers={"Authorization": f"Bearer {token}"},
+                    content=json.dumps({"sync": "specs", "sha": "b" * 40}))
+    assert r.status_code == 200 and r.json()["status"] == "succeeded"
+    sent = deployer.requests[0]
+    assert str(sent.url) == "https://deploy.lan.liustev6.ca/v1/syncs"
+    assert sent.headers["authorization"] == f"Bearer {token}"
+    assert json.loads(sent.content) == {"sync": "specs", "sha": "b" * 40}
+    assert client.post("/deploy/v1/syncs", content="{}").status_code == 401      # the pre-check

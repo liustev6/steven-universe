@@ -29,6 +29,7 @@ def error(status: int, code: str, message: str, request: Request, headers: dict 
 def build_router(settings: Settings, http: httpx.AsyncClient) -> APIRouter:
     router = APIRouter()
     base = settings.DEPLOYER_URL.rstrip("/") + "/v1/deployments"
+    syncs = settings.DEPLOYER_URL.rstrip("/") + "/v1/syncs"
     # Starting deploys is rare; reconnecting (a few polls while api-service itself restarts) less so.
     starts = RateLimiter(settings.DEPLOY_RATE_BURST, settings.DEPLOY_RATE_PER_MINUTE)
     reconnects = RateLimiter(settings.DEPLOY_EVENTS_RATE_BURST, settings.DEPLOY_EVENTS_RATE_PER_MINUTE)
@@ -76,6 +77,12 @@ def build_router(settings: Settings, http: httpx.AsyncClient) -> APIRouter:
     @router.post("/deploy/v1/deployments", dependencies=[Depends(access(Mode.PROXY))])
     async def start(request: Request):
         return await forward(request, starts, "POST", base)
+
+    @router.post("/deploy/v1/syncs", dependencies=[Depends(access(Mode.PROXY))])
+    async def sync(request: Request):
+        # A folder of the repository mirrored into file-management by the deployer (deployer D21):
+        # as rare as deploys, so it shares their rate limit.
+        return await forward(request, starts, "POST", syncs)
 
     @router.get("/deploy/v1/deployments/{deployment_id}/events", dependencies=[Depends(access(Mode.PROXY))])
     async def events(deployment_id: str, request: Request, after: int = -1):

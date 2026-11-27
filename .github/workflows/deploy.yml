@@ -1,5 +1,6 @@
 # deploy: deploy a wave of services through api-service -> deployer (one job per service, in
-# parallel). Called by build.yml, once per wave; never run on its own.
+# parallel), or run syncs (D21: a repository folder mirrored into file-management, one job per
+# sync). Called by build.yml, once per wave and once for the syncs; never run on its own.
 # Spec: docs/specs/deployer.md (D2-D5, D17, D19, "GitHub side").
 #
 # GitHub's OIDC token minted here carries job_workflow_ref = .../deploy.yml@refs/heads/main: the
@@ -12,13 +13,18 @@ on:
       services:
         description: 'JSON list of {"service": ..., "image_sha": ...} (from plan.sh)'
         type: string
-        required: true
+        default: '[]'
+      syncs:
+        description: 'JSON list of sync names (from plan.sh: infra/syncs/<name>.yaml)'
+        type: string
+        default: '[]'
 
 permissions: {}
 
 jobs:
   deploy:
     name: deploy ${{ matrix.service }}
+    if: inputs.services != '[]'
     runs-on: ubuntu-24.04
     environment: production           # main only; the deployer requires it in the token (D17)
     permissions: {contents: read, id-token: write}
@@ -35,3 +41,22 @@ jobs:
           SERVICE: ${{ matrix.service }}
           IMAGE_SHA: ${{ matrix.image_sha }}
         run: bash .github/scripts/deploy.sh
+
+  sync:
+    name: sync ${{ matrix.sync }}
+    if: inputs.syncs != '[]'
+    runs-on: ubuntu-24.04
+    environment: production           # the same token rules as a deploy (D17)
+    permissions: {contents: read, id-token: write}
+    concurrency: {group: "sync-${{ matrix.sync }}", cancel-in-progress: false}
+    strategy:
+      fail-fast: false
+      matrix:
+        sync: ${{ fromJSON(inputs.syncs) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with: {sparse-checkout: .github/scripts, persist-credentials: false}
+      - name: Sync (api-service -> deployer -> file-management)
+        env:
+          SYNC: ${{ matrix.sync }}
+        run: bash .github/scripts/sync.sh

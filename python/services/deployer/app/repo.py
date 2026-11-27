@@ -63,6 +63,28 @@ class Repo:
     async def subject(self, sha: str) -> str:
         return await _git(self.path, "log", "-1", "--format=%s", sha, check=False)
 
+    async def files(self, sha: str, folder: str) -> list[str]:
+        """Every file under `folder` at that commit (recursively; symlinks and submodules left out)."""
+        code, out, err = await _run_bytes(self.path, "ls-tree", "-r", "-z", sha, "--", folder.rstrip("/") + "/")
+        if code:
+            raise RepoError(f"git ls-tree failed: {err.decode(errors='replace').strip()}")
+        files = []
+        for entry in out.split(b"\0"):
+            if not entry:
+                continue
+            meta, _, path = entry.partition(b"\t")
+            mode, kind = meta.split(b" ")[:2]
+            if kind == b"blob" and mode in (b"100644", b"100755"):
+                files.append(path.decode())
+        return files
+
+    async def blob(self, sha: str, path: str) -> bytes:
+        """A file's exact bytes at that commit (a partial clone fetches its contents on demand)."""
+        code, out, err = await _run_bytes(self.path, "cat-file", "blob", f"{sha}:{path}")
+        if code:
+            raise RepoError(f"git cat-file {path} failed: {err.decode(errors='replace').strip()}")
+        return out
+
 
 async def _run(cwd: Path | None, *args: str) -> tuple[int, str, str]:
     cmd = ["git", *(["-C", str(cwd)] if cwd else []), *args]
@@ -72,6 +94,15 @@ async def _run(cwd: Path | None, *args: str) -> tuple[int, str, str]:
     )
     out, err = await proc.communicate()
     return proc.returncode or 0, out.decode().rstrip("\n"), err.decode().strip()
+
+
+async def _run_bytes(cwd: Path, *args: str) -> tuple[int, bytes, bytes]:
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"}
+    proc = await asyncio.create_subprocess_exec(
+        "git", "-C", str(cwd), *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=env
+    )
+    out, err = await proc.communicate()
+    return proc.returncode or 0, out, err
 
 
 async def _git(cwd: Path | None, *args: str, check: bool = True) -> str:

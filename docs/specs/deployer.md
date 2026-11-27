@@ -70,6 +70,7 @@ how much power the decider holds:
 | D18 | **LAN break-glass:** `docker exec deployer-deployer-1 python -m app.cli deploy <service> [<ref>]` deploys without a GitHub token (any pushed branch, `pipeline: false` allowed, allowlisted hosts only). Only root on CT 105 can run it, and root there already holds everything the deployer holds. |
 | D19 | **Waves** (as Argo CD sync waves). Manifest `wave`: 1 = services (in parallel), 2 = the edge (api-service), only after wave 1 succeeded. Backends go before their callers, and the conduit every deploy stream passes through goes last. A change that needs a new auth-service grant deploys auth-service by hand first. |
 | D20 | **Images that aren't services, and config files that name them.** `infra/images/<name>.yaml` defines an image nothing deploys directly (the sandbox image, `agent-runtime`): CI builds it like a service image, and a service listing it under `images` is redeployed when it changes. A manifest's `files` are installed as `/etc/<service>/<name>`, each `${image:<name>}` replaced by that image **pinned by digest** (pulled and checked on the host; `fill-images.py` never leaves a placeholder). Their hash, `CONFIG_FILES_SHA`, labels the container (CI checks the compose uses it), so a changed file recreates it: a mounted file is invisible to compose (Helm's `checksum/config` pattern). | Found in agent-service CP2: without the label, a new sandbox image was pinned into the runner's templates but the runner kept running with the old ones, and the deploy's checks passed against the old container. |
+| D21 | **Syncs: a folder of the repository mirrored into file-management** (2026-11-27, agent-service CP6 6.4). `infra/syncs/<name>.yaml` (`sync`, `source` folder, `destination` `<bucket>/<prefix>/`), reviewed in git like a service's manifest. A push changing a sync's `source` or manifest runs it after the deploy waves (`plan.sh` → `deploy.yml`'s `sync` job → `sync.sh` → `POST /deploy/v1/syncs`); `workflow_dispatch` with its name re-runs it. The deployer checks GitHub's token exactly as for a deploy, reads the manifest **and the files** at that commit from its own clone (a request names only the sync and the commit), then mirrors: uploads what's new or changed (an object whose ETag already equals the file's MD5 isn't written again), deletes what was removed, refuses an empty `source` (never empties a destination), and audits it (`"kind": "sync"`). It writes with its own auth-service token, whose file-management grant (`policy.yaml`) is the real limit: `public/steven-universe/` only. The first: `specs`, `docs/specs` → `public/steven-universe/specs/`. | Agent sessions and Steven AI read the specs from file-management, which only the LAN reaches; GitHub reaches the LAN only through the deployer's route, with no credential of ours. The same rules as a deploy: nothing in GitHub, nothing the request can choose but a name. |
 
 ## GitHub side
 ```
@@ -118,6 +119,18 @@ right away: `infra/deployment/deploy.sh <service> <sha>`, or the deployer's CLI 
   without credentials.
 
 ## Deployer API
+**`POST /v1/syncs`** (as `/deploy/v1/syncs` through api-service; D21)
+```json
+{"sync": "specs", "sha": "<40 hex>"}
+```
+- **Response:** `200` with the result (a sync takes seconds: no stream), `502` if the mirror failed
+  partway; refusals as for a deploy (`401`/`403` the token, `404` no such manifest at that commit,
+  `409` already running, `422` a bad request or manifest, an empty source, a commit not on `main`).
+```json
+{"sync": "specs", "sha": "…", "destination": "public/steven-universe/specs/", "status": "succeeded",
+ "files": 19, "uploaded": ["voice-path.md"], "unchanged": 18, "deleted": [], "seconds": 1.4}
+```
+
 **`POST /v1/deployments`** (as `/deploy/v1/deployments` through api-service)
 ```json
 {"service": "file-management", "sha": "<40 hex>", "image_digest": "sha256:…"}

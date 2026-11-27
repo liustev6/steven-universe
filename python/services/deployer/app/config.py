@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     BAO_ROLE: str = "deployer"
     BAO_AUDIENCE: str = "secrets-manager"
 
+    # Syncs (D21): file-management, with the deployer's own token (its grant: public/steven-universe/).
+    FILES_URL: str = "https://files.lan.liustev6.ca"
+
     LOG_LEVEL: str = "INFO"
 
     @property

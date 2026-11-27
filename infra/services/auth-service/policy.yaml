@@ -71,6 +71,10 @@ clients:
     grants:
       secrets-manager:
         scopes: [secrets:read]
+      file-management:                   # syncs (deployer D21): repository folders mirrored, e.g. docs/specs
+        scopes: [files:write, files:delete, files:list]
+        authorization_details:
+          - {type: file_access, actions: [write, delete, list], locations: ["public/steven-universe/"]}
 
   # The control plane: claims pods, keeps its login in OpenBao. Secret host-only on CT 107.
   # Relays a session's owner to tools-service (grant 3, the turn's token), and nowhere else.

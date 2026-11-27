@@ -40,6 +40,7 @@ jobs:
       any: ${{ steps.plan.outputs.any }}
       wave1: ${{ steps.plan.outputs.wave1 }}
       wave2: ${{ steps.plan.outputs.wave2 }}
+      syncs: ${{ steps.plan.outputs.syncs }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -173,3 +174,16 @@ jobs:
     permissions: {contents: read, id-token: write}
     uses: ./.github/workflows/deploy.yml
     with: {services: "${{ needs.plan.outputs.wave2 }}"}
+
+  # ---- Syncs (D21): repository folders mirrored into file-management, after the waves (the edge's
+  # route to the deployer is then the new one) and only if they didn't fail ----------------------------
+  syncs:
+    needs: [plan, checks, wave1, wave2]
+    if: >-
+      !cancelled() && github.ref == 'refs/heads/main' && needs.plan.outputs.syncs != '[]'
+      && needs.checks.result == 'success'
+      && (needs.wave1.result == 'success' || needs.wave1.result == 'skipped')
+      && (needs.wave2.result == 'success' || needs.wave2.result == 'skipped')
+    permissions: {contents: read, id-token: write}
+    uses: ./.github/workflows/deploy.yml
+    with: {syncs: "${{ needs.plan.outputs.syncs }}"}

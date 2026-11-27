@@ -3,6 +3,10 @@
     POST /v1/deployments   Authorization: Bearer <GitHub OIDC token>
                            {"service": "...", "sha": "<40 hex>", "image_digest": "sha256:..."?}
                            -> 200, NDJSON event stream (first: "accepted" with the id; last: the result)
+    POST /v1/syncs         Authorization: Bearer <GitHub OIDC token>
+                           {"sync": "...", "sha": "<40 hex>"}
+                           -> 200, the result: a folder of the repository at that commit mirrored into
+                              file-management (infra/syncs/<sync>.yaml; D21)
     GET  /v1/deployments/<id>/events?after=<seq>
                            Authorization: Bearer <a fresh GitHub OIDC token for the same commit>
                            -> the events after <seq>, then live until the result (reconnect after a
@@ -35,11 +39,18 @@ from app.hosts import HostsError, load_hosts
 from app.openbao import OpenBaoSecrets
 from app.repo import Repo
 from app.ssh import SSHRunner
+from app.syncs import SYNC_RE, FileManagement, Syncer, SyncError, run_sync
 
 logger = logging.getLogger("deployer")
 HEARTBEAT_SECONDS = 15  # keeps proxies (Cloudflare, api-service) from closing a quiet stream
 MAX_BODY_BYTES = 4096
 DEPLOYMENT_ID = re.compile(r"^[0-9a-f]{32}$")
+
+
+class SyncRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sync: str = Field(pattern=SYNC_RE)
+    sha: str = Field(pattern=SHA_RE)
 
 
 class DeploymentRequest(BaseModel):
@@ -49,18 +60,21 @@ class DeploymentRequest(BaseModel):
     image_digest: str | None = Field(default=None, pattern=DIGEST_RE)
 
 
-def build_deployer(settings: Settings) -> tuple[Deployer, list]:
-    """The real components; returns the deployer and what to close on shutdown."""
+def build_deployer(settings: Settings) -> tuple[Deployer, Syncer, list]:
+    """The real components; returns the deployer, the syncer and what to close on shutdown."""
     tokens = TokenClient.from_env()
     secrets = OpenBaoSecrets(settings, tokens)
+    repo = Repo(settings.REPO_URL, settings.repo_dir, settings.BRANCH)
     deployer = Deployer(
-        repo=Repo(settings.REPO_URL, settings.repo_dir, settings.BRANCH),
+        repo=repo,
         secrets=secrets,
         runner=SSHRunner(settings.SSH_KEY_FILE, settings.DEPLOY_TIMEOUT_SECONDS),
         hosts_file=settings.HOSTS_FILE,
         audit_log=settings.audit_log,
     )
-    return deployer, [secrets, tokens]
+    files = FileManagement(settings.FILES_URL, lambda: tokens.token("file-management"))
+    syncer = Syncer(repo=repo, files=files, audit_log=settings.audit_log)
+    return deployer, syncer, [secrets, files, tokens]
 
 
 def _error(status: int, message: str) -> JSONResponse:
@@ -69,12 +83,12 @@ def _error(status: int, message: str) -> JSONResponse:
 
 
 def create_app(settings: Settings | None = None, *, deployer: Deployer | None = None,
-               verifier: GitHubVerifier | None = None) -> FastAPI:
+               syncer: Syncer | None = None, verifier: GitHubVerifier | None = None) -> FastAPI:
     settings = settings or Settings()
     logging.basicConfig(level=settings.LOG_LEVEL, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     closers: list = []
     if deployer is None:
-        deployer, closers = build_deployer(settings)
+        deployer, syncer, closers = build_deployer(settings)
     verifier = verifier or GitHubVerifier(settings)
 
     @asynccontextmanager
@@ -145,6 +159,31 @@ def create_app(settings: Settings | None = None, *, deployer: Deployer | None = 
 
         return StreamingResponse(_ndjson(deployment.follow(heartbeat=HEARTBEAT_SECONDS)),
                                  media_type="application/x-ndjson")
+
+    @app.post("/v1/syncs")
+    async def create_sync(request: Request):
+        # The same order as a deploy: who (GitHub's token, before the body), what (a name and the
+        # token's own commit, nothing else), every check, then the mirror.
+        claims = await github_claims(request)
+        if isinstance(claims, JSONResponse):
+            return claims
+        raw = await request.body()
+        if len(raw) > MAX_BODY_BYTES:
+            return _error(413, "request too large")
+        try:
+            body = SyncRequest.model_validate_json(raw)
+        except ValidationError as exc:
+            return _error(422, "; ".join(f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors()))
+        if claims.get("sha") != body.sha:
+            return _error(422, "sha does not match the token's sha claim")
+        if syncer is None:
+            return _error(503, "syncs are not configured")
+        requested_by = {k: claims.get(k) for k in ("actor", "run_id", "run_attempt", "workflow", "sha")}
+        try:
+            result = await run_sync(syncer, body.sync, body.sha, requested_by)
+        except SyncError as exc:
+            return _error(exc.status, exc.message)
+        return JSONResponse(result, status_code=200 if result["status"] == "succeeded" else 502)
 
     @app.get("/v1/deployments/{deployment_id}/events")
     async def deployment_events(deployment_id: str, request: Request, after: int = -1):

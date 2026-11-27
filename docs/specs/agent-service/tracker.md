@@ -93,10 +93,11 @@ file-management on every request.
 | 6.1 | ✅ 2026-11-27 | **Spike: a sidecar's FUSE mount inside a gVisor sandbox** (the spec's M1) | answered on VM 200 (files-and-mounts.md "Milestone 2", M1, M2) |
 | 6.2 | ✅ 2026-11-27 | **The spec refreshed** with CP2–CP5's pieces and the spike's answer: the mounter at warm-up, identical per pod (the gateway's `/dav` shows a session its own locations); `publish` a CLI in the sandbox (`put`, `delete`), off by default; permissions as RFC 9396 `file_access` details, the overlap with the caller's grant | agreed (files-and-mounts.md F1–F9) |
 | 6.3 | ✅ 2026-11-27 (`fa34d4c`) | **file-management's read-only WebDAV view** (`PROPFIND`, `GET` with ranges; the same grant checks) | `rclone` mounts it with a test token. **Locally:** `rclone mount`, `lsf -R`, `cat`, ranges, a 5 MB checksum, 403 outside the grant, 405 on writes. **Live** (deployed by the pipeline; as pi-server on the Pi): a folder listed (207), a file's properties, a range (206), 403 outside its folder, `Depth` infinity refused, 405 on a `PUT`; every decision in file-management's audit log (file-management.md "API") |
-| 6.4 | ⏳ | **agent-service:** a session's locations (profile ∩ caller), the file-management token exchange, the gateway's read route | reads go through with the capability alone |
-| 6.5 | ⏳ | **The runner's mounter** (R10): rclone per pod, read-only into `/workspace/inputs` | an agent session reads your file |
-| 6.6 | ⏳ | **`publish`:** a gateway-served tool, its checks, `artifact.created` in protocol B | a report saved; a forbidden destination refused |
-| 6.7 | ⏳ | **Live:** the spec's "done when", M2–M5, the security invariants | measured and recorded |
+| 6.4 | 🔨 | **The specs in `public/steven-universe/specs/`, synced by the pipeline:** a push changing `docs/specs/**` → the deployer (GitHub's OIDC token, as deploys) mirrors them from its own copy of the repo, with a file-management grant on `public/steven-universe/` only | a push that edits a spec updates it in `public/`; a removed spec is removed; nothing in GitHub holds a credential. **Built** (deployer D21): the deployer's `POST /v1/syncs` (79 tests), api-service's `/deploy/v1/syncs`, `plan.sh`'s `syncs` and `sync.sh` (tested), `deploy.yml`'s `sync` job, `infra/syncs/specs.yaml`, the deployer's grant on `public/steven-universe/` |
+| 6.5 | ⏳ | **agent-service:** `files` in profiles (the first: `steven-ai`, reading `public/`), the file-management token exchange, the gateway's `/dav` | reads go through with the capability alone |
+| 6.6 | ⏳ | **The runner's mounter** (R10): rclone per pod, read-only into `/workspace/inputs` | an agent session reads a spec |
+| 6.7 | ⏳ | **`publish`:** the CLI, the gateway's checks, `artifact.created` in protocol B | a report saved; a forbidden destination refused |
+| 6.8 | ⏳ | **Live:** the spec's "done when", M2–M5, the security invariants | measured and recorded |
 
 ## Done: CP4, voice (2026-11-27)
 **4.1–4.7** speech-service, live since 2026-11-18 on CT 108 (pve01's RTX 5060, an LXC): our own

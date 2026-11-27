@@ -18,8 +18,12 @@
 # images' inputs or infra/services/<svc>/ changed since the previous push. On workflow_dispatch: the one named in
 # $REDEPLOY. Each goes into its manifest's `wave` (default 1; 2 = the edge, after wave 1).
 #
+# Syncs (D21): every infra/syncs/<name>.yaml whose `source` folder or manifest changed in this push
+# (or, on workflow_dispatch, the one named in $REDEPLOY): the deployer mirrors that folder into
+# file-management. Nothing to build.
+#
 # Environment: EVENT (push | workflow_dispatch), BEFORE (the previous push's sha), REDEPLOY,
-# REGISTRY, GITHUB_SHA, GITHUB_OUTPUT. Outputs: matrix, any, wave1, wave2 (JSON).
+# REGISTRY, GITHUB_SHA, GITHUB_OUTPUT. Outputs: matrix, any, wave1, wave2, syncs (JSON).
 set -euo pipefail
 
 entries='[]'   # images to build
@@ -142,9 +146,29 @@ for f in infra/images/*.yaml; do
     '. + [{service: $s, code: $c, image_sha: $i, context: $x, dockerfile: $f, large: $l, python: $p}]' <<<"$entries")"
 done
 
+# ---- syncs (D21): a repository folder mirrored into file-management by the deployer ------------------
+syncs='[]'
+for f in infra/syncs/*.yaml; do
+  [ -e "$f" ] || continue
+  name="$(yq -r .sync "$f")"; source="$(yq -r .source "$f")"
+  [ "$(basename "$f" .yaml)" = "$name" ] || { echo "::error file=$f::sync must equal the file name"; exit 1; }
+  [ -d "$source" ] || { echo "::error file=$f::no folder $source"; exit 1; }
+  want=false
+  if [ "$EVENT" = workflow_dispatch ]; then
+    [ "${REDEPLOY:-}" = "$name" ] && want=true
+  elif [ "$all_changed" = true ] || grep -qE "^($(printf '%s' "$source" | regex)/|$(printf '%s' "$f" | regex)\$)" <<<"$changed"; then
+    want=true
+  fi
+  if [ "$want" = true ]; then
+    syncs="$(jq -c --arg n "$name" '. + [$n]' <<<"$syncs")"
+    echo "$name: sync $source"
+  fi
+done
+
 {
   echo "matrix={\"include\":$entries}"
   echo "any=$([ "$entries" = '[]' ] && echo false || echo true)"
   echo "wave1=$wave1"
   echo "wave2=$wave2"
+  echo "syncs=$syncs"
 } >>"$GITHUB_OUTPUT"

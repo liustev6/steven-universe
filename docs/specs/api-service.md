@@ -142,6 +142,7 @@ Not relayed: agent-service's kill switch and status page.
 |---|---|---|---|
 | `POST /deploy/v1/deployments` | `proxy` | deployer `POST /v1/deployments`, body and `Authorization` unchanged, response streamed | The caller is a GitHub Actions workflow with a GitHub OIDC token whose `aud` is the deployer. api-service is not the token's audience: it pre-checks `iss` = GitHub, rate-limits, and forwards. The deployer does the full verification. |
 | `GET /deploy/v1/deployments/{id}/events?after=` | `proxy` | deployer `GET /v1/deployments/{id}/events`, streamed | Reconnect after a dropped stream (e.g. while api-service itself is replaced by a wave-2 deploy). Same pre-checks; its own, more generous rate limit. |
+| `POST /deploy/v1/syncs` | `proxy` | deployer `POST /v1/syncs`, body and `Authorization` unchanged | A sync (deployer D21): a repository folder mirrored into file-management. The same pre-checks and the deploy-start rate limit. |
 
 `proxy` is the only mode that forwards a credential, and only on this allowlisted path. It does
 not conflict with E4, which is about tokens addressed to api-service itself.
