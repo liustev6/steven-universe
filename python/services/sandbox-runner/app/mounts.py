@@ -41,12 +41,16 @@ def _unescape(field: str) -> str:
 def mounter_command(gateway_url: str) -> list[str]:
     """rclone, as every pod's mounter runs it: the gateway's /dav (through the pod's proxy), read-only,
     its Bearer token read from the capability the claim writes (empty before: rclone reads it once at
-    start, where a failing command is fatal, so the warm-up writes an empty one; reads fail until then). Nobody lists it before the claim (agent-runtime waits for its session file), so
+    start, where a failing command is fatal, so the warm-up writes an empty one; reads fail until then).
+    `--low-level-retries 3` (rclone's default is 10): before the claim, rclone's own Statfs gets 401s, and
+    each retry raises its pacer's sleep, to 2 s at 10 retries; that sleep then decays only a quarter
+    per request, so a session's first `ls -R` took 5.5 s. With 3 it peaks at 160 ms (first `ls -R`
+    377 ms, on VM 200): one retry picks up the token after the claim, one is spare; 1 fails. Nobody lists it before the claim (agent-runtime waits for its session file), so
     no cache needs refreshing then. `--allow-other`: the sandbox's user reads what root mounted."""
     return ["mount", ":webdav:", "/mnt/inputs", "--webdav-url", f"{gateway_url.rstrip('/')}/dav/",
             "--webdav-bearer-token-command", "cat /run/session/capability",
             "--read-only", "--allow-other", "--dir-cache-time", "10s", "--vfs-cache-mode", "off",
-            "--log-level", "NOTICE"]
+            "--low-level-retries", "3", "--log-level", "NOTICE"]
 
 
 class Mounts:

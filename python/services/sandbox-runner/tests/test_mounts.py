@@ -54,3 +54,4 @@ def test_the_mounter_reads_its_token_per_request_and_mounts_read_only():
     assert cmd[cmd.index("--webdav-url") + 1] == "http://172.29.0.2:8080/dav/"
     assert cmd[cmd.index("--webdav-bearer-token-command") + 1] == "cat /run/session/capability"
     assert "--read-only" in cmd and "--allow-other" in cmd
+    assert cmd[cmd.index("--low-level-retries") + 1] == "3"          # not 10: the pre-claim 401s' backoff
