@@ -20,14 +20,19 @@ def iter_routes(routes, prefix=""):
 def test_every_route_except_health_requires_a_token(client):
     """Walks the routes, so a new route without auth fails here (spec: "Deny by default")."""
     found = sorted((p, m) for p, methods in iter_routes(client.app.routes) for m in methods)
-    assert found == [  # if this list changes, decide whether the new route must be authenticated
+    assert found == sorted([  # if this list changes, decide whether the new route must be authenticated
         ("/health", "GET"),
         ("/objects/{bucket}", "GET"),
         ("/objects/{bucket}/{key:path}", "DELETE"),
         ("/objects/{bucket}/{key:path}", "GET"),
         ("/objects/{bucket}/{key:path}", "HEAD"),
         ("/objects/{bucket}/{key:path}", "PUT"),
-    ]
+    ] + sorted(  # the read-only WebDAV view (app/api/dav.py): every method authenticated, writes then 405
+        (path, m)
+        for path in ("/dav/{bucket}", "/dav/{bucket}/{key:path}")
+        for m in ["COPY", "DELETE", "LOCK", "MKCOL", "MOVE", "OPTIONS", "POST", "PROPFIND", "PROPPATCH",
+                  "PUT", "UNLOCK"] + (["GET", "HEAD"] if "{key:path}" in path else [])
+    ))
     for path, method in found:
         url = path.replace("{bucket}", "private").replace("{key:path}", "pi-server/x")
         r = client.request(method, url)

@@ -134,7 +134,25 @@ token at mint time. When needed, `authorize()` would also ask a relationship-bas
 | `HEAD /objects/{bucket}/{key}` | `files:read` + grant | headers only |
 | `DELETE /objects/{bucket}/{key}` | `files:delete` + grant | 204, also if it didn't exist (idempotent) |
 | `GET /objects/{bucket}?prefix=&cursor=&limit=` | `files:list` + grant on the prefix | `{"bucket", "prefix", "objects": [{key, size_bytes, etag, last_modified}], "next_cursor"}`, at most 1000 per page |
+| `PROPFIND /dav/{bucket}/{key}` | `files:list` + a `list` grant covering it | WebDAV (RFC 4918), read-only, below: 207 Multi-Status |
+| `GET`, `HEAD /dav/{bucket}/{key}` | `files:read` + grant | as `GET`/`HEAD /objects/…` |
+| `OPTIONS /dav/…` | a valid token | `DAV: 1`, `Allow` |
+| `PUT`, `DELETE`, `MKCOL`, `COPY`, `MOVE`, `PROPPATCH`, `LOCK`, `UNLOCK`, `POST /dav/…` | a valid token | 405 (read-only) |
 | `GET /health` | none | `{"status": "healthy", "storage": "ok"}`, or 503 `degraded` if a bucket is unreachable |
+
+**The WebDAV view** (`app/api/dav.py`, 2026-11-27, agent-service CP6 6.3,
+[files-and-mounts.md](agent-service/files-and-mounts.md) F4): what `rclone mount` reads for agent
+sessions. Only `PROPFIND` (`Depth: 0` or `1`) and `GET`/`HEAD`, on the same scope, key hygiene and
+`authorize()` as `/objects`, in the same order (a caller can't learn what's where it may not look).
+A folder is a key prefix ending in "/" (S3's `Delimiter="/"`: its files, and its subfolders as
+`CommonPrefixes`); a path without its slash is a file under a `list` grant, or a folder (the granted
+folder itself, as rclone opens its root). Properties: `resourcetype`, `getcontentlength`,
+`getlastmodified`, `getetag` (and `getcontenttype` for one file); the request body is read up to
+64 KiB and never parsed. `Depth: infinity` (and none, RFC 4918's default) is refused with
+`propfind-finite-depth`; a folder over `DAV_MAX_ENTRIES` (10,000) is cut and logged (PROPFIND has no
+paging). Checked with `rclone` 1.69.1: `lsf -R` (a subfolder, a Chinese name with a space), `cat`, a
+range, a 5 MB file's checksum, `rclone mount` read-only (a write: "Read-only file system"), 403
+outside the grant, 405 on a write.
 
 **Errors:** 400 bad bucket or key; 401 no token or an invalid one (`error="invalid_token"`); 403 scope
 or grant missing (`error="insufficient_scope"`); 404 only after authorization; 413 too large; 416

@@ -39,6 +39,14 @@ class ListPage:
     next_cursor: str | None = None
 
 
+@dataclass(frozen=True)
+class DirPage:
+    """One folder's immediate children: its objects, and its subfolders as prefixes ending in "/"."""
+    objects: list[ObjectInfo] = field(default_factory=list)
+    prefixes: list[str] = field(default_factory=list)
+    next_cursor: str | None = None
+
+
 class StorageError(Exception):
     """Storage failed or is unreachable (502). Details are logged, never returned."""
 
@@ -75,3 +83,4 @@ class Storage(Protocol):
     async def head(self, bucket: str, key: str) -> ObjectInfo: ...
     async def delete(self, bucket: str, key: str) -> None: ...
     async def list(self, bucket: str, prefix: str, *, cursor: str | None, limit: int) -> ListPage: ...
+    async def list_dir(self, bucket: str, prefix: str, *, cursor: str | None, limit: int) -> DirPage: ...

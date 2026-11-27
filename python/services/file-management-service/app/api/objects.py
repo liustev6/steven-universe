@@ -34,6 +34,39 @@ def _object_headers(info: ObjectInfo) -> dict[str, str]:
     }
 
 
+async def read_object(request: Request, p: Principal, bucket: str, key: str) -> StreamingResponse:
+    """GET an object: steps 2-4 (the caller has `files:read`). Shared with the WebDAV view."""
+    state = request.app.state
+    authorize(p, "read", resource_name(bucket, key, state.settings.BUCKETS))
+    download = await state.storage.get(
+        bucket,
+        key,
+        byte_range=request.headers.get("range"),
+        if_none_match=request.headers.get("if-none-match"),
+    )
+    headers = _object_headers(download.info) | {"Content-Length": str(download.length)}
+    if download.content_range:
+        headers["Content-Range"] = download.content_range
+    return StreamingResponse(
+        download.body,
+        status_code=206 if download.content_range else 200,
+        media_type=download.info.content_type,
+        headers=headers,
+    )
+
+
+async def object_head(request: Request, p: Principal, bucket: str, key: str) -> Response:
+    """HEAD an object: steps 2-4 (the caller has `files:read`). Shared with the WebDAV view."""
+    state = request.app.state
+    authorize(p, "read", resource_name(bucket, key, state.settings.BUCKETS))
+    info = await state.storage.head(bucket, key)
+    headers = _object_headers(info) | {
+        "Content-Length": str(info.size),
+        "Content-Type": info.content_type,
+    }
+    return Response(status_code=200, headers=headers)
+
+
 def build_router(auth: ServiceAuth) -> APIRouter:
     router = APIRouter(prefix="/objects")
 
@@ -66,36 +99,13 @@ def build_router(auth: ServiceAuth) -> APIRouter:
     async def get_object(
         bucket: str, key: str, request: Request, p: Principal = Depends(auth.require("files:read"))
     ):
-        state = request.app.state
-        authorize(p, "read", resource_name(bucket, key, state.settings.BUCKETS))
-        download = await state.storage.get(
-            bucket,
-            key,
-            byte_range=request.headers.get("range"),
-            if_none_match=request.headers.get("if-none-match"),
-        )
-        headers = _object_headers(download.info) | {"Content-Length": str(download.length)}
-        if download.content_range:
-            headers["Content-Range"] = download.content_range
-        return StreamingResponse(
-            download.body,
-            status_code=206 if download.content_range else 200,
-            media_type=download.info.content_type,
-            headers=headers,
-        )
+        return await read_object(request, p, bucket, key)
 
     @router.head("/{bucket}/{key:path}")
     async def head_object(
         bucket: str, key: str, request: Request, p: Principal = Depends(auth.require("files:read"))
     ):
-        state = request.app.state
-        authorize(p, "read", resource_name(bucket, key, state.settings.BUCKETS))
-        info = await state.storage.head(bucket, key)
-        headers = _object_headers(info) | {
-            "Content-Length": str(info.size),
-            "Content-Type": info.content_type,
-        }
-        return Response(status_code=200, headers=headers)
+        return await object_head(request, p, bucket, key)
 
     @router.delete("/{bucket}/{key:path}", status_code=204)
     async def delete_object(

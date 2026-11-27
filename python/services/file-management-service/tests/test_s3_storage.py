@@ -125,6 +125,25 @@ def test_list_pagination_and_delete(endpoint):
     run(endpoint, scenario)
 
 
+def test_list_dir_is_one_folder_level(endpoint):
+    """S3's Delimiter="/" (the WebDAV view's folders): files here, deeper keys as subfolders, pages."""
+    async def scenario(st):
+        for key in ("pi-server/dir/a.txt", "pi-server/dir/b.txt", "pi-server/dir/sub/c.txt",
+                    "pi-server/dir/sub/deeper/d.txt", "pi-server/dir/zz/e.txt", "pi-server/dirx/f.txt"):
+            await st.put("private", key, chunks(b"x"), content_type="text/plain", max_bytes=MiB)
+        files, folders, cursor = [], [], None
+        while True:
+            page = await st.list_dir("private", "pi-server/dir/", cursor=cursor, limit=2)
+            files += [o.key for o in page.objects]
+            folders += page.prefixes
+            cursor = page.next_cursor
+            if not cursor:
+                break
+        assert files == ["pi-server/dir/a.txt", "pi-server/dir/b.txt"]
+        assert folders == ["pi-server/dir/sub/", "pi-server/dir/zz/"]       # not dirx/: another folder
+    run(endpoint, scenario)
+
+
 def test_http_api_on_s3_storage(endpoint, issuer, pi):
     """The whole stack: HTTP -> real token check -> authorize -> S3Storage -> moto, streaming both ways."""
     import httpx

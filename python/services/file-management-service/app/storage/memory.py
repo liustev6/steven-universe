@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import AsyncIterator
 
 from . import (
+    DirPage,
     Download,
     ListPage,
     NotFound,
@@ -81,6 +82,25 @@ class MemoryStorage:
         page = keys[:limit]
         next_cursor = page[-1] if len(keys) > limit else None
         return ListPage([self.objects[bucket][k][1] for k in page], next_cursor)
+
+    async def list_dir(self, bucket, prefix, *, cursor, limit):
+        """As S3 with `Delimiter="/"`: deeper keys fold into their first subfolder; one sorted order."""
+        entries: dict[str, ObjectInfo | None] = {}
+        for k in self.objects[bucket]:
+            if not k.startswith(prefix):
+                continue
+            rest = k[len(prefix):]
+            if "/" in rest:
+                entries.setdefault(prefix + rest.split("/", 1)[0] + "/", None)
+            else:
+                entries[k] = self.objects[bucket][k][1]
+        names = sorted(n for n in entries if cursor is None or n > cursor)
+        page = names[:limit]
+        return DirPage(
+            [entries[n] for n in page if entries[n] is not None],
+            [n for n in page if entries[n] is None],
+            page[-1] if len(names) > limit else None,
+        )
 
     def _find(self, bucket, key):
         try:

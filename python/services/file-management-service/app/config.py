@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     PART_SIZE_BYTES: int = 8 * MiB
 
     LIST_MAX_KEYS: int = 1000
+    # WebDAV: the most entries one PROPFIND answers (it has no paging; a bigger folder is cut, logged).
+    DAV_MAX_ENTRIES: int = 10000
     LOG_LEVEL: str = "INFO"
 
     def max_upload_bytes(self, bucket: str) -> int:

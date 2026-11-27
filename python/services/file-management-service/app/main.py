@@ -19,6 +19,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 from service_auth.fastapi_auth import ServiceAuth
 
+from app.api.dav import build_dav_router
 from app.api.objects import build_router
 from app.authz import BadKey, Forbidden
 from app.config import Settings
@@ -73,6 +74,7 @@ def create_app(
     app.state.settings = settings
     app.state.storage = storage
     app.include_router(build_router(auth))
+    app.include_router(build_dav_router(auth))   # the read-only WebDAV view (agent sessions' mounts)
 
     @app.get("/health")
     async def health() -> Response:

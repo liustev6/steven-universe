@@ -63,18 +63,27 @@ def _covers(location: str, resource: str, *, listing: bool) -> bool:
     return not listing and resource == location  # an exact-object grant never allows listing
 
 
-def authorize(p: Principal, action: Action, resource: str) -> None:
-    """Allow or raise Forbidden; every decision is audited."""
-    allowed = False
-    identifier = None
+def _grant(p: Principal, action: Action, resource: str) -> tuple[bool, str | None]:
     # Same scope rule as the route's require() (including the dev principal's "*").
     if p.has_scopes(f"files:{action}"):
         for detail in p.details(DETAIL_TYPE):
             if action in detail.get("actions", ()) and any(
                 _covers(loc, resource, listing=action == "list") for loc in detail.get("locations", ())
             ):
-                allowed, identifier = True, detail.get("identifier")
-                break
+                return True, detail.get("identifier")
+    return False, None
+
+
+def permits(p: Principal, action: Action, resource: str) -> bool:
+    """The same decision as `authorize`, unaudited: for choosing which question to ask (WebDAV: is
+    `notes` a file under a granted folder, or the granted folder itself?). The choice is then
+    `authorize`d, which audits it."""
+    return _grant(p, action, resource)[0]
+
+
+def authorize(p: Principal, action: Action, resource: str) -> None:
+    """Allow or raise Forbidden; every decision is audited."""
+    allowed, identifier = _grant(p, action, resource)
     audit.info(json.dumps({
         "event": "allow" if allowed else "deny",
         "action": action,

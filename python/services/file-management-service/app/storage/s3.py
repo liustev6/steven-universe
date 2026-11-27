@@ -21,6 +21,7 @@ from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
 from . import (
+    DirPage,
     Download,
     ListPage,
     NotFound,
@@ -219,6 +220,22 @@ class S3Storage:
             for o in resp.get("Contents", [])
         ]
         return ListPage(objects, resp.get("NextContinuationToken") if resp.get("IsTruncated") else None)
+
+    async def list_dir(self, bucket, prefix, *, cursor, limit):
+        """S3's own folder view: `Delimiter="/"` folds deeper keys into CommonPrefixes."""
+        kwargs: dict[str, Any] = {"Bucket": bucket, "Prefix": prefix, "Delimiter": "/", "MaxKeys": limit}
+        if cursor:
+            kwargs["ContinuationToken"] = cursor
+        try:
+            resp = await self._s3.list_objects_v2(**kwargs)
+        except (ClientError, BotoCoreError) as exc:
+            raise _translate(exc, f"list_dir {bucket}/{prefix}") from None
+        objects = [
+            ObjectInfo(key=o["Key"], size=int(o["Size"]), etag=o["ETag"], last_modified=o["LastModified"])
+            for o in resp.get("Contents", [])
+        ]
+        prefixes = [c["Prefix"] for c in resp.get("CommonPrefixes", [])]
+        return DirPage(objects, prefixes, resp.get("NextContinuationToken") if resp.get("IsTruncated") else None)
 
 
 def _total_size(resp: dict[str, Any]) -> int:
