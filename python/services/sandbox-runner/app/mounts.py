@@ -40,8 +40,8 @@ def _unescape(field: str) -> str:
 
 def mounter_command(gateway_url: str) -> list[str]:
     """rclone, as every pod's mounter runs it: the gateway's /dav (through the pod's proxy), read-only,
-    its Bearer token read per request from the capability the claim writes (none before: reads fail,
-    nothing is shown). Nobody lists it before the claim (agent-runtime waits for its session file), so
+    its Bearer token read from the capability the claim writes (empty before: rclone reads it once at
+    start, where a failing command is fatal, so the warm-up writes an empty one; reads fail until then). Nobody lists it before the claim (agent-runtime waits for its session file), so
     no cache needs refreshing then. `--allow-other`: the sandbox's user reads what root mounted."""
     return ["mount", ":webdav:", "/mnt/inputs", "--webdav-url", f"{gateway_url.rstrip('/')}/dav/",
             "--webdav-bearer-token-command", "cat /run/session/capability",

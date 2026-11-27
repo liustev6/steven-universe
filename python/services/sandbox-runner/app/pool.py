@@ -272,6 +272,9 @@ class Pool:
         binds = [(str(session_dir), "/run/session", True), (str(workspace), "/workspace", False)]
 
         if self.s.MOUNTER_IMAGE:
+            # rclone reads its token once at start too, and a failing command is fatal: an empty token
+            # until the claim replaces it (requests get 401 meanwhile; nothing lists the mount anyway)
+            _write_atomically(session_dir / "capability", "")
             inputs = self.mounts.create(pod.id)
             self.backend.run(ContainerSpec(
                 name=f"mounter-{pod.name}", image=self.s.MOUNTER_IMAGE, labels=labels,

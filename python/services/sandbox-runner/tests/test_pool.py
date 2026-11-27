@@ -43,14 +43,17 @@ def test_start_cleans_leftovers_then_warms_each_template(make_pool):
     assert counts == {"chat": 2, "dev": 0}                          # warm: 0 means on demand only
 
 
-def test_a_pod_is_built_from_its_template(make_pool):
+def test_a_pod_is_built_from_its_template(make_pool, settings):
     pool = make_pool()
+    empty_token = None
 
     async def go():
         await started(pool)
         dev = await pool.claim("dev", "s_dev", CAP, PROFILE)      # started on demand
         chat = next(p for p in pool.pods.values() if p.template == "chat")
         specs, networks, live = dict(pool.backend.containers), dict(pool.backend.networks), dict(pool.workspaces.live)
+        nonlocal empty_token
+        empty_token = (settings.STATE_ROOT / "sessions" / str(chat.id) / "capability").read_text()
         await pool.stop()
         return chat, dev, specs, networks, live
     chat, dev, specs, networks, live = run(go())
@@ -76,6 +79,7 @@ def test_a_pod_is_built_from_its_template(make_pool):
         assert sandbox.binds[2] == (str(pool.mounts.inputs(pod.id)), "/workspace/inputs", True)
         assert not proxy.cap_add and not sandbox.cap_add and not sandbox.devices    # nobody else gets them
         assert live[pod.id] == (pod.slot, t.workspace_mb)           # the template's quota
+    assert empty_token == ""      # written at warm-up: rclone reads it once at start, and fails without it
 
 
 def test_proxy_config_is_written_for_its_pod(make_pool, settings):
