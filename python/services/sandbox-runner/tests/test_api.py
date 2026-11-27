@@ -111,6 +111,7 @@ def test_status_is_public_safe_and_needs_its_scope(make_pool, settings):
         wait_warm(c, 2)
         body = {"template": "chat", "session_id": "s_secret", "capability": CAP, "profile": PROFILE}
         sid = c.post("/v1/sandboxes/claim", headers=H, json=body).json()["sandbox_id"]
+        wait_warm(c, 2)               # the claim's refill: `ok` means the pool is at its target (was a race)
         assert c.get("/v1/status", headers=H).status_code == 403              # the agent's token: no status:read
         r = c.get("/v1/status", headers={"Authorization": "Bearer status"})
         assert c.post("/v1/sandboxes/claim", headers={"Authorization": "Bearer status"}, json=body).status_code == 403
