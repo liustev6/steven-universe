@@ -1,8 +1,8 @@
 """Docker, as the runner uses it: pod networks, hardened containers, logs, and finding leftovers.
 
 `Backend` is what the pool depends on; `DockerBackend` is the real one (the Docker Engine API through
-the official SDK, over the VM's socket: R3). Tests use a fake. The runner can only create, inspect
-and destroy: there is no exec, no file access, no network change after creation.
+the official SDK, over the VM's socket: R3). Tests use a fake. The runner can only create, inspect,
+stop and destroy: there is no exec, no file access, no network change after creation.
 """
 
 from __future__ import annotations
@@ -27,6 +27,13 @@ class ContainerSpec:
     cpus: float | None = None
     pids: int | None = None
     env: dict[str, str] = field(default_factory=dict)
+    command: list[str] | None = None                 # the image's own when None
+    # Only the mounter (R10) has these: FUSE needs the device and SYS_ADMIN, Docker's AppArmor profile
+    # refuses mount(2), and its mount reaches the VM through an rshared bind (host path, container path).
+    cap_add: list[str] = field(default_factory=list)
+    devices: list[str] = field(default_factory=list)
+    apparmor_unconfined: bool = False
+    shared_binds: list[tuple[str, str]] = field(default_factory=list)
 
 
 class Backend(Protocol):
@@ -36,6 +43,7 @@ class Backend(Protocol):
     def run(self, spec: ContainerSpec) -> None: ...
     def logs(self, name: str) -> str: ...
     def running(self, name: str) -> bool: ...
+    def stop_container(self, name: str, timeout: int) -> None: ...   # SIGTERM, then SIGKILL after timeout
     def remove_container(self, name: str) -> None: ...
     def remove_network(self, name: str) -> None: ...
     def leftovers(self) -> tuple[list[str], list[str]]: ...     # (containers, networks) carrying LABEL
@@ -43,7 +51,7 @@ class Backend(Protocol):
 
 class DockerBackend:
     """The real backend. Every container is hardened the same way: read-only root, no capabilities,
-    no-new-privileges, limits, and capped logs."""
+    no-new-privileges, limits, and capped logs. The mounter alone adds back what FUSE needs (above)."""
 
     def __init__(self, client=None):
         import docker
@@ -72,12 +80,16 @@ class DockerBackend:
 
     def run(self, spec: ContainerSpec) -> None:
         api, types = self._api, self._docker.types
+        binds = {host: {"bind": path, "mode": "ro" if ro else "rw"} for host, path, ro in spec.binds}
+        binds |= {host: {"bind": path, "mode": "rw,rshared"} for host, path in spec.shared_binds}
         host_config = api.create_host_config(
             runtime=spec.runtime,
             read_only=True,
             cap_drop=["ALL"],
-            security_opt=["no-new-privileges:true"],
-            binds={host: {"bind": path, "mode": "ro" if ro else "rw"} for host, path, ro in spec.binds},
+            cap_add=spec.cap_add or None,
+            devices=spec.devices or None,
+            security_opt=["no-new-privileges:true"] + (["apparmor:unconfined"] if spec.apparmor_unconfined else []),
+            binds=binds,
             tmpfs=spec.tmpfs,
             mem_limit=f"{spec.memory_mb}m" if spec.memory_mb else None,
             nano_cpus=int(spec.cpus * 1e9) if spec.cpus else None,
@@ -87,6 +99,7 @@ class DockerBackend:
         (first_net, first_ip), *more = spec.networks
         container = api.create_container(
             spec.image, name=spec.name, user=spec.user, labels=spec.labels, environment=spec.env or None,
+            command=spec.command,
             host_config=host_config,
             networking_config=api.create_networking_config(
                 {first_net: api.create_endpoint_config(ipv4_address=first_ip)}),
@@ -106,6 +119,12 @@ class DockerBackend:
             return bool(self._api.inspect_container(name)["State"]["Running"])
         except self._docker.errors.NotFound:
             return False
+
+    def stop_container(self, name: str, timeout: int) -> None:
+        try:
+            self._api.stop(name, timeout=timeout)
+        except self._docker.errors.NotFound:
+            pass
 
     def remove_container(self, name: str) -> None:
         try:

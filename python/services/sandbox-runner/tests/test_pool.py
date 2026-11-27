@@ -37,7 +37,9 @@ def test_start_cleans_leftovers_then_warms_each_template(make_pool):
     b = pool.backend
     assert b.removed_containers[:2] == ["sandbox-old", "proxy-old"] and b.removed_networks[0] == "pod-old"
     assert pool.workspaces.removed_leftovers == [old]
-    assert b.images == {t.image for t in TEMPLATES.values()} | {"nginxinc/nginx-unprivileged:stable-alpine"}
+    assert b.images == {t.image for t in TEMPLATES.values()} | {"nginxinc/nginx-unprivileged:stable-alpine",
+                                                                "rclone/rclone:1.69.1"}
+    assert pool.mounts.swept == 1                                   # leftover mounts swept (F9)
     assert counts == {"chat": 2, "dev": 0}                          # warm: 0 means on demand only
 
 
@@ -62,6 +64,17 @@ def test_a_pod_is_built_from_its_template(make_pool):
         assert sandbox.labels["dev.steven-universe.sandbox-runner.template"] == pod.template
         assert sandbox.networks == [(net, pod.sandbox_ip)] and sandbox.user == "10001:10001"
         assert ("/run/session", True) == sandbox.binds[0][1:] and ("/workspace", False) == sandbox.binds[1][1:]
+        # its mounter (R10): FUSE's device and SYS_ADMIN only, through the pod's proxy, its mount bound
+        # read-only into the sandbox; the session dir read-only (the capability, after the claim)
+        mounter, _ = specs[f"mounter-{pod.name}"]
+        assert mounter.image == "rclone/rclone:1.69.1" and mounter.networks == [(net, pod.mounter_ip)]
+        assert mounter.cap_add == ["SYS_ADMIN"] and mounter.devices == ["/dev/fuse:/dev/fuse:rwm"]
+        assert mounter.runtime is None and mounter.user is None and mounter.apparmor_unconfined
+        assert mounter.shared_binds == [(str(pool.mounts.folder(pod.id)), "/mnt")]
+        assert mounter.binds == [(sandbox.binds[0][0], "/run/session", True)]
+        assert f"{pod.gateway_url}/dav/" in mounter.command and "--read-only" in mounter.command
+        assert sandbox.binds[2] == (str(pool.mounts.inputs(pod.id)), "/workspace/inputs", True)
+        assert not proxy.cap_add and not sandbox.cap_add and not sandbox.devices    # nobody else gets them
         assert live[pod.id] == (pod.slot, t.workspace_mb)           # the template's quota
 
 
@@ -88,11 +101,14 @@ def test_claim_writes_the_session_file_and_refills_its_template(make_pool, setti
         await until(lambda: pool.count("warm", template="chat") == 2)
         f = settings.STATE_ROOT / "sessions" / str(pod.id) / "session.json"
         content, mode = json.loads(f.read_text()), stat.S_IMODE(f.stat().st_mode)
+        cap = settings.STATE_ROOT / "sessions" / str(pod.id) / "capability"         # the mounter's token
+        token = (cap.read_text(), stat.S_IMODE(cap.stat().st_mode))
         await pool.stop()
-        return pod, content, mode
-    pod, content, mode = run(go())
+        return pod, content, mode, token
+    pod, content, mode, token = run(go())
     assert content == {"session_id": "s_1", "capability": CAP, "gateway_url": pod.gateway_url, "profile": PROFILE}
     assert mode == 0o444 and pod.template == "chat"
+    assert token == (CAP, 0o444)
 
 
 def test_unknown_template_is_refused(make_pool):
@@ -182,6 +198,10 @@ def test_release_destroys_everything_then_refills(make_pool, settings):
         return pod, state
     pod, (containers, networks, live) = run(go())
     assert f"sandbox-{pod.name}" not in containers and f"proxy-{pod.name}" not in containers
+    assert f"mounter-{pod.name}" not in containers and pod.id in pool.mounts.removed
+    assert (f"mounter-{pod.name}", 10) in pool.backend.stopped                     # SIGTERM first: rclone unmounts
+    order = pool.backend.removed_containers
+    assert order.index(f"sandbox-{pod.name}") < order.index(f"mounter-{pod.name}") < order.index(f"proxy-{pod.name}")
     assert f"pod-{pod.name}" not in networks and pod.id not in live
     assert not (settings.STATE_ROOT / "sessions" / str(pod.id)).exists()
     assert not (settings.STATE_ROOT / "proxies" / f"{pod.id}.conf").exists()
@@ -270,3 +290,42 @@ def test_backoff_resets_after_a_success(make_pool):
         await pool.stop()
         return state
     assert run(go()) == (None, 0.0)
+
+
+def test_a_pod_whose_mount_never_appears_is_destroyed_and_replaced(make_pool):
+    pool = make_pool()
+    pool.mounts.never_mounted = 1
+
+    async def go():
+        await started(pool)
+        await until(lambda: pool.count("warm", template="chat") == 2)
+        await pool.stop()
+    run(go())
+    failed = [n for n in pool.backend.removed_containers if n.startswith("mounter-")]
+    assert failed and not any(n.startswith("sandbox-") and n[8:] == failed[0][8:] for n in pool.backend.containers)
+
+
+def test_without_a_mounter_image_pods_have_no_inputs(make_pool):
+    pool = make_pool(MOUNTER_IMAGE="")
+
+    async def go():
+        await started(pool)
+        specs = dict(pool.backend.containers)
+        await pool.stop()
+        return specs
+    specs = run(go())
+    assert not any(n.startswith("mounter-") for n in specs)
+    assert all(len(spec.binds) == 2 for n, (spec, _) in specs.items() if n.startswith("sandbox-"))
+
+
+def test_a_warm_pod_whose_mounter_dies_is_replaced(make_pool):
+    pool = make_pool()
+
+    async def go():
+        await started(pool)
+        pod = next(p for p in pool.pods.values() if p.state == "warm")
+        pool.backend.dead_proxies.add(f"mounter-{pod.name}")          # reported as not running
+        await until(lambda: pod.id not in pool.pods)
+        await until(lambda: pool.count("warm", template="chat") == 2)
+        await pool.stop()
+    run(go())

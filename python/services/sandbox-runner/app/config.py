@@ -32,7 +32,11 @@ class Settings(BaseSettings):
 
     # ---- Paths on the VM (the runner sees them at the same paths) ----------------------------
     WORKSPACE_ROOT: Path = Path("/srv/workspaces")              # the XFS disk, prjquota
-    STATE_ROOT: Path = Path("/run/sandbox-runner")              # tmpfs: session files, proxy configs
+    STATE_ROOT: Path = Path("/run/sandbox-runner")              # tmpfs: session files, proxy configs, mounts
+    # Each pod's mounter (R10; files-and-mounts.md F2): the stock rclone image, mounting the gateway's
+    # /dav read-only at /workspace/inputs. Empty: pods get no mounter (no /workspace/inputs).
+    MOUNTER_IMAGE: str = "rclone/rclone:1.69.1"
+    MOUNT_TIMEOUT_SECONDS: float = 15            # warm-up waits this long for the mount to appear
 
     # Callers: auth-service tokens, audience sandbox-runner (SERVICE_AUTH_ISSUER; see app/api.py).
 

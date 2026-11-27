@@ -23,7 +23,7 @@ TEMPLATES = {
 class FakeBackend:
     def __init__(self):
         self.images, self.egress, self.networks, self.containers = set(), set(), {}, {}
-        self.removed_containers, self.removed_networks = [], []
+        self.removed_containers, self.removed_networks, self.stopped = [], [], []
         self.never_ready = 0                          # the next N sandboxes never log READY_MARK
         self.dead_proxies = set()                     # proxies reported as not running
         self.left = ([], [])                          # leftovers to report at start
@@ -45,6 +45,9 @@ class FakeBackend:
 
     def running(self, name):
         return name in self.containers and name not in self.dead_proxies
+
+    def stop_container(self, name, timeout):
+        self.stopped.append((name, timeout))
 
     def remove_container(self, name):
         self.removed_containers.append(name)
@@ -72,17 +75,47 @@ class FakeWorkspaces:
     def remove_leftover(self, sandbox_id): self.removed_leftovers.append(sandbox_id)
 
 
+class FakeMounts:
+    """The mounters' folders: mounted as soon as the folder exists, unless told never to."""
+
+    def __init__(self, root: Path):
+        self.root, self.never_mounted, self.removed, self.swept = root, 0, [], 0
+        self._mounted: set = set()
+
+    def folder(self, sandbox_id): return self.root / str(sandbox_id)
+    def inputs(self, sandbox_id): return self.folder(sandbox_id) / "inputs"
+
+    def create(self, sandbox_id):
+        self.inputs(sandbox_id).mkdir(parents=True, exist_ok=True)
+        if self.never_mounted:
+            self.never_mounted -= 1
+        else:
+            self._mounted.add(sandbox_id)
+        return self.inputs(sandbox_id)
+
+    def mounted(self, sandbox_id): return sandbox_id in self._mounted
+
+    def remove(self, sandbox_id):
+        self.removed.append(sandbox_id)
+        self._mounted.discard(sandbox_id)
+
+    def sweep(self):
+        self.swept += 1
+        return 0
+
+
 @pytest.fixture(autouse=True)
 def fast(monkeypatch):
     monkeypatch.setattr(pool_module, "READY_POLL", 0.01)
     monkeypatch.setattr(pool_module, "RETRY_DELAY", 0.01)
     monkeypatch.setattr(pool_module, "REAP_EVERY", 0.05)
+    monkeypatch.setattr(pool_module, "MOUNT_POLL", 0.01)
 
 
 @pytest.fixture
 def settings(tmp_path):
     return Settings(GATEWAY_URL="http://gw:8080", MAX=6, MAX_PER_TEMPLATE=3,
-                    CLAIM_WAIT_SECONDS=0.5, READY_TIMEOUT_SECONDS=0.3,
+                    CLAIM_WAIT_SECONDS=0.5, READY_TIMEOUT_SECONDS=0.3, MOUNT_TIMEOUT_SECONDS=0.2,
                     WORKSPACE_ROOT=tmp_path / "ws", STATE_ROOT=tmp_path / "state")
 
 
@@ -90,7 +123,8 @@ def settings(tmp_path):
 def make_pool(settings, tmp_path):
     def make(templates=None, **overrides):
         s = settings.model_copy(update=overrides)
-        return Pool(s, templates or TEMPLATES, FakeBackend(), FakeWorkspaces(tmp_path / "ws"))
+        return Pool(s, templates or TEMPLATES, FakeBackend(), FakeWorkspaces(tmp_path / "ws"),
+                    FakeMounts(tmp_path / "mounts"))
     return make
 
 

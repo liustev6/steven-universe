@@ -13,7 +13,10 @@ A pod is everything one sandbox needs, created in this order and destroyed in re
     1. its workspace on the XFS disk, under the template's quota (R13)
     2. its network: internal, its own /28, no address on the VM (R12)
     3. its egress proxy, the network's only way out (R5, R12)
-    4. the sandbox: the template's image under its runtime, waiting for its session file (R7)
+    4. its mounter: rclone, mounting the gateway's /dav through the proxy, read-only; the warm-up waits
+       for the mount to appear on the VM (R10; files-and-mounts.md F2)
+    5. the sandbox: the template's image under its runtime, waiting for its session file (R7); the
+       mount bound read-only at /workspace/inputs
 The image and every mount are fixed here, at warm-up: a claim only writes the session file into the
 already-mounted session directory, so it takes milliseconds, and no caller ever names an image or a
 path. Pods are single-use (R6). On start, the runner destroys whatever it finds (R9).
@@ -36,6 +39,7 @@ from typing import Any
 from app.backend import LABEL, Backend, ContainerSpec
 from app.config import Settings
 from app.egress import LISTEN_PORT, new_sandbox_id, proxy_config
+from app.mounts import Mounts, mounter_command
 from app.templates import Template
 from app.workspaces import Workspaces
 
@@ -46,6 +50,8 @@ READY_POLL = 0.1                      # seconds between readiness checks while a
 RETRY_DELAY = 1.0                     # after a pod fails to start: the first wait before trying again
 MAX_RETRY_DELAY = 60.0                # doubling per consecutive failure of the template, up to this
 GRACE_SECONDS = 30                    # added to a session's wall time before the hard timeout
+MOUNT_POLL = 0.05                     # seconds between checks for a mounter's mount while a pod starts
+MOUNTER_STOP_SECONDS = 10             # SIGTERM, then this long for rclone to unmount, then SIGKILL
 
 
 class NoSandbox(Exception):
@@ -81,6 +87,10 @@ class Pod:
         return str(self.subnet.network_address + 3)
 
     @property
+    def mounter_ip(self) -> str:
+        return str(self.subnet.network_address + 4)
+
+    @property
     def gateway_url(self) -> str:
         """What the sandbox calls "the gateway": its proxy, by IP (R11)."""
         return f"http://{self.proxy_ip}:{LISTEN_PORT}"
@@ -92,8 +102,10 @@ class Pod:
 
 
 class Pool:
-    def __init__(self, settings: Settings, templates: dict[str, Template], backend: Backend, workspaces: Workspaces):
+    def __init__(self, settings: Settings, templates: dict[str, Template], backend: Backend, workspaces: Workspaces,
+                 mounts: Mounts | None = None):
         self.s, self.templates, self.backend, self.workspaces = settings, templates, backend, workspaces
+        self.mounts = mounts or Mounts(settings.STATE_ROOT / "mounts")
         self.pods: dict[uuid.UUID, Pod] = {}
         self._slots = list(ipaddress.ip_network(settings.POD_SUBNETS).subnets(new_prefix=28))
         self._changed = asyncio.Condition()
@@ -114,7 +126,10 @@ class Pool:
     # ---- lifecycle of the runner ---------------------------------------------------------------
     async def start(self) -> None:
         await self._clean_leftovers()
-        for image in sorted({t.image for t in self.templates.values()} | {self.s.PROXY_IMAGE}):
+        images = {t.image for t in self.templates.values()} | {self.s.PROXY_IMAGE}
+        if self.s.MOUNTER_IMAGE:
+            images.add(self.s.MOUNTER_IMAGE)
+        for image in sorted(images):
             await asyncio.to_thread(self.backend.ensure_image, image)
         await asyncio.to_thread(self.backend.ensure_egress_network, self.s.EGRESS_NETWORK)
         self._spawn(self._reaper())
@@ -136,9 +151,10 @@ class Pool:
         dirs = await asyncio.to_thread(self.workspaces.leftovers)
         for sid in dirs:
             await asyncio.to_thread(self.workspaces.remove_leftover, sid)
-        if containers or networks or dirs:
-            logger.warning("start: removed %d containers, %d networks, %d workspaces left from before (R9)",
-                           len(containers), len(networks), len(dirs))
+        mounts = await asyncio.to_thread(self.mounts.sweep)      # after the mounters are gone (F9)
+        if containers or networks or dirs or mounts:
+            logger.warning("start: removed %d containers, %d networks, %d workspaces, %d mounts left from before (R9)",
+                           len(containers), len(networks), len(dirs), mounts)
 
     # ---- the pool --------------------------------------------------------------------------------
     def count(self, *states: str, template: str | None = None) -> int:
@@ -214,6 +230,8 @@ class Pool:
                 await asyncio.sleep(READY_POLL)
             if not await asyncio.to_thread(self.backend.running, f"proxy-{pod.name}"):
                 raise RuntimeError("its egress proxy isn't running")
+            if self.s.MOUNTER_IMAGE and not await asyncio.to_thread(self.backend.running, f"mounter-{pod.name}"):
+                raise RuntimeError("its mounter isn't running")
         except Exception as exc:
             failures = self._failures[pod.template] = self._failures.get(pod.template, 0) + 1
             delay = min(RETRY_DELAY * 2 ** (failures - 1), MAX_RETRY_DELAY)
@@ -231,7 +249,7 @@ class Pool:
         logger.info("pod %s (%s) warm in %d ms", pod.name, pod.template, round((time.monotonic() - t0) * 1000))
 
     def _create(self, pod: Pod) -> None:
-        """Blocking: the four parts of a pod, in order, from its template (see the module docstring)."""
+        """Blocking: the five parts of a pod, in order, from its template (see the module docstring)."""
         t = self.templates[pod.template]
         labels = {LABEL: "pod", f"{LABEL}.sandbox-id": str(pod.id), f"{LABEL}.template": pod.template}
         workspace = self.workspaces.create(pod.id, pod.slot, t.workspace_mb)
@@ -251,10 +269,29 @@ class Pool:
         session_dir = self._session_dir(pod)
         session_dir.mkdir(parents=True, exist_ok=True)
         session_dir.chmod(0o755)
+        binds = [(str(session_dir), "/run/session", True), (str(workspace), "/workspace", False)]
+
+        if self.s.MOUNTER_IMAGE:
+            inputs = self.mounts.create(pod.id)
+            self.backend.run(ContainerSpec(
+                name=f"mounter-{pod.name}", image=self.s.MOUNTER_IMAGE, labels=labels,
+                networks=[(net, pod.mounter_ip)], command=mounter_command(pod.gateway_url),
+                binds=[(str(session_dir), "/run/session", True)],
+                shared_binds=[(str(self.mounts.folder(pod.id)), "/mnt")],
+                tmpfs={"/tmp": "size=64m"}, env={"HOME": "/tmp", "XDG_CACHE_HOME": "/tmp"},
+                cap_add=["SYS_ADMIN"], devices=["/dev/fuse:/dev/fuse:rwm"], apparmor_unconfined=True,
+                memory_mb=128, cpus=0.5, pids=64))
+            deadline = time.monotonic() + self.s.MOUNT_TIMEOUT_SECONDS
+            while not self.mounts.mounted(pod.id):        # before the sandbox: its bind needs the mount
+                if time.monotonic() > deadline:
+                    raise TimeoutError(f"its mount didn't appear in {self.s.MOUNT_TIMEOUT_SECONDS}s")
+                time.sleep(MOUNT_POLL)
+            binds.append((str(inputs), "/workspace/inputs", True))
+
         self.backend.run(ContainerSpec(
             name=f"sandbox-{pod.name}", image=t.image, labels=labels, runtime=t.runtime,
             user=f"{self.s.SANDBOX_UID}:{self.s.SANDBOX_UID}", networks=[(net, pod.sandbox_ip)],
-            binds=[(str(session_dir), "/run/session", True), (str(workspace), "/workspace", False)],
+            binds=binds,
             tmpfs={"/tmp": f"exec,mode=1777,size={t.tmp_mb}m"},
             memory_mb=t.memory_mb, cpus=t.cpus, pids=t.pids))
 
@@ -263,6 +300,10 @@ class Pool:
         pod.state = "gone"
         steps = [
             lambda: self.backend.remove_container(f"sandbox-{pod.name}"),
+            # rclone unmounts on SIGTERM; anything still mounted is unmounted after (F9)
+            lambda: self.backend.stop_container(f"mounter-{pod.name}", MOUNTER_STOP_SECONDS),
+            lambda: self.backend.remove_container(f"mounter-{pod.name}"),
+            lambda: self.mounts.remove(pod.id),
             lambda: self.backend.remove_container(f"proxy-{pod.name}"),
             lambda: self.backend.remove_network(f"pod-{pod.name}"),
             lambda: self.workspaces.remove(pod.id, pod.slot),
@@ -320,6 +361,9 @@ class Pool:
         pod.deadline = pod.claimed + min(wall, self.s.MAX_SESSION_SECONDS) + GRACE_SECONDS
         session = {"session_id": session_id, "capability": capability, "gateway_url": pod.gateway_url,
                    "profile": profile}
+        # The capability alone too, for the mounter's token command (R10), before the session file:
+        # agent-runtime starts on that, and the sandbox may read its inputs at once.
+        await asyncio.to_thread(_write_atomically, self._session_dir(pod) / "capability", capability)
         await asyncio.to_thread(_write_atomically, self._session_dir(pod) / "session.json", json.dumps(session))
         logger.info("pod %s (%s) claimed by session %s", pod.name, template, session_id)
         await self.refill()
@@ -347,6 +391,9 @@ class Pool:
             for pod in [p for p in self.pods.values() if p.state == "warm"]:
                 if not await asyncio.to_thread(self.backend.running, f"proxy-{pod.name}"):
                     logger.error("pod %s: its proxy stopped while warm: replaced", pod.name)
+                    await self._destroy(pod)
+                elif self.s.MOUNTER_IMAGE and not await asyncio.to_thread(self.backend.running, f"mounter-{pod.name}"):
+                    logger.error("pod %s: its mounter stopped while warm: replaced", pod.name)
                     await self._destroy(pod)
             await self.refill()
 
