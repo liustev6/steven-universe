@@ -128,6 +128,27 @@ For "pi-server asks the agent to summarize its notes and save the summary":
 | M4 | Publish checks: a publish outside the write grant, over the size limit, or of a refused type is refused at the gateway, with a clear error to the agent. |
 | M5 | Token renewal: a session longer than 10 minutes keeps reading with no error visible to rclone. |
 
+**Answered by the 6.1 spike (2026-11-27, VM 200; the real sandbox image and settings: gVisor, user
+10001, read-only root, all capabilities dropped, `no-new-privileges`; the mounter the stock
+`rclone/rclone:1.69.1` with `/dev/fuse` and `SYS_ADMIN`; a test WebDAV server with a Bearer check):**
+- **M1, yes.** The mounter's FUSE mount (bound `rshared`, so it appears on the VM) is read inside the
+  gVisor sandbox through an ordinary `:ro` bind: `ls`, `cat`, subfolders. **Writes and deletes fail**
+  ("Permission denied": the mount is read-only and bound `:ro`), part of M3.
+- **A mount made after the sandbox started** shows up only if the parent folder is bound `ro,rslave`;
+  with the runner's default (`rprivate`) it stays empty.
+- **A mount made before the session exists works:** rclone's WebDAV backend reads its Bearer token per
+  request from a command (`--webdav-bearer-token-command`). With no token yet, rclone stays up and
+  reads fail ("Input/output error"); once the token appears and its directory cache is refreshed
+  (`rclone rc vfs/refresh`), a sandbox already running reads everything. So the mounter can start at
+  warm-up, like the pod's proxy, and the claim stays instant.
+- **M2, an early signal** (the test server on the VM, so the mount's own overhead, not the network):
+  listing 1,000 files 0.017 s; reading 100 MB 0.29 s (checksum identical); 4 KB at the 80 MB mark (a
+  range request) 0.19 s. Measured again end to end in 6.7.
+- **A hard-killed mounter leaves its mount behind** on the VM (attached to a dead rclone;
+  `mountpoint` doesn't even report it): the runner must stop the mounter gracefully (rclone unmounts
+  on SIGTERM), unmount the folder at teardown anyway (`umount -l`), and find leftover `fuse.rclone`
+  mounts on start (R9).
+
 **Done when:** a sandbox reads `inputs/private/<requester>/…`, works in `work/`, and publishes
 `outputs/report.md` to `private/<requester>/reports/`; a publish to a forbidden location is
 refused; file-management's audit shows *agent-service on behalf of the requester* for every

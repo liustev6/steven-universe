@@ -81,6 +81,23 @@ sandbox ids, prompts, tokens, secrets, internal addresses, who deployed.
 |---|---|---|---|
 | S.1 | ✅ 2026-11-13 | `status:read` on `sandbox-runner` for api-service; the runner's `/v1/status`; api-service's public `/v1/status` (service-auth and a client secret for api-service); VM 200's firewall lets CT 106 reach the runner | `curl https://api.liustev6.ca/v1/status` shows every service and the runner's pods; a stopped service shows as down without failing the page. **Live:** through Cloudflare, all 6 services ok (13–24 ms each), OpenBao unsealed, the runner's templates and pods, no ids or addresses; deployed by the pipeline with its smoke test. (api-service's never-delivered client secret from 2026-11-07 was rotated out.) |
 
+## In progress: CP6, files
+The spec: [files-and-mounts.md](files-and-mounts.md). Sessions read your files as a read-only folder,
+work on local disk, and save results only through a checked `publish`; nothing in the sandbox holds a
+storage credential or a real token. **Permissions:** the profile's locations intersected with the
+caller's grant by auth-service at the token exchange (`grant_overlap`, as for tools), enforced again by
+file-management on every request.
+
+| Sub-CP | Status | What | Done when |
+|---|---|---|---|
+| 6.1 | ✅ 2026-11-27 | **Spike: a sidecar's FUSE mount inside a gVisor sandbox** (the spec's M1) | answered on VM 200 (files-and-mounts.md "Milestone 2", M1, M2) |
+| 6.2 | ⏳ | **The spec refreshed** with CP2–CP5's pieces and the spike's answer | its decisions agreed |
+| 6.3 | ⏳ | **file-management's read-only WebDAV view** (`PROPFIND`, `GET` with ranges; the same grant checks) | `rclone` mounts it with a test token |
+| 6.4 | ⏳ | **agent-service:** a session's locations (profile ∩ caller), the file-management token exchange, the gateway's read route | reads go through with the capability alone |
+| 6.5 | ⏳ | **The runner's mounter** (R10): rclone per pod, read-only into `/workspace/inputs` | an agent session reads your file |
+| 6.6 | ⏳ | **`publish`:** a gateway-served tool, its checks, `artifact.created` in protocol B | a report saved; a forbidden destination refused |
+| 6.7 | ⏳ | **Live:** the spec's "done when", M2–M5, the security invariants | measured and recorded |
+
 ## Done: CP4, voice (2026-11-27)
 **4.1–4.7** speech-service, live since 2026-11-18 on CT 108 (pve01's RTX 5060, an LXC): our own
 streaming TTS engine (first audio 20 ms, RTF 0.17) and Qwen3-ASR in one process; decisions, spikes and
