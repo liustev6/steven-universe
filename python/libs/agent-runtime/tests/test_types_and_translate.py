@@ -83,6 +83,9 @@ def test_codex_points_at_the_gateway_with_only_the_capability(tmp_path):
     assert o["mcp_servers.tools.url"] == f"{SESSION['gateway_url'].rstrip('/')}/mcp"
     assert o["mcp_servers.tools.bearer_token_env_var"] == CAPABILITY_ENV
     assert o["mcp_servers.tools.default_tools_approval_mode"] == "approve"
+    # its tools sent to the model directly, not deferred behind code mode's tool search (4.15)
+    assert o["mcp_servers.tools.omit_tools_from"] == ["deferred", "code_mode"]
+    assert 'mcp_servers.tools.omit_tools_from=["deferred", "code_mode"]' in cfg.config_overrides
 
 
 # ---- the Translator ------------------------------------------------------------------------------

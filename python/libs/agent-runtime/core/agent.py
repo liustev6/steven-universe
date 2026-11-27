@@ -62,6 +62,10 @@ def codex_overrides(session: SessionFile) -> dict[str, Any]:
         # Allowed and refused at the gateway (and, for sensitive tools later, confirmed through the caller,
         # G12): Codex adds no approval of its own, which under `approval_policy = never` could decline calls.
         f"mcp_servers.{MCP_SERVER}.default_tools_approval_mode": "approve",
+        # Its tools as the model's own, not hidden: Codex defers MCP tools (left out of the request, found
+        # by searching `ALL_TOOLS` inside its code-mode `exec`), which cost a whole model round trip
+        # (~2 s) before every call (4.15). Off both surfaces, they're sent directly in `tools`.
+        f"mcp_servers.{MCP_SERVER}.omit_tools_from": ["deferred", "code_mode"],
         # The gateway answers tools/list once the session's tools are known (at most 3 s after the claim).
         f"mcp_servers.{MCP_SERVER}.startup_timeout_sec": 10,
         f"mcp_servers.{MCP_SERVER}.tool_timeout_sec": 30,
