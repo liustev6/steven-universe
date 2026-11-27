@@ -98,12 +98,12 @@ strike it through with the date, as below.
 
 | Item | Skipped from | Comes back |
 |---|---|---|
-| **4.14 Hey Pi shows the assistant:** in progress (2026-11-26): the protocol reduced to one message, `speech` (idle, listening, speaking), on both sides; the app connects and shows a speech view over its own mode; its voice button is the wake word pressed (`wake`). No push-to-talk ([flutter_ui.md](../flutter_ui.md) "Protocol") | CP4 | **next** (CP5's core is live) |
-| **4.15 protocol B in shared-schemas; the agent's latency levers** (~5,800 tokens per call of Codex's own context, below) | CP4 | after 4.14 |
+| ~~**4.14 Hey Pi shows the assistant**~~ ✅ 2026-11-26: the speech state (idle, listening, thinking, speaking) on both sides, the speech view (the assistant's character), the voice button (`wake`), thinking again between the agent's messages ([voice-path.md](../voice-path.md) 4.14) | CP4 | 4.14 ✅ |
+| **4.15 protocol B in shared-schemas; the agent's latency levers** (~5,800 tokens per call of Codex's own context, below) | CP4 | **next** |
 | **CP4's "done when":** the first-audio budget measured against what was set; a week of daily use | CP4 | after 4.15 |
 | **Home Assistant's tools** (`home.*`, each with its class) **and confirmations** (G12, `confirmation.requested`, asked out loud on the Pi) | CP5 ([tools.md](tools.md) "Later") | after CP4 is done |
 | **Deploys of the Pi on push** (pi-server, Hey Pi): deployer phase 4; until then by hand from the Mac, on the home LAN | [deployer.md](../deployer.md) | when deploying by hand gets in the way; the Pi on Tailscale first, to deploy from away |
-| **Hey Pi boots to the app** (the `hey-pi.service` unit; `pi-setup.sh` from a fresh Pi OS) | [flutter_ui.md](../flutter_ui.md) | with 4.14 |
+| ~~**Hey Pi boots to the app**~~ not planned (2026-11-26): the app starts from the desktop launcher; pi-server runs always (the voice works with the app closed), so the two aren't tied | [flutter_ui.md](../flutter_ui.md) | dropped |
 | **The wake word's next round:** 30–60 min of your ordinary talk on the Pi's mic, pi-server saving each wake's audio, test set v2 and a retrain (quiet takes 68%, speech over media) | [wake-word.md](../wake-word.md) | when false wakes or misses show up in daily use |
 | ~~**pi-server's unused grant at api-service**~~ removed in 5.1 (2026-11-26) | the auth policy | 5.1 ✅ |
 | **The website's Steven AI chat** calls web-gateway's `/chat/stream` on api.liustev6.ca: 404 since api-service replaced it | the website | CP8 (stevenai-service retired); hide it until then |

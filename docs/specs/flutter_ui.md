@@ -345,7 +345,7 @@ dart/apps/hey-pi/
 │   ├── start-hey-pi.sh           # desktop → app switch (transient unit hey-pi)
 │   ├── hey-pi.desktop       # desktop/app-menu launcher (@HOME@ filled in on install)
 │   ├── hey-pi.svg           # launcher icon
-│   └── hey-pi.service       # (later) systemd unit for boot-to-app
+│   └── hey-pi.service       # not used: the app starts from the desktop launcher (boot-to-app dropped)
 └── scripts/                     # scripts RUN ON THE MAC
     └── run_deploy.sh            # build → stop app → rsync app + deploy/ files [--run] [--skip-build]
 ```
@@ -426,7 +426,9 @@ rsync deploy/{start-hey-pi.sh,hey-pi.svg,hey-pi.desktop} panel:hey-pi/   # + ins
 - `PI_HOST` comes from the environment, default `pi` (the `~/.ssh/config` alias).
 - `sudo` over ssh relies on passwordless sudo (Pi OS default for the first user).
 
-## systemd unit (`deploy/hey-pi.service`), later, for boot-to-app
+## systemd unit (`deploy/hey-pi.service`): not planned
+Boot-to-app was dropped (2026-11-26): the app starts from the desktop launcher, and pi-server runs
+always, so the voice works with the app closed. Kept for reference:
 ```ini
 [Unit]
 Description=Hey Pi (home panel Flutter UI)
