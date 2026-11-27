@@ -104,6 +104,9 @@ class ChatSession(Base):
     # what the gateway's /mcp lists, fixed for the session. None or []: no tools.
     tools: Mapped[list[Any] | None] = mapped_column(JSONB)
     tool_calls_used: Mapped[int] = mapped_column(Integer, default=0, server_default="0")   # max_tool_calls (TL10)
+    # file-management: what this session may do there (RFC 9396 file_access details), as the token
+    # exchange granted it at the start (files-and-mounts.md F6): the gateway's /dav acts on it.
+    files: Mapped[list[Any] | None] = mapped_column(JSONB)
     started_at: Mapped[datetime] = mapped_column(server_default=func.now())
     ready_at: Mapped[datetime | None]                             # runtime.ready arrived (startup time)
     last_activity_at: Mapped[datetime] = mapped_column(server_default=func.now())  # the idle timer (C6)

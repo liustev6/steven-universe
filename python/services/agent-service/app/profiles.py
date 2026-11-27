@@ -31,7 +31,27 @@ from core.types import Tool
 NAME_PATTERN = r"^[a-z][a-z0-9-]{0,31}$"
 # tools-service locations (tools.md): a namespace ("weather/") or one tool ("weather/forecast")
 TOOL_LOCATION = re.compile(r"^[a-z][a-z0-9_]*/([a-z][a-z0-9_]*)?$")
+# file-management locations (files-and-mounts.md F6): a bucket or a folder in it, ending in "/";
+# `${client}` is the session's caller (as auth-service's policy writes it)
+FILE_LOCATION = re.compile(r"^[a-z0-9-]+/(([A-Za-z0-9._-]+|\$\{client\})/)*$")
 CALLER_INSTRUCTIONS_MAX = 4000                             # characters (C15)
+
+
+class FileAccess(BaseModel):
+    """What a session asks file-management for (RFC 9396 `file_access`, as in policy.yaml): it gets the
+    overlap with its caller's own grant (files-and-mounts.md F6)."""
+
+    model_config = ConfigDict(extra="forbid")
+    actions: list[Literal["read", "list", "write", "delete"]] = Field(min_length=1)
+    locations: list[str] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _locations(self) -> "FileAccess":
+        bad = [loc for loc in self.locations
+               if not FILE_LOCATION.match(loc) or any(seg in (".", "..") for seg in loc.split("/"))]
+        if bad:
+            raise ValueError(f"files locations: <bucket>/<folder>/…/, ending in '/': {bad}")
+        return self
 
 
 class Limits(BaseModel):
@@ -67,6 +87,11 @@ class AgentProfile(BaseModel):
     # tools-service's tools (tools.md TL5): None (the default) = the owner's whole grant there; a list
     # of locations narrows it (the overlap); [] = none. Never a second copy of the grant.
     mcp_tools: list[str] | None = None
+    # file-management (files-and-mounts.md F6): what its sessions ask for; [] (the default) = no files.
+    # read/list locations are mounted at /workspace/inputs/<bucket>/<folder>/; write/delete: `publish`.
+    files: list[FileAccess] = Field(default_factory=list)
+    # append: the session's granted folders, listed in its instructions after the tools (where to look)
+    files_instructions: Literal["none", "append"] = "none"
     limits: Limits = Field(default_factory=Limits)
     history: History = Field(default_factory=History)
 

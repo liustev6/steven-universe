@@ -174,11 +174,33 @@ For "the `agent` CLI asks a session to summarize its notes and save the summary"
 |---|---|---|---|
 | 6.1 ✅ | the spike: a sidecar's mount inside gVisor | VM 200 | done |
 | 6.2 ✅ | this revision | here | — |
-| 6.3 | the WebDAV read view (`/dav/{bucket}/…`: `PROPFIND`, `GET` with ranges; the same grant checks) | file-management | **yes**: unit tests, then `rclone` against it with a test token |
-| 6.4 | the profile's `files`; the token exchange to file-management (relay, overlap); the gateway's `/dav` (T2's read locations as the tree) | agent-service, auth-service's policy | yes, against the live auth-service |
-| 6.5 | the mounter per pod (F2, F9) | sandbox-runner | on VM 200 |
-| 6.6 | `publish` (the CLI in the sandbox image; the gateway's `/files` routes and checks; `artifact.created`/`deleted` in protocol B, shared-schemas) | agent-runtime, agent-service, shared-schemas | yes |
-| 6.7 | the live checks: "Done when", M2–M5, the security invariants | all | — |
+| 6.3 ✅ | the WebDAV read view (`/dav/{bucket}/…`: `PROPFIND`, `GET` with ranges; the same grant checks) | file-management | **yes**: unit tests, then `rclone` against it with a test token |
+| 6.4 ✅ | the specs in `public/steven-universe/specs/`, synced by the pipeline (deployer D21) | deployer, api-service, GitHub | yes |
+| 6.5 | the profile's `files`; the token exchange to file-management (relay, overlap); the gateway's `/dav` (below) | agent-service, auth-service's policy | yes, against the live auth-service |
+| 6.6 | the mounter per pod (F2, F9) | sandbox-runner | on VM 200 |
+| 6.7 | `publish` (the CLI in the sandbox image; the gateway's `/files` routes and checks; `artifact.created`/`deleted` in protocol B, shared-schemas) | agent-runtime, agent-service, shared-schemas | yes |
+| 6.8 | the live checks: "Done when", M2–M5, the security invariants | all | — |
+
+**How 6.5 works (agent-service):**
+- **The profile** asks in the policy's own words: `files:` RFC 9396 `file_access` entries,
+  `${client}` filled in with the caller's client (`service:<client>`; an entry naming it is left out
+  for any other kind of caller). `files_instructions: append` lists the session's readable folders in
+  its instructions, after the tools.
+- **At the start** (`Sessions._session_files`), the caller's token is exchanged for the profile's
+  request; what auth-service granted (the overlap, `grant_overlap`) is read from the new token's own
+  `authorization_details` and stored on the session (`sessions.files`, migration 0004), like its
+  tools. A narrower grant than asked is logged; none (or file-management or auth-service down) is a
+  session without files, never a failed start.
+- **The gateway's `/dav`** (`app/gateway/dav.py`), paired like every gateway route (C7):
+  - inside a granted read folder → file-management's `/dav`, the path exactly as it came (still
+    encoded), with a token exchanged for the **running turn's** caller, asking for exactly the stored
+    grant (cached by the token client until it nears expiry); between turns, 403;
+  - above the granted folders → a listing made in the gateway of just the folders leading down to
+    them (a grant on `public/steven-universe/` shows `/dav/public/` holding only `steven-universe/`);
+    the root always answers, empty for a session without files;
+  - anything else → 404; every write method → 405; `Depth: infinity` → 403.
+- **The policy:** file-management's audience overlaps; agent-service relays to it; `agent-cli`
+  reads and lists `public/` (for the `steven-ai` profile).
 
 **What CP6 must answer:**
 

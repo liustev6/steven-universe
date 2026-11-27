@@ -30,6 +30,7 @@ from app.api import AUDIENCE, create_api
 from app.broker import AuthBroker, OpenBaoStore
 from app.config import Settings
 from app.db import make_engine, make_sessionmaker, upgrade
+from app.file_management import FileManagement
 from app.gateway import create_gateway
 from app.tools_service import ToolsService
 from app.history.eventlog import EventLog
@@ -72,7 +73,8 @@ async def serve(settings: Settings) -> None:
     broker = AuthBroker(settings.CODEX_HOME, store, refresh_every=settings.LOGIN_REFRESH_HOURS * 3600)
     upstream = httpx.AsyncClient(base_url=settings.MODEL_UPSTREAM, timeout=httpx.Timeout(30.0, read=600.0))
     tools = ToolsService(tokens, settings.TOOLS_MCP_URL) if settings.TOOLS_MCP_URL else None   # tools.md
-    sessions = Sessions(db, EventLog(db), runner, profiles, settings, tools)
+    files = FileManagement(tokens, settings.FILES_URL) if settings.FILES_URL else None   # files-and-mounts.md
+    sessions = Sessions(db, EventLog(db), runner, profiles, settings, tools, files)
 
     await broker.restore()
     await sessions.load()
@@ -105,6 +107,8 @@ async def serve(settings: Settings) -> None:
         await runner.aclose()
         await store.aclose()
         await upstream.aclose()
+        if files is not None:
+            await files.aclose()
         await engine.dispose()
         logger.info("stopped")
 

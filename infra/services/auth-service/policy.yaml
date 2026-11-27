@@ -23,8 +23,11 @@ audiences:
   api-service:
     scopes: [files:read, files:write, files:delete, files:list, chat:read, chat:write]
 
+  # Agent sessions ask for their profile's `files` and get the overlap with their caller's grant
+  # (files-and-mounts.md F6), as for tools; any other request still gets exactly what it asks, or nothing.
   file-management:
     scopes: [files:read, files:write, files:delete, files:list]
+    grant_overlap: true
     detail_types:
       file_access:
         actions: [read, write, delete, list]
@@ -77,10 +80,11 @@ clients:
           - {type: file_access, actions: [write, delete, list], locations: ["public/steven-universe/"]}
 
   # The control plane: claims pods, keeps its login in OpenBao. Secret host-only on CT 107.
-  # Relays a session's owner to tools-service (grant 3, the turn's token), and nowhere else.
+  # Relays a session's owner to tools-service and file-management (grant 3, the turn's token), and
+  # nowhere else.
   agent-service:
     can_relay_clients: true
-    relay_audiences: [tools-service]
+    relay_audiences: [tools-service, file-management]
     grants:
       sandbox-runner:
         scopes: [sandboxes:claim, sandboxes:release, sandboxes:read]
@@ -93,6 +97,10 @@ clients:
     grants:
       agent-service:
         scopes: [chat:read, chat:write, chat:admin]
+      file-management:                   # its agent sessions' files (the steven-ai profile reads public/)
+        scopes: [files:read, files:list]
+        authorization_details:
+          - {type: file_access, actions: [read, list], locations: ["public/"]}
 
   # speech-service's test client on your Mac (python/services/speech-service/test-client): talk to
   # the live service and hear it, and read its status; and its voice loop (speech → agent → speech),

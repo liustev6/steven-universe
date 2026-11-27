@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     # ---- Tools: tools-service's MCP side (tools.md); empty = sessions get no tools-service tools --
     TOOLS_MCP_URL: str = "https://tools.lan.liustev6.ca:8443/mcp"
     TOOLS_START_TIMEOUT_SECONDS: float = 3.0     # a start waits at most this for its tools, else it has none
+    # file-management (files-and-mounts.md): sessions' files, through the gateway's /dav. Empty: none.
+    FILES_URL: str = "https://files.lan.liustev6.ca"
+    FILES_START_TIMEOUT_SECONDS: float = 3.0     # a start waits at most this for its file grant, else it has none
 
     # Callers and the runner: auth-service tokens (SERVICE_AUTH_ISSUER, SERVICE_AUTH_CLIENT_ID,
     # SERVICE_AUTH_CLIENT_SECRET_FILE; service-auth reads them).

@@ -264,3 +264,38 @@ def test_no_token_without_details_where_they_are_required(config_dir, secrets):
     response = client.post("/oauth2/token", data={"grant_type": "client_credentials", "resource": "tools-service"},
                            auth=("hey-pi", secrets["hey-pi"]))
     assert error_of(response) == "invalid_authorization_details"
+
+
+# ---- grant 3: agent-service relays a session's owner to file-management (grant_overlap, files F6) ----
+
+def files_policy(config_dir):
+    """The fixture policy with what CP6 adds: file-management overlaps, agent-service relays to it."""
+    data = policy_data()
+    data["audiences"]["file-management"]["grant_overlap"] = True
+    data["clients"]["agent-service"]["relay_audiences"] = ["tools-service", "file-management"]
+    (config_dir / "policy.yaml").write_text(yaml.safe_dump(data))   # picked up without a restart
+
+
+def files_for(mint, owner, details, scope="files:read files:list files:write"):
+    subject = own_token(mint, owner, "agent-service")
+    return exchange(mint, "agent-service", subject, "file-management", scope=scope,
+                    authorization_details=json.dumps(details))
+
+
+def test_a_profiles_files_meet_the_owners_grant(mint, config_dir, claims_of):
+    """A folder inside the grant narrows it; a location or action outside it is left out."""
+    files_policy(config_dir)
+    asked = [{"type": "file_access", "actions": ["read", "list", "write"],
+              "locations": ["services/hey-pi/notes/", "public/"]}]
+    body = ok(files_for(mint, "hey-pi", asked))
+    got = [{"type": "file_access", "actions": ["read", "list"], "locations": ["services/hey-pi/notes/"]}]
+    assert body["authorization_details"] == got
+    claims = claims_of(body["access_token"], audience="file-management")
+    assert claims["sub"] == "service:hey-pi" and claims["act"] == {"sub": "service:agent-service"}
+    assert claims["authorization_details"] == got and set(claims["scope"].split()) == {"files:read", "files:list"}
+
+
+def test_files_with_nothing_in_common_are_refused(mint, config_dir):
+    files_policy(config_dir)
+    other = [{"type": "file_access", "actions": ["read"], "locations": ["services/other/"]}]
+    assert error_of(files_for(mint, "hey-pi", other)) == "invalid_authorization_details"

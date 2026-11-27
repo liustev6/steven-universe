@@ -74,3 +74,17 @@ profiles:
     codex_instructions: false
     limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
     history: {carry_turns: 0}
+
+  # files (files-and-mounts.md F6): read the public bucket, and the caller's own notes; its folders
+  # listed in its instructions
+  filed:
+    template: chat
+    effort: low
+    instructions: |
+      You answer from the files.
+    files:
+      - {actions: [read, list], locations: ["public/steven-universe/", "private/${client}/notes/"]}
+    files_instructions: append
+    tools: [shell]
+    limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
+    history: {carry_turns: 4}

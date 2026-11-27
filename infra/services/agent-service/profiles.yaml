@@ -15,6 +15,11 @@
 #                        a list of locations narrows it ("weather/"); [] = none
 #   tool_instructions    append: the session's tools-service tools listed in its instructions, after the
 #                        profile's own (Codex keeps MCP tools behind its tool search); none (the default)
+#   files                file-management (files-and-mounts.md F6): RFC 9396 file_access entries, as in
+#                        auth-service's policy (`${client}` = the caller); the session gets their overlap
+#                        with its caller's grant. read/list: mounted read-only at /workspace/inputs/<bucket>/…;
+#                        write/delete: `publish`. Absent (the default) = no files
+#   files_instructions   append: the session's readable folders listed in its instructions; none (the default)
 #   limits               wall_seconds (the session), max_turns (per session), max_turn_tokens (per turn)
 #   history              carry_turns: the conversation's last N turns, carried into a new session (C9)
 
@@ -53,6 +58,29 @@ profiles:
     tools: [web_search]           # runs at OpenAI: the sandbox still reaches only the gateway (G4)
     limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
     history: {carry_turns: 4}
+
+  # Steven AI: answers about steven-universe from its specs (CP6; CP8 adds search over them). Reads the
+  # public bucket, read-only (the specs: public/steven-universe/specs/, synced from docs/specs by the
+  # deployer); writes nothing. A shell to read them with (in the sandbox: gVisor and the gateway are
+  # the boundary).
+  steven-ai:
+    template: chat
+    model: null                   # Codex's default for your plan
+    effort: medium
+    instructions: |
+      You are Steven AI: you answer questions about steven-universe, Steven's home lab (its services,
+      their designs, decisions and status), from its specs.
+      The specs are Markdown files under /workspace/inputs/public/steven-universe/specs/ (read-only).
+      Before answering, find what is relevant with your shell (ls, grep -rn, cat), and say which spec
+      and section you used (e.g. "deployer.md, D21"). If the specs don't cover it, say so: don't guess.
+    codex_instructions: false
+    tools: [shell]
+    mcp_tools: []                 # no tools-service tools
+    files:
+      - {actions: [read, list], locations: ["public/"]}
+    files_instructions: append
+    limits: {wall_seconds: 1800, max_turns: 40, max_turn_tokens: 200000}
+    history: {carry_turns: 6}
 
   # Deploy smoke tests: one short turn, as cheap as possible.
   smoke:

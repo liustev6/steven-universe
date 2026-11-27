@@ -56,6 +56,7 @@ from app.sessions.errors import (
     Busy, BudgetExceeded, Ended, InstructionsNotAllowed, NotFound, ProfileMismatch, Stopped, UnknownProfile,
 )
 from app.sessions.runner import NoSandbox, Runner, RunnerError
+from app.file_management import FileManagement, NoFiles, file_instructions, resolve
 from app.tools_service import NoTools, ToolsService, tool_instructions
 from core.agent import MCP_SERVER
 
@@ -85,6 +86,9 @@ class Live:
     # The running turn's caller's token (audience agent-service), exchanged for a tools-service token
     # when a tool is called (TL4). Memory only, for the turn; never sent to the sandbox (TL3).
     caller_token: str | None = field(default=None, repr=False)
+    # file-management: what it may do there (file_access details), granted at the start (F6); the
+    # gateway's /dav shows its read folders and exchanges the turn's caller token for exactly these.
+    files: list[dict[str, Any]] = field(default_factory=list)
 
 
 def tool_error(text: str) -> types.CallToolResult:
@@ -94,9 +98,11 @@ def tool_error(text: str) -> types.CallToolResult:
 
 class Sessions:
     def __init__(self, db: async_sessionmaker, log: EventLog, runner: Runner,
-                 profiles: dict[str, AgentProfile], settings: Settings, tools: ToolsService | None = None):
+                 profiles: dict[str, AgentProfile], settings: Settings, tools: ToolsService | None = None,
+                 files: FileManagement | None = None):
         self.db, self.log, self.runner, self.profiles, self.s = db, log, runner, profiles, settings
         self.tools = tools                              # None: no tools-service (sessions get no tools)
+        self.files = files                              # None: no file-management (sessions get no files)
         self._live: dict[uuid.UUID, Live] = {}
         self._by_hash: dict[bytes, Live] = {}          # the gateway's lookup (C7)
         self.stopped = False
@@ -117,7 +123,7 @@ class Sessions:
                 await self.end(row.id, EndReason.FAILED)
                 continue
             live = Live(row.id, profile, row.sandbox_id, row.capability_hash, Translator(row.id, fresh=False),
-                        tools=row.tools or [])
+                        tools=row.tools or [], files=row.files or [])
             turn = running.get(row.id)
             if turn is not None:
                 live.turn_id = turn.id
@@ -170,7 +176,10 @@ class Sessions:
         # The tools first: the profile may list them in the instructions the claim writes to the session
         # file. Tens of ms on the LAN, at most TOOLS_START_TIMEOUT_SECONDS; a start never fails on them.
         tools = await self._session_tools(session.id, p, caller_token)
-        block = tool_instructions(tools, MCP_SERVER) if p.tool_instructions == "append" else ""
+        files = await self._session_files(session.id, p, owner, caller_token)
+        block = "\n\n".join(b for b in (
+            tool_instructions(tools, MCP_SERVER) if p.tool_instructions == "append" else "",
+            file_instructions(files) if p.files_instructions == "append" else "") if b)
         runtime = p.runtime(profile, context_text(carried, self.s.CARRY_CHARS), instructions or "", block)
         try:
             sandbox_id = await self.runner.claim(p.template, session.id, capability, runtime.model_dump(mode="json"))
@@ -181,13 +190,15 @@ class Sessions:
             row = await db.get(ChatSession, session.id, with_for_update=True)
             row.sandbox_id = sandbox_id
             row.tools = tools or None
+            row.files = files or None
             still_live = row.state != SessionState.ENDED
         if not still_live:                                      # ended while we claimed (the kill switch)
             await self.runner.release(sandbox_id)
             return row, True
-        self._remember(Live(row.id, profile, sandbox_id, capability_hash(capability), Translator(row.id), tools=tools))
-        logger.info("session %s started (profile %s, sandbox %s, %d turn(s) carried, %d tool(s))", row.id, profile,
-                    sandbox_id, len(carried), len(tools))
+        self._remember(Live(row.id, profile, sandbox_id, capability_hash(capability), Translator(row.id),
+                            tools=tools, files=files))
+        logger.info("session %s started (profile %s, sandbox %s, %d turn(s) carried, %d tool(s), %d file grant(s))",
+                    row.id, profile, sandbox_id, len(carried), len(tools), len(files))
         return row, True
 
     async def _session_tools(self, session_id: uuid.UUID, p: AgentProfile, caller_token: str | None) -> list[dict]:
@@ -201,6 +212,25 @@ class Sessions:
         except Exception as e:                                  # tools-service down: the session goes on without
             logger.warning("session %s: tools-service unavailable, no tools: %s: %s", session_id, type(e).__name__, e)
         return []
+
+    async def _session_files(self, session_id: uuid.UUID, p: AgentProfile, owner: str,
+                             caller_token: str | None) -> list[dict]:
+        """What the session may do at file-management: the overlap of the profile's `files` with the
+        caller's grant (F6), or [] (never fails a start: the session just has no files)."""
+        request = resolve(p.files, owner)
+        if self.files is None or not caller_token or not request:
+            return []
+        try:
+            got = await asyncio.wait_for(self.files.grant(caller_token, request), self.s.FILES_START_TIMEOUT_SECONDS)
+        except NoFiles as e:
+            logger.info("session %s: no files (%s)", session_id, e)
+            return []
+        except Exception as e:                                  # file-management or auth-service down: none
+            logger.warning("session %s: file grant unavailable, no files: %s: %s", session_id, type(e).__name__, e)
+            return []
+        if sorted(map(str, got)) != sorted(map(str, request)):
+            logger.info("session %s: files narrowed by the caller's grant: asked %s, got %s", session_id, request, got)
+        return got
 
     async def get(self, session_id: uuid.UUID, owner: str | None) -> ChatSession:
         """`owner=None`: any session (chat:admin)."""
