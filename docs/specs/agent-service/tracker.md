@@ -49,8 +49,10 @@ CP4 stopped after barge-in, because its next steps need tools: ending a conversa
    delegation, the safety checks, `end_conversation`.
 3. **Back to CP4:** 4.14 (Hey Pi shows the assistant) ✅ 2026-11-26, 4.15 (Codex's tool lookup gone,
    protocol B in shared-schemas) ✅ 2026-11-27: **CP4 ✅ 2026-11-27.**
-4. **CP5's later part (next):** Home Assistant's tools and confirmations (G12): CP5 ✅.
-5. **CP6 / CP7**, as the diagram.
+4. **CP6 (next, 2026-11-27):** files: sessions read your files and publish results.
+5. **CP8 after it:** knowledge (Steven AI): search over your documents; stevenai-service retired.
+6. **CP5's later part** when the smart devices arrive: Home Assistant's tools and confirmations (G12):
+   CP5 ✅. **CP7** (summaries and memory) after.
 
 Anything skipped on the way is in "Skipped for now" below, with where it comes back.
 
