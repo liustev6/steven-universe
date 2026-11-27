@@ -1,131 +1,193 @@
 # Spec: files and mounts (how a sandbox sees and saves your files)
 
-**Status: milestone 2, proposed** (2026-11-09; revised the same day: read-only mounts, a local work
-area and explicit publishing). Part of [agent-service](README.md).
+**Status: CP6, in progress.** Designed 2026-11-09 (milestone 2); **revised 2026-11-27** (6.2) for what
+CP2–CP5 built (pods with their own proxy and workspace, the token exchange, the gateway's tools) and
+the 6.1 spike's answers. Part of [agent-service](README.md); its build: [tracker.md](tracker.md) CP6.
 Related: [file-management.md](../file-management.md), [auth-service.md](../auth-service.md),
-[sandbox-runner.md](sandbox-runner.md), [agent-runtime.md](agent-runtime.md).
+[sandbox-runner.md](sandbox-runner.md), [agent-runtime.md](agent-runtime.md), [tools.md](tools.md).
 
 ## What it is
 A session **reads** the files it's allowed to see as an ordinary folder, **works** on local disk, and
-**saves** results back to S3 only through an explicit, checked publish step. Nothing in the sandbox
-holds a storage credential or a real token, and file-management still checks every access.
+**saves** results back to storage only through an explicit, checked `publish` command. Nothing in the
+sandbox holds a storage credential or a real token, and file-management still checks every access.
 
 ```
-/workspace/
-├── inputs/    read-only: the session's S3 locations, mounted (lazy, fetched on read)
-├── work/      read-write local disk: scratch, edits, intermediate files; gone with the sandbox
-└── outputs/   read-write local disk: results; saved to S3 only by "publish"
+/workspace/                      the pod's own folder on VM 200's workspace disk (R13)
+├── inputs/    read-only: the session's read locations, mounted (lazy, fetched on read)
+│   └── private/pi-server/notes/…     each location at its own path (<bucket>/<prefix>)
+├── work/      read-write local disk: scratch, edits, intermediate files; gone with the pod
+└── outputs/   read-write local disk: results; saved to storage only by `publish`
 ```
 
 **The rule behind it:** reading from storage is lazy and harmless, so mount it. Writing to storage
 from code that may be compromised is the risky direction, so make every write explicit, checked and
 audited.
 
-**Why not edit S3 in place:** S3 isn't a POSIX filesystem: no in-place edits, no file locking, and a
-rename is a copy and a delete. Tools that edit files (editors, `git`, `sed -i`) behave badly on an
-S3 mount. Local disk behaves like a disk.
+**Why not edit storage in place:** S3 isn't a POSIX filesystem: no in-place edits, no file locking,
+and a rename is a copy and a delete. Tools that edit files (editors, `git`, `sed -i`) behave badly on
+an S3 mount. Local disk behaves like a disk.
 
 ## Reading: the read-only mount
-This is the pattern Kubernetes uses to mount S3 into pods (the Mountpoint-for-S3 CSI driver): a mount
-process **next to** the workload does the mount, and the workload just sees a directory.
+The pattern Kubernetes uses to mount storage into pods (its CSI drivers, e.g. Mountpoint for S3): a
+trusted helper **next to** the workload does the mount; the workload just sees a directory.
 
 ```
-sandbox (gVisor, no capabilities)            mounter (sidecar container, same internal network)
-  /workspace/inputs/… ◀── bind mount (ro) ── rclone mount ──▶ egress-proxy ──▶ gateway ──▶ file-management
-  just sees a folder                           (FUSE)          (exit door)     (credentials)  (checks the grant)
+VM 200, one pod
+├── mounter (Docker, /dev/fuse + SYS_ADMIN; runs only rclone; started at warm-up)
+│     rclone mount (WebDAV) ──▶ the pod's proxy ──▶ gateway /dav ──▶ file-management /dav
+│     the token: the session capability, read per request      (T2)          (checks T2)
+│     mounted at a folder on the VM, bound `rshared`
+└── sandbox (gVisor, no privileges; runs the agent)
+      /workspace/inputs ◀── that folder, bound read-only
 ```
 
 | Hop | What it is | Holds | Why it exists |
 |---|---|---|---|
-| **rclone mount** (in the mounter) | rclone, a widely used open-source storage tool. `rclone mount` uses FUSE (Filesystem in Userspace) to present remote files as a directory; a read becomes an HTTP request. | the session capability only | FUSE needs privileges the sandbox doesn't have (no capabilities, gVisor), so a small trusted sidecar does it |
-| **egress-proxy** | the only other member of the sandbox network, which has no route out ([sandbox-runner.md](sandbox-runner.md) R5) | nothing | the single exit: it forwards only to the gateway, and stamps each request with its sandbox |
-| **gateway** (part of agent-service, a separate machine) | checks the capability and the session's file rules, swaps in the real token, forwards to file-management | the session's real file-management token | the only place real credentials live; it never runs untrusted code |
+| **rclone** (in the mounter) | a widely used open-source storage tool; `rclone mount` uses FUSE (Filesystem in Userspace) to present remote files as a folder: a listing becomes a `PROPFIND`, a read a `GET` (with ranges) | the session capability, once claimed | FUSE needs `/dev/fuse` and the mount privilege, which the sandbox doesn't have (gVisor, no capabilities), so a small trusted sidecar does it |
+| **the pod's proxy** | the pod's only way out ([sandbox-runner.md](sandbox-runner.md) R12): it forwards only to the gateway and stamps each request with its pod | nothing | the single exit, for the mounter as for the sandbox |
+| **gateway** (agent-service, CT 107) | checks the capability and the pod's stamp (C7), shows the session its read locations, swaps in the real token, forwards to file-management | T2, the session's file-management token | the only place a real credential is used; it never runs untrusted code |
+| **file-management** | its WebDAV view: `PROPFIND` and `GET`, on the same `authorize()` as `/objects` | its storage key | the only storage client (its D1, D3) |
 
 **One read, end to end:**
 ```
 agent: cat /workspace/inputs/private/pi-server/notes/todo.md
-  → rclone (mounter) → egress-proxy (+ "from sandbox-3") → gateway (capability ok; read allowed on
-    private/pi-server/notes/; swaps in token T2) → file-management (T2 grants read) → RustFS
-  ← the bytes, back the same way; rclone caches them for repeated reads
+  → rclone (mounter) → proxy (+ "from pod 3") → gateway (capability ok, pod ok; the session may read
+    private/pi-server/notes/ by T2's details; swaps in T2) → file-management (T2 grants read) → RustFS
+  ← the bytes, back the same way; rclone caches listings for repeated reads
 ```
 
-## Saving: publish
+## Saving: `publish`, a command the agent runs
+The sandbox image carries a small CLI. The agent runs it from its shell, like any other command:
 ```
-agent: publish("outputs/report.pdf", to="private/pi-server/reports/2026-11-report.pdf")
-  → runtime → gateway: POST /publish {path, destination}
-  → gateway checks: the session may write there? within size limits? type allowed by the profile?
-  → gateway reads the file from the sandbox's outputs/ (through the runtime) and uploads it
-    with T2 through file-management
-  ← client event (protocol B): artifact.created {path, destination, size, sha256}
+publish put    outputs/report.md  private/agent-cli/reports/2026-11-report.md
+publish delete private/agent-cli/reports/old-draft.md
 ```
-- **Publishing is a tool the agent calls,** available to profiles that may save. It isn't a
-  filesystem write. The agent learns the destination's rules from its profile ("reports go to …").
-- **The checks happen at the gateway,** not in the sandbox: write grant, destination prefix,
-  maximum size, and allowed types per profile. Anything sensitive (overwriting an existing object,
-  writing outside the usual folder) can require your confirmation (G12).
-- **Every saved object is audited twice:** `artifact.created` in the session's events, and
-  file-management's audit line (*agent-service on behalf of the requester*).
+```
+publish (in the sandbox) → the pod's proxy → gateway: PUT/DELETE /files/…, the capability, the bytes
+  → gateway checks: T2's details allow `write` (or `delete`) there? the size and type limits?
+    overwriting allowed? (later, for sensitive writes: asked first, G12)
+  → gateway → file-management with T2           → its audit: agent-service for the caller
+  ← protocol B: artifact.created {path, destination, size, sha256} (artifact.deleted for delete)
+```
+- **The CLI holds no credential:** it reads the session capability already in the sandbox
+  (`/run/session`) and talks only to the gateway, through the proxy. It sends the file's bytes; the
+  gateway decides.
+- **Off by default.** Only a profile with `write` (or `delete`) locations gets anything to publish to;
+  its instructions (`files_instructions: append`) tell the agent where and how. Running the CLI needs
+  a shell (the profile's `tools: [shell]`); `pi` has none and stays read-only.
+- **Every change is audited twice:** `artifact.created` / `artifact.deleted` in the session's events,
+  and file-management's audit line (*agent-service on behalf of the caller*).
+
+## Permissions: the profile's request, the caller's grant, the overlap
+The same model as tools (tools.md TL4, TL5), in the same words as `policy.yaml`: RFC 9396
+`authorization_details` of type `file_access`, `actions` and `locations`.
+
+```yaml
+# policy.yaml, the caller's grant (the ceiling, reviewed once):
+pi-server:
+  grants:
+    file-management:
+      scopes: [files:read, files:write, files:delete, files:list]
+      authorization_details:
+        - {type: file_access, actions: [read, write, delete, list], locations: ["private/${client}/"]}
+
+# profiles.yaml, what a session of this profile asks for (none: no files at all):
+files:
+  - {actions: [read, list], locations: ["private/${client}/notes/"]}     # mounted at inputs/
+  - {actions: [write],      locations: ["private/${client}/reports/"]}   # publish put
+```
+
+1. **agent-service** fills in `${client}` (the session's caller, as auth-service does in the policy)
+   and asks the token exchange for exactly the profile's details; the scopes follow from the actions.
+2. **auth-service** intersects them with the caller's grant (`grant_overlap`, RFC 6749 §3.3): the
+   prefix rule (`private/pi-server/` covers `private/pi-server/notes/`), per action. Tokens only narrow.
+   T2: `sub` = the caller, `act` = agent-service, `aud` = file-management, the overlap as its details.
+3. **The gateway goes by T2's details, not the profile:** what the mount shows (`read`/`list`
+   locations), where `publish put` and `publish delete` may go. The intersection lives in one place.
+4. **file-management** checks T2 on every request.
+
+A profile asking for more than the caller has gets the overlap, logged when it's smaller than asked;
+an empty overlap is a session with no files.
 
 ## Decisions
 | ID | Decision | Why |
 |---|---|---|
-| F1 | **Three areas:** `inputs/` (read-only S3 mounts), `work/` (local scratch), `outputs/` (local results). | Reading is lazy and natural; editing happens on a real disk; writing to storage is deliberate. |
-| F2 | **A mounter sidecar does the mounts,** not the sandbox. The runner starts one per sandbox (a small image with rclone) on the same internal network, through the same egress proxy, and bind-mounts its FUSE mounts into the sandbox, **read-only**. | FUSE needs `/dev/fuse` and admin privileges; the sandbox keeps none (R4). The mounter runs only trusted code (rclone). |
-| F3 | **file-management stays the only S3 client** (its D1, D3). Every mounted read and every publish is a file-management request, with a grant check and an audit line. | One gatekeeper for storage; nothing on the VM has S3 or RustFS keys. |
-| F4 | **Reads use a WebDAV view in file-management** (RFC 4918: the standard "files over HTTP"). Mounts are read-only, so it needs only `PROPFIND` (list) and `GET` (with ranges), mapped onto the same `authorize()`, buckets and key rules as `/objects`. The mounter is plain `rclone mount` with its WebDAV backend. | An off-the-shelf, mature client (caching, retries, partial reads). Read-only keeps the new surface in file-management small. |
-| F5 | **What a session may see and save is decided by agent-service:** the profile's locations **intersected** with the requester's access. file-management only serves; it has no concept of mounts or sessions. The agent can **request**, never **grant** itself, access. | Policy lives in the control plane. |
-| F6 | **Writes to S3 happen only through `publish`,** checked at the gateway (grant, destination, size, type, confirmation if sensitive). No read-write mounts. | Writing from code that may be compromised is the risky direction; making it explicit makes it checkable and auditable. |
-| F7 | **Inputs are fixed at session start** (milestone 2). **Later:** a `request_files` tool: the agent asks for another location with a reason, agent-service decides (asking you if the profile says so), and the runner adds it under `inputs/`. | Simple and auditable now; requests are the controlled way to grow, later. |
+| F1 | **Three areas:** `inputs/` (read-only mounts), `work/` (local scratch), `outputs/` (local results). `work/` and `outputs/` are the pod's own workspace (R13: its folder on VM 200's XFS disk, under a quota). | Reading is lazy and natural; editing happens on a real disk; writing to storage is deliberate. |
+| F2 | **A mounter sidecar per pod does the mount,** started **at warm-up** with the pod's proxy (R10, R12): the stock rclone image, `/dev/fuse` and `SYS_ADMIN` only, through the pod's proxy. Its FUSE mount is bound `rshared` to a folder on the VM, which the sandbox binds read-only at `/workspace/inputs`. rclone reads its Bearer token per request from the session file (`--webdav-bearer-token-command`): before the claim it has none and reads fail; **at the claim** the runner writes the session file as today, and refreshes rclone's directory cache (`rclone rc vfs/refresh`). | FUSE needs privileges the sandbox keeps none of (R4). Started at warm-up, the mount exists before the sandbox does, so no mount has to appear under a running sandbox, and the claim stays instant (the 6.1 spike: both checked on VM 200). |
+| F3 | **file-management stays the only storage client** (its D1, D3). Every mounted read and every publish is a file-management request, with a grant check and an audit line. | One gatekeeper for storage; nothing on VM 200 has storage keys. |
+| F4 | **Reads use WebDAV** (RFC 4918, the standard "files over HTTP"): only `PROPFIND` (list) and `GET` (with ranges), at file-management (`/dav/{bucket}/…`, mapped onto the same `authorize()`, buckets and key rules as `/objects`) and at the gateway (`/dav`). The mounter is plain `rclone mount` with its WebDAV backend. | An off-the-shelf, mature client (caching, retries, partial reads); read-only keeps the new surface small. |
+| F5 | **Every mounter is identical;** the gateway's `/dav` shows each session only its own read locations, as folders at their own paths (`private/pi-server/notes/`). The runner never learns a session's files. | Policy lives in the control plane (agent-service); the runner carries out (R1). |
+| F6 | **Permissions as for tools:** the profile's `files` (RFC 9396 `file_access` details, `${client}` = the caller) asked for at the token exchange; auth-service gives the overlap with the caller's grant (`grant_overlap` at the `file-management` audience); the gateway acts on T2's details only; file-management checks T2. agent-service relays to `file-management` too (its `relay_audiences`). The agent can **request**, never **grant** itself, access. | One model for everything a session reaches; the ceiling is the caller's grant, reviewed in the policy. |
+| F7 | **Writes happen only through `publish`,** a CLI in the sandbox image (`put`, `delete`) that calls the gateway with the capability; the gateway checks T2's `write`/`delete` locations, size, type and overwrite, then writes with T2. Off unless the profile has `write`/`delete` locations; needs a shell. No read-write mounts. | Writing from code that may be compromised is the risky direction: explicit makes it checkable and auditable. A command fits how agents already work (a shell), and the bytes are already where the CLI runs. |
+| F8 | **Inputs are fixed at session start.** | Simple and auditable; requests to grow them are "Later". |
+| F9 | **The mounter is torn down carefully:** stopped gracefully (rclone unmounts on SIGTERM), its folder unmounted at teardown anyway (`umount -l`), and leftover `fuse.rclone` mounts swept when the runner starts (R9). | The 6.1 spike: a hard-killed mounter leaves its mount behind, attached to a dead rclone, and `mountpoint` doesn't even report it. |
 
 ## Authentication chain
-For "pi-server asks the agent to summarize its notes and save the summary":
+For "the `agent` CLI asks a session to summarize its notes and save the summary":
 
 | Step | Token | Held by |
 |---|---|---|
-| pi-server → agent-service | T1: `aud=agent-service`, `sub=service:pi-server` | pi-server |
-| agent-service → auth-service: **exchange** T1 (grant 3, relay), asking for **less**: `read` on `private/pi-server/notes/`, `write` on `private/pi-server/reports/` | T2: `aud=file-management`, `sub=service:pi-server`, `act=agent-service`, the narrowed grants | **the gateway only** |
-| mounter and runtime → gateway | the session capability | the sandbox and its mounter |
+| caller → agent-service, each turn | T1: `aud=agent-service`, `sub=agent-cli` | the caller; agent-service keeps it **in memory for that turn only** (TL4) |
+| agent-service → auth-service: **token exchange** (RFC 8693, grant 3), T1 as the subject, agent-service's own credentials, asking for the profile's `file_access` details | T2: `aud=file-management`, `sub=agent-cli`, `act=agent-service`, the overlap, at most 10 minutes | **the gateway only** |
+| mounter and `publish` → gateway | the session capability (C7: valid only from its own pod) | the sandbox and its mounter |
 | gateway → file-management (mounted reads, publishes) | T2 | the gateway |
 
-- **The sandbox never holds a real token.** A leaked capability works only from its own sandbox,
-  through the gateway, for that session's locations, until the session ends.
-- **file-management sees the truth:** *agent-service acting for pi-server*, with grants that can't be
-  widened (auth-service A7: tokens only narrow).
-- **Expiry is hidden from the mount.** T2 lives 10 minutes; the gateway re-exchanges behind the
-  stable capability. Long background tasks use a **downscoped** token instead (grant 4, up to 1 hour),
-  which needs auth-service's downscope gap fixed first ([auth-service.md](../auth-service.md), Known
-  issues).
-- **Changes needed in auth-service:** agent-service becomes a client with `can_relay_clients`, plus the
-  audiences `agent-service` and `sandbox-runner`. Requesters' grants are unchanged.
+- **The sandbox never holds a real token.** A leaked capability works only from its own pod, through
+  the gateway, for that session's locations, until the session ends.
+- **Between turns there's no T1, so no new T2:** a stolen capability can't read your files while
+  you aren't using the session (CP5 checked the same for tools).
+- **file-management sees the truth:** *agent-service acting for the caller*, with grants that can't
+  be widened.
+- **A turn longer than T2's 10 minutes** re-exchanges with the turn's T1; if T1 itself expires
+  mid-turn, long tasks need a downscoped token (grant 4, up to 1 hour), which needs auth-service's
+  downscope gap fixed first ([auth-service.md](../auth-service.md), Known issues). Voice and short
+  tasks never reach it (M5).
+- **Callers are clients:** `${client}` is the calling client (`pi-server`, `agent-cli`), so the CLI's
+  files are `private/agent-cli/…` until CP9 brings people's own identities through api-service.
 
 ## Not chosen
 | Option | Why not |
 |---|---|
-| Read-write S3 mounts (this spec's first version) | S3 isn't a POSIX filesystem (no in-place edits, locks, or real renames), and writes from untrusted code would go straight to storage, unchecked |
-| Copying all inputs in at start | slow for large folders, and a snapshot that's stale at once; kept in mind for small inputs |
-| rclone or `mountpoint-s3` straight to RustFS | S3 credentials on the VM, and a bypass of file-management's grants and audit |
-| Temporary S3 credentials scoped by policy (STS-style) | depends on RustFS supporting it, and still bypasses file-management's model; code holding temporary credentials can still use them |
-| A custom FUSE driver over `/objects` | no change to file-management, but a filesystem of our own to maintain. **The fallback** if a WebDAV view turns out wrong. |
-| FUSE inside the sandbox | needs privileges inside the sandbox; gVisor's FUSE support is limited |
+| Read-write mounts (this spec's first version) | S3 isn't a POSIX filesystem (no in-place edits, locks, or real renames), and writes from untrusted code would go straight to storage, unchecked |
+| FUSE inside the sandbox | needs `/dev/fuse` and the mount privilege inside the one container that runs untrusted code; gVisor's FUSE support is limited |
+| The mounter started at the claim, its mount appearing under a running sandbox | works only with the parent bound `rslave` (the 6.1 spike), and makes the claim wait for rclone; the warm-up mount (F2) needs neither |
+| The runner fetching `outputs/` files for publish (the 6.2 draft) | the bytes are already in the sandbox, where the CLI runs; the gateway's checks are the same either way |
+| Copying all inputs in at start | slow for large folders, and a stale snapshot at once; kept in mind for small inputs |
+| rclone or `mountpoint-s3` straight to RustFS | storage keys on VM 200, and a bypass of file-management's grants and audit |
+| Temporary S3 credentials scoped by policy (STS-style) | depends on RustFS, bypasses file-management's model, and code holding them can still use them |
+| A custom FUSE driver over `/objects` | a filesystem of our own to maintain; the fallback if WebDAV turns out wrong |
 
-## Milestone 2 plan
-| Piece | Where | Testable alone? |
-|---|---|---|
-| WebDAV read view (`/dav/{bucket}/…`: `PROPFIND`, `GET` with ranges; the same grant checks) | file-management | **yes**: unit tests, then `rclone` against it with a test client |
-| Mounter image (rclone; a mount script for the session's read locations) | `python/services/sandbox-runner/mounter/` or its own folder | yes: on the test VM with a test token |
-| The gateway's files routes: WebDAV reads → file-management with T2; `POST /publish` with the checks; the `artifact.created` client event | agent-service's gateway | yes |
-| `publish` as a tool in the runtime (an MCP tool, served by the gateway or the runtime, that Codex calls) | agent-runtime | yes |
-| Token exchange for a session (relay, narrowed) | agent-service (its own client, with `can_relay_clients`) | yes, against the live auth-service |
-| Runner support (mounter per sandbox, the read-only bind mount, local `work/` and `outputs/`) | sandbox-runner, or a script on the test VM | on the test VM |
+## Later
+- **`request_files`:** the agent asks for another location with a reason; agent-service decides
+  (asking you if the profile says so), and the gateway's `/dav` shows it.
+- **`publish` as an MCP tool** at the gateway's `/mcp`, with the same checks, for a profile without a
+  shell.
+- **Confirmation for sensitive writes** (overwrites, outside the usual folder): G12, with Home
+  Assistant's.
+- **`mcp_tools` in the same shape as `files`:** today a profile's `mcp_tools` lists only locations
+  (`[weather/]`, the action always `call`); it could take the full RFC 9396 entry
+  (`{actions: [call], locations: [...]}`) so tools and files read the same in `profiles.yaml` and
+  `policy.yaml`. Nothing needs it yet.
 
-**What milestone 2 must answer:**
+## The build (CP6, [tracker.md](tracker.md))
+| Sub-CP | Piece | Where | Testable alone? |
+|---|---|---|---|
+| 6.1 ✅ | the spike: a sidecar's mount inside gVisor | VM 200 | done |
+| 6.2 ✅ | this revision | here | — |
+| 6.3 | the WebDAV read view (`/dav/{bucket}/…`: `PROPFIND`, `GET` with ranges; the same grant checks) | file-management | **yes**: unit tests, then `rclone` against it with a test token |
+| 6.4 | the profile's `files`; the token exchange to file-management (relay, overlap); the gateway's `/dav` (T2's read locations as the tree) | agent-service, auth-service's policy | yes, against the live auth-service |
+| 6.5 | the mounter per pod (F2, F9) | sandbox-runner | on VM 200 |
+| 6.6 | `publish` (the CLI in the sandbox image; the gateway's `/files` routes and checks; `artifact.created`/`deleted` in protocol B, shared-schemas) | agent-runtime, agent-service, shared-schemas | yes |
+| 6.7 | the live checks: "Done when", M2–M5, the security invariants | all | — |
+
+**What CP6 must answer:**
 
 | # | Question |
 |---|---|
-| M1 | Does a FUSE mount from the sidecar show up inside a **gVisor** sandbox reliably (bind-mount propagation through gVisor's file proxy)? Fallback: inputs copied in at start for small sets. |
+| M1 | Does a FUSE mount from the sidecar show up inside a **gVisor** sandbox reliably? **Answered: yes** (below). |
 | M2 | Speed: listing a folder of 1,000 files; reading a 100 MB file. |
 | M3 | Read-only is enforced: writes to `inputs/` fail in the sandbox, and file-management would refuse them anyway. |
-| M4 | Publish checks: a publish outside the write grant, over the size limit, or of a refused type is refused at the gateway, with a clear error to the agent. |
+| M4 | Publish checks: a publish outside the write locations, over the size limit, or of a refused type is refused at the gateway, with a clear error to the agent. |
 | M5 | Token renewal: a session longer than 10 minutes keeps reading with no error visible to rclone. |
 
 **Answered by the 6.1 spike (2026-11-27, VM 200; the real sandbox image and settings: gVisor, user
@@ -140,16 +202,14 @@ For "pi-server asks the agent to summarize its notes and save the summary":
   request from a command (`--webdav-bearer-token-command`). With no token yet, rclone stays up and
   reads fail ("Input/output error"); once the token appears and its directory cache is refreshed
   (`rclone rc vfs/refresh`), a sandbox already running reads everything. So the mounter can start at
-  warm-up, like the pod's proxy, and the claim stays instant.
+  warm-up, like the pod's proxy, and the claim stays instant (F2).
 - **M2, an early signal** (the test server on the VM, so the mount's own overhead, not the network):
   listing 1,000 files 0.017 s; reading 100 MB 0.29 s (checksum identical); 4 KB at the 80 MB mark (a
   range request) 0.19 s. Measured again end to end in 6.7.
 - **A hard-killed mounter leaves its mount behind** on the VM (attached to a dead rclone;
-  `mountpoint` doesn't even report it): the runner must stop the mounter gracefully (rclone unmounts
-  on SIGTERM), unmount the folder at teardown anyway (`umount -l`), and find leftover `fuse.rclone`
-  mounts on start (R9).
+  `mountpoint` doesn't even report it): F9.
 
-**Done when:** a sandbox reads `inputs/private/<requester>/…`, works in `work/`, and publishes
-`outputs/report.md` to `private/<requester>/reports/`; a publish to a forbidden location is
-refused; file-management's audit shows *agent-service on behalf of the requester* for every
-access; and nothing on the VM ever held a real token.
+**Done when:** a sandbox reads `inputs/private/<caller>/…`, works in `work/`, and publishes
+`outputs/report.md` to `private/<caller>/reports/`; a publish to a forbidden location is
+refused; file-management's audit shows *agent-service on behalf of the caller* for every
+access; and nothing on VM 200 ever held a real token.

@@ -91,7 +91,7 @@ file-management on every request.
 | Sub-CP | Status | What | Done when |
 |---|---|---|---|
 | 6.1 | ✅ 2026-11-27 | **Spike: a sidecar's FUSE mount inside a gVisor sandbox** (the spec's M1) | answered on VM 200 (files-and-mounts.md "Milestone 2", M1, M2) |
-| 6.2 | ⏳ | **The spec refreshed** with CP2–CP5's pieces and the spike's answer | its decisions agreed |
+| 6.2 | ✅ 2026-11-27 | **The spec refreshed** with CP2–CP5's pieces and the spike's answer: the mounter at warm-up, identical per pod (the gateway's `/dav` shows a session its own locations); `publish` a CLI in the sandbox (`put`, `delete`), off by default; permissions as RFC 9396 `file_access` details, the overlap with the caller's grant | agreed (files-and-mounts.md F1–F9) |
 | 6.3 | ⏳ | **file-management's read-only WebDAV view** (`PROPFIND`, `GET` with ranges; the same grant checks) | `rclone` mounts it with a test token |
 | 6.4 | ⏳ | **agent-service:** a session's locations (profile ∩ caller), the file-management token exchange, the gateway's read route | reads go through with the capability alone |
 | 6.5 | ⏳ | **The runner's mounter** (R10): rclone per pod, read-only into `/workspace/inputs` | an agent session reads your file |
