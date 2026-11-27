@@ -1,0 +1,484 @@
+{
+  "$defs": {
+    "EndReason": {
+      "description": "Why a session ended (`session.status` ended): what to do next depends on it.",
+      "enum": [
+        "deleted",
+        "idle",
+        "wall_time",
+        "sandbox_lost",
+        "stopped",
+        "failed"
+      ],
+      "title": "EndReason",
+      "type": "string"
+    },
+    "Error": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "error",
+          "default": "error",
+          "title": "Type",
+          "type": "string"
+        },
+        "code": {
+          "$ref": "#/$defs/ErrorCode"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "Error",
+      "type": "object"
+    },
+    "ErrorCode": {
+      "enum": [
+        "no_sandbox",
+        "rate_limited",
+        "budget",
+        "runtime",
+        "internal"
+      ],
+      "title": "ErrorCode",
+      "type": "string"
+    },
+    "MessageCompleted": {
+      "additionalProperties": false,
+      "description": "A text block is finished: its whole text (for speech, and for clients that don't stream).",
+      "properties": {
+        "type": {
+          "const": "message.completed",
+          "default": "message.completed",
+          "title": "Type",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "MessageCompleted",
+      "type": "object"
+    },
+    "MessageDelta": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "message.delta",
+          "default": "message.delta",
+          "title": "Type",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "MessageDelta",
+      "type": "object"
+    },
+    "SessionStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "session.status",
+          "default": "session.status",
+          "title": "Type",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ready",
+            "ended"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EndReason"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "SessionStatus",
+      "type": "object"
+    },
+    "TaskCompleted": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "task.completed",
+          "default": "task.completed",
+          "title": "Type",
+          "type": "string"
+        },
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary"
+        }
+      },
+      "required": [
+        "task_id",
+        "status"
+      ],
+      "title": "TaskCompleted",
+      "type": "object"
+    },
+    "TaskProgress": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "task.progress",
+          "default": "task.progress",
+          "title": "Type",
+          "type": "string"
+        },
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        }
+      },
+      "required": [
+        "task_id"
+      ],
+      "title": "TaskProgress",
+      "type": "object"
+    },
+    "TaskStarted": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "task.started",
+          "default": "task.started",
+          "title": "Type",
+          "type": "string"
+        },
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        }
+      },
+      "required": [
+        "task_id"
+      ],
+      "title": "TaskStarted",
+      "type": "object"
+    },
+    "ToolCompleted": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "tool.completed",
+          "default": "tool.completed",
+          "title": "Type",
+          "type": "string"
+        },
+        "tool_id": {
+          "title": "Tool Id",
+          "type": "string"
+        },
+        "is_error": {
+          "title": "Is Error",
+          "type": "boolean"
+        },
+        "output": {
+          "title": "Output",
+          "type": "string"
+        },
+        "truncated": {
+          "default": false,
+          "title": "Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "tool_id",
+        "is_error",
+        "output"
+      ],
+      "title": "ToolCompleted",
+      "type": "object"
+    },
+    "ToolStarted": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "tool.started",
+          "default": "tool.started",
+          "title": "Type",
+          "type": "string"
+        },
+        "tool_id": {
+          "title": "Tool Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "input": {
+          "additionalProperties": true,
+          "title": "Input",
+          "type": "object"
+        },
+        "server": {
+          "default": false,
+          "title": "Server",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "tool_id",
+        "name",
+        "input"
+      ],
+      "title": "ToolStarted",
+      "type": "object"
+    },
+    "TurnCompleted": {
+      "additionalProperties": false,
+      "description": "The last event of every turn, whatever happened.",
+      "properties": {
+        "type": {
+          "const": "turn.completed",
+          "default": "turn.completed",
+          "title": "Type",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "interrupted",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "first_text_ms": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Text Ms"
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Ms"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Usage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "TurnCompleted",
+      "type": "object"
+    },
+    "TurnStarted": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "turn.started",
+          "default": "turn.started",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "TurnStarted",
+      "type": "object"
+    },
+    "Usage": {
+      "additionalProperties": false,
+      "description": "One turn's tokens (not the session's running total). Names follow OpenAI's usage object.",
+      "properties": {
+        "input_tokens": {
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "cached_input_tokens": {
+          "title": "Cached Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "reasoning_tokens": {
+          "title": "Reasoning Tokens",
+          "type": "integer"
+        },
+        "total_tokens": {
+          "title": "Total Tokens",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "input_tokens",
+        "cached_input_tokens",
+        "output_tokens",
+        "reasoning_tokens",
+        "total_tokens"
+      ],
+      "title": "Usage",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "error": "#/$defs/Error",
+      "message.completed": "#/$defs/MessageCompleted",
+      "message.delta": "#/$defs/MessageDelta",
+      "session.status": "#/$defs/SessionStatus",
+      "task.completed": "#/$defs/TaskCompleted",
+      "task.progress": "#/$defs/TaskProgress",
+      "task.started": "#/$defs/TaskStarted",
+      "tool.completed": "#/$defs/ToolCompleted",
+      "tool.started": "#/$defs/ToolStarted",
+      "turn.completed": "#/$defs/TurnCompleted",
+      "turn.started": "#/$defs/TurnStarted"
+    },
+    "propertyName": "type"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/SessionStatus"
+    },
+    {
+      "$ref": "#/$defs/TurnStarted"
+    },
+    {
+      "$ref": "#/$defs/MessageDelta"
+    },
+    {
+      "$ref": "#/$defs/MessageCompleted"
+    },
+    {
+      "$ref": "#/$defs/ToolStarted"
+    },
+    {
+      "$ref": "#/$defs/ToolCompleted"
+    },
+    {
+      "$ref": "#/$defs/TaskStarted"
+    },
+    {
+      "$ref": "#/$defs/TaskProgress"
+    },
+    {
+      "$ref": "#/$defs/TaskCompleted"
+    },
+    {
+      "$ref": "#/$defs/TurnCompleted"
+    },
+    {
+      "$ref": "#/$defs/Error"
+    }
+  ]
+}

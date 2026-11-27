@@ -40,6 +40,8 @@ import time
 from dataclasses import dataclass
 from typing import AsyncIterator, Callable, Optional, Protocol
 
+import shared_schemas.agent_service as b
+
 from app.voice.agent import AgentClient
 from app.voice.audio import AudioError, Mic, Speaker
 from app.voice.speech import FLUSH, SpeechClient
@@ -402,30 +404,30 @@ class VoiceAssistant:
             """The agent's turn, its text into the speech as it comes."""
             nonlocal agent_done, agent_ended, between
             async with contextlib.aclosing(self.agent.turn(text)) as events:
-                async for event in events:
-                    kind = event.get("type")
-                    if kind == "message.delta" and event.get("text"):
-                        between = False
-                        mark("first_text")
-                        said = spoken.feed(event["text"])             # no citation markers, no markdown
-                        if said:
-                            reply.append(said)
-                            texts.put_nowait(said)
-                            await self.ui.reply_delta(turn_id, said)
-                    elif kind == "message.completed":
-                        between = True                  # what comes next: a search, the model, the next message
-                        spoken.end()
-                        texts.put_nowait(FLUSH)     # speak this message whole now: a search may come before the next
-                    elif kind == "tool.started" and str(event.get("name", "")).endswith(END_CONVERSATION):
-                        agent_ended = True                  # tools-service only acknowledges it; ending is ours
-                    elif kind == "turn.completed":
-                        between = False
-                        agent_done = True
-                        mark("agent_done")
-                        if event.get("status") != "completed":
-                            logger.warning("turn %s: the agent's turn %s (%s)", turn_id, event.get("status"), event.get("reason"))
-                    elif kind == "error":
-                        logger.warning("turn %s: the agent: %s", turn_id, event)
+                async for event in events:                    # protocol B (shared_schemas.agent_service)
+                    match event:
+                        case b.MessageDelta(text=delta) if delta:
+                            between = False
+                            mark("first_text")
+                            said = spoken.feed(delta)                 # no citation markers, no markdown
+                            if said:
+                                reply.append(said)
+                                texts.put_nowait(said)
+                                await self.ui.reply_delta(turn_id, said)
+                        case b.MessageCompleted():
+                            between = True              # what comes next: a search, the model, the next message
+                            spoken.end()
+                            texts.put_nowait(FLUSH)     # speak this message whole now: a search may come before the next
+                        case b.ToolStarted(name=name) if name.endswith(END_CONVERSATION):
+                            agent_ended = True              # tools-service only acknowledges it; ending is ours
+                        case b.TurnCompleted(status=status, reason=reason):
+                            between = False
+                            agent_done = True
+                            mark("agent_done")
+                            if status != "completed":
+                                logger.warning("turn %s: the agent's turn %s (%s)", turn_id, status, reason)
+                        case b.Error(code=code, message=message):
+                            logger.warning("turn %s: the agent: %s: %s", turn_id, code, message)
             texts.put_nowait(None)
 
         async def thinking_again() -> None:

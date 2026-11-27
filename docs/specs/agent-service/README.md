@@ -171,8 +171,10 @@ alternative stays the fallback for model access (route B in [model-access.md](mo
    - calls the real MCP server with the real credential;
    - returns the result.
 5. **Events stream** back. The sandbox sends protocol A ([agent-runtime.md](agent-runtime.md)), and
-   agent-service translates it into protocol B, the client events in shared-schemas (planned):
-   `message.delta`, `activity`, `confirmation.requested`, `artifact.created`, `turn.completed`.
+   agent-service translates it into protocol B, the client events in shared-schemas
+   (`shared_schemas.agent_service`, since 2026-11-27; today: `session.status`, `turn.*`, `message.*`,
+   `tool.*`, `task.*`, `error`; planned:
+   `activity`, `confirmation.requested`, `artifact.created`).
    pi-server passes them on; Hey Pi shows them and speaks the reply.
 6. **The session stays warm** for follow-ups ("and the hallway"). After the idle timeout:
    - the workspace is pushed back;

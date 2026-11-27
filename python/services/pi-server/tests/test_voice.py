@@ -9,6 +9,8 @@ from datetime import UTC, datetime
 
 import httpx
 
+from shared_schemas.agent_service import TurnCompleted, parse_body
+
 from app.voice.agent import AgentClient, client_info, now_line
 from app.voice.assistant import State, VoiceAssistant, VoiceOptions, main_language
 from app.voice.speech import FLUSH, Heard, SpeechError
@@ -121,10 +123,10 @@ class Agent:
             if isinstance(d, asyncio.Event):
                 await d.wait()
                 continue
-            yield d if isinstance(d, dict) else ({"type": "message.completed"} if d is None else {"type": "message.delta", "text": d})
+            yield parse_body(d if isinstance(d, dict) else ({"type": "message.completed", "text": ""} if d is None else {"type": "message.delta", "text": d}))
         if self.hang:
             await asyncio.sleep(3600)
-        yield {"type": "turn.completed", "status": "completed"}
+        yield TurnCompleted(status="completed")
 
     async def cancel(self):
         self.cancelled += 1
@@ -408,7 +410,7 @@ def test_each_voice_session_is_a_new_conversation_released_at_its_end():
         log = []
         agent, state = client(log)
         await agent.start()
-        assert [e["type"] for e in await all_of(agent.turn("one"))] == ["message.delta", "turn.completed"]
+        assert [e.type for e in await all_of(agent.turn("one"))] == ["message.delta", "turn.completed"]
         await agent.end()
         assert ("DELETE", "/v1/sessions/s1", {}) in log and agent.session_id is None
         await agent.start()
@@ -424,7 +426,7 @@ def test_an_ended_session_is_replaced_in_the_same_conversation():
         await agent.start()
         state["ended"].add(agent.session_id)                         # e.g. its wall time
         events = await all_of(agent.turn("two"))
-        assert events[-1]["type"] == "turn.completed" and agent.session_id == "s2"
+        assert isinstance(events[-1], TurnCompleted) and agent.session_id == "s2"
         assert [b for _, p, b in log if p == "/v1/sessions"][-1] == {"profile": "pi", "conversation_id": "c1"}
     run(go())
 

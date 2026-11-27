@@ -78,6 +78,11 @@ jobs:
         run: |
           python -m pip install -q ".[fastapi]" pytest
           python -m pytest -q tests
+      - name: Test shared-schemas
+        working-directory: python/libs/shared-schemas
+        run: |
+          python -m pip install -q . pytest
+          python -m pytest -q tests
       - name: Test the CI scripts
         run: bash .ci/.github/scripts/tests/run.sh
 

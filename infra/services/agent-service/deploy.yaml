@@ -7,7 +7,7 @@ host: agent-host
 pipeline: true                         # since 2026-11-17, after its first hand deploy (lxc-setup.md, part 2; CP3 3.7)
 wave: 1
 code: python/services/agent-service
-libs: [service-auth, agent-runtime]    # in the image (its Dockerfile copies both; CI checks)
+libs: [service-auth, agent-runtime, shared-schemas]    # in the image (its Dockerfile copies each; CI checks)
 compose: python/services/agent-service/compose.yaml
 config: infra/services/agent-service/config.env       # -> /etc/agent-service/config.env
 files:                                                # -> /etc/agent-service/<name>

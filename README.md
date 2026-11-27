@@ -87,7 +87,8 @@ the voice session are done (4.8–4.12). 4.12b's wake word is 小派小派 since
 ([wake-word.md](docs/specs/wake-word.md)). 4.13 barge-in (the wake word over the reply) is done since 2026-11-25.
 CP5's core went live in between (2026-11-26, [tools.md](docs/specs/agent-service/tools.md)): the Pi answers the
 weather with our own tool and ends the conversation when you say goodbye. 4.14 Hey Pi shows the assistant is done (2026-11-26).
-Next: 4.15 protocol B in shared-schemas and the agent's latency levers.
+4.15 is done (2026-11-27): the agent's tool lookup gone (weather answers ~2.4 s sooner), protocol B in
+shared-schemas. Next: CP4's "done when": the first-audio budget, then a week of daily use.
 
 ## Docs and deploys
 

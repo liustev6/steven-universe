@@ -176,7 +176,7 @@ async def test_stored_events_round_trip_through_bs_models(db, new_session):
                        a({"type": "turn.completed", "status": "interrupted", "duration_ms": 5,
                           "usage": {"total": breakdown(10)}}, turn)])
     stored = await EventLog(db).append(session.id, out.events)
-    parsed = [parse_body(e) for e in stored]
+    parsed = [parse_body(e, strict=True) for e in stored]
     assert [p.type for p in parsed] == [BType.TURN_STARTED, BType.MESSAGE_DELTA, BType.TURN_COMPLETED]
     assert parsed[-1].status == "interrupted" and parsed[-1].usage.total_tokens == 10
 
@@ -190,4 +190,4 @@ def test_the_schema_covers_every_type():
 @pytest.mark.parametrize("bad", [{"type": "message.delta"}, {"type": "nope", "text": "x"}])
 def test_parse_body_rejects_bad_events(bad):
     with pytest.raises(ValueError):
-        parse_body(bad)
+        parse_body(bad, strict=True)

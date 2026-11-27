@@ -14,6 +14,9 @@ RUN /venv/bin/pip install "/tmp/service-auth[fastapi]"
 # and refreshes through it.
 COPY libs/agent-runtime /tmp/agent-runtime
 RUN /venv/bin/pip install /tmp/agent-runtime
+# Protocol B, what callers receive (shared_schemas.agent_service): shared with them.
+COPY libs/shared-schemas /tmp/shared-schemas
+RUN /venv/bin/pip install /tmp/shared-schemas
 
 FROM python:3.11-slim
 ARG REVISION=unknown

@@ -13,6 +13,8 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from shared_schemas.agent_service import Body, TurnCompleted, parse_body
+
 logger = logging.getLogger(__name__)
 
 
@@ -67,8 +69,9 @@ class AgentClient:
         logger.info("agent session %s (conversation %s, %s)", self.session_id, self.conversation_id, d.get("state"))
         return d
 
-    async def turn(self, text: str) -> AsyncIterator[dict]:
-        """The turn's events as they come, up to `turn.completed`. With no session, one is started; a
+    async def turn(self, text: str) -> AsyncIterator[Body]:
+        """The turn's events (protocol B's bodies; types it doesn't know skipped) as they come, up to
+        `turn.completed`. With no session, one is started; a
         session that has ended (its limits, a restart) is replaced once, in the same conversation."""
         if self.session_id is None:
             await self.start()
@@ -85,9 +88,11 @@ class AgentClient:
                     raise AgentError(f"turn: {r.status_code} {(await r.aread())[:200]!r}")
                 async for line in r.aiter_lines():
                     if line.startswith("data:"):
-                        event = json.loads(line[5:])
+                        event = parse_body(json.loads(line[5:]))       # the tolerant reader: new types, new fields
+                        if event is None:
+                            continue
                         yield event
-                        if event.get("type") == "turn.completed":
+                        if isinstance(event, TurnCompleted):
                             return
                 raise AgentError("the turn's stream ended before turn.completed")
 

@@ -1,5 +1,6 @@
-# agent-service runtime dependencies (the image also installs ../../libs/service-auth[fastapi] and
-# ../../libs/agent-runtime: protocol A's types, and the Codex SDK for the auth broker)
+# agent-service runtime dependencies (the image also installs ../../libs/service-auth[fastapi],
+# ../../libs/agent-runtime: protocol A's types, and the Codex SDK for the auth broker, and
+# ../../libs/shared-schemas: protocol B)
 fastapi==0.162.2
 uvicorn[standard]==0.54.0
 pydantic-settings==2.16.2

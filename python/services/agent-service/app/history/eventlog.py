@@ -28,10 +28,12 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from shared_schemas.agent_service import ENVELOPE_FIELDS
+
 from app.db.models import ChatSession, Event
 
 PROTOCOL_VERSION = 1
-ENVELOPE = frozenset({"v", "session_id", "conversation_id", "turn_id", "seq", "ts", "type"})
+ENVELOPE = ENVELOPE_FIELDS                  # protocol B's envelope (shared_schemas.agent_service)
 
 
 class UnknownSession(LookupError):

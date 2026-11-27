@@ -6,5 +6,7 @@
 !libs/service-auth/service_auth/**
 !libs/agent-runtime/pyproject.toml
 !libs/agent-runtime/core/**
+!libs/shared-schemas/pyproject.toml
+!libs/shared-schemas/shared_schemas/**
 **/__pycache__
 **/*.pyc

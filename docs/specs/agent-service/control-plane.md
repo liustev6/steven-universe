@@ -123,8 +123,11 @@ reconnect and the keep-alive are part of the standard instead of ours.)
 
 **From the sandbox, checked, not trusted:** each protocol A event is parsed on its own (a bad one is
 dropped and logged); its `session_id` must be the session's and its `turn_id` a turn agent-service
-started; tool output and error messages are capped again. Code: `app/protocol/translate.py`; B's models:
-`app/protocol/events.py`.
+started; tool output and error messages are capped again. Code: `app/protocol/translate.py`; B's models
+are shared with callers in **shared-schemas** (`python/libs/shared-schemas/shared_schemas/agent_service.py`,
+since 2026-11-27): built strict by agent-service, read by callers with `parse_body`, the tolerant reader
+(types and fields it doesn't know are ignored); its JSON Schema is checked in
+(`schemas/agent_service.protocol_b.schema.json`) for clients in other languages. pi-server reads it so.
 
 **Never sent:** the capability, sandbox ids, internal addresses, other sessions,
 your plan's account details (A's `model.usage_updated` stays internal: the gateway uses it for C13).

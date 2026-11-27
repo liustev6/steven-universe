@@ -25,6 +25,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from shared_schemas.agent_service import EndReason  # noqa: F401  (part of protocol B: session.status)
+
 # Predictable constraint names (Alembic's recommended convention), so migrations can name them.
 NAMING = {
     "ix": "ix_%(column_0_label)s",
@@ -51,13 +53,6 @@ class SessionState(StrEnum):
     ENDED = "ended"            # for good; `end_reason` says why
 
 
-class EndReason(StrEnum):
-    DELETED = "deleted"            # the caller ended it
-    IDLE = "idle"                  # no turn for 5 minutes (C6)
-    WALL_TIME = "wall_time"        # the profile's wall time
-    SANDBOX_LOST = "sandbox_lost"  # its pod died; a new session in the conversation continues (C6)
-    STOPPED = "stopped"            # the kill switch (C14)
-    FAILED = "failed"              # it never became ready (no sandbox, a runtime error at start)
 
 
 class TurnStatus(StrEnum):
