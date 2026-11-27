@@ -232,6 +232,31 @@ For "the `agent` CLI asks a session to summarize its notes and save the summary"
 - **A hard-killed mounter leaves its mount behind** on the VM (attached to a dead rclone;
   `mountpoint` doesn't even report it): F9.
 
+**Answered live by 6.8 (2026-11-27, a `steven-ai` session from the `agent` CLI; checks run in its
+sandbox on VM 200 during a turn):**
+- **M2, the real path** (sandbox → its proxy → the gateway → file-management → RustFS): one request
+  5–17 ms; the session's **first access** 541 ms (`ls -R` of the specs; it was 7.5 s: see below);
+  1,000 files listed 159 ms cold, 17 ms cached; 100 MB read in 490 ms (~200 MB/s, checksum
+  identical); one small file 18 ms; 4 KB at the 80 MB mark 66 ms. (Test data put in by hand, then
+  removed.)
+- **The slow first access, found and fixed:** before the claim, rclone's own `Statfs` got 401s (an
+  empty token), and each of its 10 default retries raised its pacer's sleep to 2 s, which then decays
+  only a quarter per request: a first `ls -R` took 5.5–7.5 s. `--low-level-retries 3` (5.5 s → 377 ms)
+  and `--disable About` (rclone never asks the disk size: no request before the claim; → 128 ms), both
+  measured on VM 200 after a 45 s pre-claim wait. One 401 remains right after the claim: rclone holds
+  its token in memory and re-reads the file only when the server rejects it (one fast retry).
+- **M3, yes:** in the sandbox, writes and deletes in `inputs/` fail ("Permission denied"; `work/`
+  writes); at the gateway, `PUT`, `DELETE`, `MKCOL` with the session's own capability → 405.
+- **M5, yes:** one session read a spec in four turns 4 minutes apart (12 minutes), each through a
+  different exchanged token (each turn's caller token exchanged afresh); a single turn longer than its
+  caller token's life is still the grant-4 case above.
+- **The security invariants:** a capability used from another pod, with a forged `X-Sandbox-Id` →
+  403 (that pod's proxy stamped its own); no real token in the sandbox (files, environment) or the
+  mounter (its configuration): only the capability; between turns, reads → 403 (only the folders
+  leading down to the grant answer); a session without files (`pi`): "0 file grant(s)", its `/dav/`
+  empty, `/dav/public/` 404, `inputs/` empty.
+- **M4** comes with `publish` (6.7).
+
 **Done when:** a sandbox reads `inputs/private/<caller>/…`, works in `work/`, and publishes
 `outputs/report.md` to `private/<caller>/reports/`; a publish to a forbidden location is
 refused; file-management's audit shows *agent-service on behalf of the caller* for every
