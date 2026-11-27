@@ -28,7 +28,7 @@ Part of [agent-service](README.md). The build order, as checkpoints.
 | 1 | ✅ 2026-11-12 (`37d1b61`) | **the runtime** on the Codex SDK, with the dev gateway (milestone 1, [agent-runtime.md](agent-runtime.md)) | can the agent run sandboxed, paid by your plan, with no secret in the sandbox? | replies paid by your Pro plan through the gateway (C1, route A); the sandbox never held the token (Q1, Q7); ready ~350 ms, first text 1.6–2.6 s, interrupt ~10 ms (Q2–Q5). **Deferred:** gVisor (Q6, C2) to CP2; the login refresh (C5) to CP3 |
 | 2 | ✅ 2026-11-13 (`3221624`) | **sandbox worker:** VM 200, sandbox-runner, pods (R12), templates (R14), gVisor ([sandbox-runner.md](sandbox-runner.md)) | isolation and speed at the infrastructure level | Codex runs under gVisor (C2; ~0.3 s, ~20 MiB, 3.7× on small files; systrap); a warm claim **26 ms**, claim to ready **523 ms**, on demand **834 ms**; pods destroyed after use, the pool refills, crash recovery; sandboxes reach only their own proxy (no DNS, internet, LAN, VM or other pods; pod check 16/16); the proxy's stamp can't be forged (theft test 403); the runner on auth-service tokens, deployed by the pipeline, sandbox-image updates rolling out by themselves; the Proxmox firewall on VM 200 (21/21) |
 | 3 | ✅ 2026-11-17 | **agent-service** on CT 107 ([control-plane.md](control-plane.md)), deployed by the pipeline: sessions API (protocol B v0 as Server-Sent Events, RFC 9457 errors), the gateway on its own port (pairing by capability and the pod's stamp, budgets counted from OpenAI's usage), the auth broker (your login on CT 107, saved to OpenBao), PostgreSQL history with carry-over, the `agent` CLI, api-service's relay (grant 3). The dev gateway is deleted; backups dropped (C10) | the control plane, real auth, operability, continuity | **Live (3.10):** a turn streamed (first text 2–4 s, nearly all of it the model; agent-service ~40 ms); another caller gets 404; across a restart the session lived on, same pod, nothing lost; a new session carried the conversation over; the login restored from OpenBao on a "new disk", identical; the kill switch held across a restart. **To confirm after the GPU reboot:** the first scheduled login refresh saved to OpenBao (`agent-service` logs: "login refreshed", then "login saved") |
-| 4 | 🟡 paused after 4.13 (2026-11-25) for CP5 | **voice:** first **speech-service** on pve01's GPU (an LXC, CT 108; [speech-service.md](../speech-service.md)), then speech-to-text and pi-server → agent-service → speech-service, protocol B in shared-schemas, Hey Pi speaks | the first thing you actually use | you ask Hey Pi and hear the answer; first audio within the budget set at the start of this CP; barge-in interrupts; a week of daily use |
+| 4 | ✅ 2026-11-27 (`adcf127`) | **voice:** **speech-service** on pve01's GPU (CT 108; [speech-service.md](../speech-service.md)), then the voice path on the Pi ([voice-path.md](../voice-path.md)): pi-server → agent-service → speech-service, the wake word (小派小派), the session, barge-in, Hey Pi showing it, protocol B in shared-schemas | the first thing you actually use | **Live:** you ask Hey Pi and hear the answer; barge-in interrupts (3 of 3); first audio after you stop talking 1.4–2.0 s for short questions (median 1.9 s, 4.11), a tool question's spoken line 1.2–2.5 s and its answer's first text ~2.8 s into the agent's turn (4.15); Hey Pi shows listening, thinking, speaking. Closed by the owner on 2026-11-27, with the week of daily use starting now rather than done |
 | 5 | 🟡 **live:** the core ✅ 2026-11-26 (5.1–5.6); Home Assistant and confirmations later | **tools** ([tools.md](tools.md), live): tools-service on CT 109 (one registry, a REST API for apps and MCP for agents, one filter; weather, `pi/end_conversation`), the gateway's `/mcp`, each session's tools = its caller's grant (a profile may narrow it), by token exchange (nothing in the sandbox), fixed at the start and listed in the instructions, tool budgets (G14). Also on: web search, Codex's own (run at OpenAI), for `pi` since 2026-11-18. **Later:** Home Assistant and confirmations (G12) | an agent that acts, safely | ✅ the Pi answers the weather with our tool; ✅ a session sees only its own tools; ✅ an injected instruction can't call a tool outside them; ✅ a session over budget is refused; ✅ the agent ends the conversation (all live, tools.md "Measured", "Safety"). With Home Assistant (later): "turn off the kitchen lights" works; locks and the garage ask first |
 | 6 | ⏳ | **files** (milestone 2, [files-and-mounts.md](files-and-mounts.md)): WebDAV read view, mounter, publish, token exchange | storage access without credentials in the sandbox | that spec's "done when" |
 | 7 | ⏳ | **summaries and memory** (model-driven): older turns summarized, memory extracted ("I like the lights at 40%"). History itself (PostgreSQL, context carry-over, backups) moved into CP3 | cost and continuity over long histories | long conversations carry a summary instead of every turn; memory is recalled in new sessions |
@@ -47,10 +47,9 @@ CP4 stopped after barge-in, because its next steps need tools: ending a conversa
 1. **CP4 up to 4.13** ✅ 2026-11-25: the voice turn, the wake word (小派小派), the session, barge-in.
 2. **CP5, 5.1–5.6** ✅ 2026-11-26: tools-service with weather, the gateway's `/mcp`, filtering and
    delegation, the safety checks, `end_conversation`.
-3. **Back to CP4 (next):** 4.14 (Hey Pi shows the assistant), 4.15 (protocol B in shared-schemas, the
-   agent's latency levers: Codex's ~2 s tool lookup, its own tool context, the cache), then its "done
-   when" (the first-audio budget, a week of daily use): CP4 ✅.
-4. **CP5's later part:** Home Assistant's tools and confirmations (G12): CP5 ✅.
+3. **Back to CP4:** 4.14 (Hey Pi shows the assistant) ✅ 2026-11-26, 4.15 (Codex's tool lookup gone,
+   protocol B in shared-schemas) ✅ 2026-11-27: **CP4 ✅ 2026-11-27.**
+4. **CP5's later part (next):** Home Assistant's tools and confirmations (G12): CP5 ✅.
 5. **CP6 / CP7**, as the diagram.
 
 Anything skipped on the way is in "Skipped for now" below, with where it comes back.
@@ -80,27 +79,22 @@ sandbox ids, prompts, tokens, secrets, internal addresses, who deployed.
 |---|---|---|---|
 | S.1 | ✅ 2026-11-13 | `status:read` on `sandbox-runner` for api-service; the runner's `/v1/status`; api-service's public `/v1/status` (service-auth and a client secret for api-service); VM 200's firewall lets CT 106 reach the runner | `curl https://api.liustev6.ca/v1/status` shows every service and the runner's pods; a stopped service shows as down without failing the page. **Live:** through Cloudflare, all 6 services ok (13–24 ms each), OpenBao unsealed, the runner's templates and pods, no ids or addresses; deployed by the pipeline with its smoke test. (api-service's never-delivered client secret from 2026-11-07 was rotated out.) |
 
-## In progress: CP4, voice
-**Decided (2026-11-17):** the GPU (an RTX 5060, 8 GB) serves only voice for now, through an **LXC
-container** (CT 108), not a VM; the old gpu-server is archived for a multi-GPU redesign. **First goal:**
-speech-service up, streaming audio packets from one long-running process that keeps the model loaded:
-no cold load per request.
-
-**Sub-checkpoints:** speech-service's build (4.1–4.7), recorded here; the decisions and the spikes behind
-them: [speech-service.md](../speech-service.md) (live since 2026-11-18). 4.1 ✅ (2026-11-17): agreed; pi-server orchestrates the voice pipeline, speech-service is an engine (T10). 4.2 ✅ the driver on pve01; 4.3 ✅ CT 108 with the GPU, CUDA working in a container ([lxc-gpu-passthrough-setup.md](../../lxc-gpu-passthrough-setup.md)). 4.4 ✅ identity. 4.5a ✅ the spike: our own streaming engine 169 ms first audio, CUDA graphs 112 ms; decided: our own engine on Qwen's official code, with our own CUDA graphs (T11). 4.5b ✅ the plain engine (Qwen's exact codes, streamed). 4.5c ✅ our own CUDA graphs and Triton kernels: first audio 20 ms, RTF 0.17 (from 57 ms and 0.48). 4.5d ✅ speech-to-text: Qwen3-ASR-0.6B in the same process (T12), streamed, 3.9% / 4.2% / 12.5% error (English / Chinese / mixed), ~60 ms after the speaker stops. 4.5e ✅ batches of 2 for both models (continuous batching for the TTS, tick batching for the STT); 4.5f ✅ the service (WebSocket sessions, 2 running + 1 waiting per kind); 4.6 ✅ deployed on CT 108 (https://speech.lan.liustev6.ca), its smoke test speaking a sentence and hearing it back. 4.7 skipped (covered by the e2e runs and the test client); speech-service on the pipeline. The rest of CP4, the voice path
-(4.8–4.15: pi-server's identity, the Pi's audio, the voice turn, the wake word, barge-in), is in
-[voice-path.md](../voice-path.md) (draft, 2026-11-17). **Paused after 4.13** (barge-in, 2026-11-25) for
-CP5; 4.14 and 4.15 come back after it ("The order from here").
+## Done: CP4, voice (2026-11-27)
+**4.1–4.7** speech-service, live since 2026-11-18 on CT 108 (pve01's RTX 5060, an LXC): our own
+streaming TTS engine (first audio 20 ms, RTF 0.17) and Qwen3-ASR in one process; decisions, spikes and
+measurements in [speech-service.md](../speech-service.md). **4.8–4.15** the voice path on the Pi: the
+turn, the wake word (小派小派), the session, barge-in, Hey Pi showing it, the tool lookup gone, protocol B
+in shared-schemas; each step's results in [voice-path.md](../voice-path.md) "Build plan".
 
 ## Skipped for now: to come back to
-Kept here so nothing is lost while CP5 runs. Each row says where it comes back; when it's done,
+Kept here so nothing is lost between checkpoints. Each row says where it comes back; when it's done,
 strike it through with the date, as below.
 
 | Item | Skipped from | Comes back |
 |---|---|---|
 | ~~**4.14 Hey Pi shows the assistant**~~ ✅ 2026-11-26: the speech state (idle, listening, thinking, speaking) on both sides, the speech view (the assistant's character), the voice button (`wake`), thinking again between the agent's messages ([voice-path.md](../voice-path.md) 4.14) | CP4 | 4.14 ✅ |
 | ~~**4.15 protocol B in shared-schemas; the agent's latency levers**~~ ✅ 2026-11-27: Codex's tool lookup gone (the answer's first text 5.17 → 2.76 s); Codex's own context (~10.4k tokens a first request) left as is; protocol B in shared-schemas (`shared_schemas.agent_service`), read by pi-server ([voice-path.md](../voice-path.md) 4.15) | CP4 | 4.15 ✅ |
-| **CP4's "done when":** the first-audio budget measured against what was set; a week of daily use | CP4 | **next** |
+| ~~**CP4's "done when"**~~ 2026-11-27: closed by the owner; the first audio as measured in 4.11 and 4.15; the week of daily use runs from here (anything it finds: a new row) | CP4 | CP4 ✅ |
 | **Home Assistant's tools** (`home.*`, each with its class) **and confirmations** (G12, `confirmation.requested`, asked out loud on the Pi) | CP5 ([tools.md](tools.md) "Later") | after CP4 is done |
 | **Deploys of the Pi on push** (pi-server, Hey Pi): deployer phase 4; until then by hand from the Mac, on the home LAN | [deployer.md](../deployer.md) | when deploying by hand gets in the way; the Pi on Tailscale first, to deploy from away |
 | ~~**Hey Pi boots to the app**~~ not planned (2026-11-26): the app starts from the desktop launcher; pi-server runs always (the voice works with the app closed), so the two aren't tied | [flutter_ui.md](../flutter_ui.md) | dropped |

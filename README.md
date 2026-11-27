@@ -57,7 +57,7 @@ on a push to `main`; "by hand" = from the Mac with `infra/deployment/`.
 | [speech-service](python/services/speech-service/) | Streamed text-to-speech (Qwen3-TTS 1.7B) and speech-to-text (Qwen3-ASR 0.6B), both kept loaded on the GPU | CT 108 (RTX 5060, 8 GB) | Live since 2026-11-18, pipeline | [speech-service.md](docs/specs/speech-service.md) |
 | [tools-service](python/services/tools-service/) | The agents' tools (weather; Hey Pi's own): a REST API for apps and MCP for agents over one registry, each caller seeing only the tools its token grants | CT 109 | Live since 2026-11-26, pipeline | [tools.md](docs/specs/agent-service/tools.md) |
 | [pi-server](python/services/pi-server/) | The Pi's local service: Hey Pi's WebSocket, the voice turn (mic → speech-to-text → agent → speech), the wake word (小派小派) | Raspberry Pi 5 | Live (voice turn and wake word since 2026-11-18); tells Hey Pi the speech state (since 2026-11-26, its only message); by hand (`infra/deployment/pi-server.sh`) | [voice-path.md](docs/specs/voice-path.md) |
-| [Hey Pi](dart/apps/hey-pi/) (Flutter) | The panel's touch UI; talks only to pi-server | Raspberry Pi 5 | Live (CP4 4.14, 2026-11-26): follows pi-server's speech state with the assistant's character, and a voice button; the dashboard's data is the app's own mock until the protocol carries it | [flutter_ui.md](docs/specs/flutter_ui.md) |
+| [Hey Pi](dart/apps/hey-pi/) (Flutter) | The panel's touch UI; talks only to pi-server | Raspberry Pi 5 | Live (CP4, 2026-11-26): follows pi-server's speech state with the assistant's character, and a voice button; the dashboard's data is the app's own mock until the protocol carries it | [flutter_ui.md](docs/specs/flutter_ui.md) |
 | [wake-word](experiments/python/wake-word/) | Trains and tests the Pi's microWakeWord model: 小派小派 (live), "Hey Pi" (retired) | the playground (CT 110) | Live since 2026-11-19: model 04f at 0.96; a fixed test set for every model | [wake-word.md](docs/specs/wake-word.md) |
 | [web-gateway](python/services/web-gateway/) | The old API gateway | not running | Legacy: its routes are ported to api-service one at a time, then it's deleted | [api-service.md](docs/specs/api-service.md) "Migration" |
 | [stevenai-service](python/services/stevenai-service/) | RAG chatbot about me (FAISS, BGE embeddings) | not among pve01's guests in [boot.md](docs/specs/boot.md) | Legacy: retired by CP8 (knowledge in agent-service) | [tracker.md](docs/specs/agent-service/tracker.md) |
@@ -75,20 +75,20 @@ the voice part of CP4 is planned step by step in [voice-path.md](docs/specs/voic
 | CP | What | Status |
 |---|---|---|
 | 1–3 | the runtime, the sandbox worker, the control plane | Done (2026-11-12, 11-13, 11-17) |
-| 4 | **voice:** speech-service, then pi-server → agent-service → speech-service on the Pi | **In progress** |
+| 4 | **voice:** speech-service, then pi-server → agent-service → speech-service on the Pi, Hey Pi showing it | Done (2026-11-27) |
 | 5 | tools ([tools.md](docs/specs/agent-service/tools.md)): tools-service (one MCP server, weather first), the gateway's `/mcp`, each session's tools = its owner's grant (a profile may narrow it), budgets, `end_conversation`; Home Assistant and confirmations later | **Live** (the core, 2026-11-26: weather and ending the conversation, on the Pi); Home Assistant and confirmations later |
 | 6 | files and mounts ([files-and-mounts.md](docs/specs/agent-service/files-and-mounts.md)) | Planned |
 | 7 | summaries and memory | Planned |
 | 8 | knowledge (RAG over my documents); replaces stevenai-service | Planned |
 | 9 | outside access (the phone through api-service) and operations (alerts, load test) | Planned |
 
-**Where CP4 is now:** speech-service is live (4.1–4.6); on the Pi, the voice turn, the wake word and
+**CP4 is done (2026-11-27):** speech-service is live (4.1–4.6); on the Pi, the voice turn, the wake word and
 the voice session are done (4.8–4.12). 4.12b's wake word is 小派小派 since 2026-11-19
 ([wake-word.md](docs/specs/wake-word.md)). 4.13 barge-in (the wake word over the reply) is done since 2026-11-25.
 CP5's core went live in between (2026-11-26, [tools.md](docs/specs/agent-service/tools.md)): the Pi answers the
 weather with our own tool and ends the conversation when you say goodbye. 4.14 Hey Pi shows the assistant is done (2026-11-26).
 4.15 is done (2026-11-27): the agent's tool lookup gone (weather answers ~2.4 s sooner), protocol B in
-shared-schemas. Next: CP4's "done when": the first-audio budget, then a week of daily use.
+shared-schemas. Next: CP5's later part, Home Assistant's tools and confirmations.
 
 ## Docs and deploys
 

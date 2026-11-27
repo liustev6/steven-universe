@@ -1,6 +1,6 @@
 # The voice path (CP4, after speech-service)
 
-**Status:** agreed 2026-11-17; 4.8–4.12 done (2026-11-18: the turn, the wake word and the session, live on the Pi); 4.12b (the wake word itself: 小派小派 live since 2026-11-19) in [wake-word.md](wake-word.md); 4.13 (barge-in by the wake word) done 2026-11-25. The rest of CP4: you talk to the Pi, it answers out loud.
+**Status:** agreed 2026-11-17; 4.8–4.12 done (2026-11-18: the turn, the wake word and the session, live on the Pi); 4.12b (the wake word itself: 小派小派 live since 2026-11-19) in [wake-word.md](wake-word.md); 4.13 (barge-in by the wake word) done 2026-11-25. 4.14 (Hey Pi shows it) 2026-11-26 and 4.15 (the tool lookup gone, protocol B in shared-schemas) 2026-11-27: **CP4 done 2026-11-27** (the tracker): you talk to the Pi, it answers out loud.
 
 ```
  the Pi (panel)                                       the lab (LAN)
