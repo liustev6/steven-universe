@@ -45,12 +45,16 @@ def mounter_command(gateway_url: str) -> list[str]:
     `--low-level-retries 3` (rclone's default is 10): before the claim, rclone's own Statfs gets 401s, and
     each retry raises its pacer's sleep, to 2 s at 10 retries; that sleep then decays only a quarter
     per request, so a session's first `ls -R` took 5.5 s. With 3 it peaks at 160 ms (first `ls -R`
-    377 ms, on VM 200): one retry picks up the token after the claim, one is spare; 1 fails. Nobody lists it before the claim (agent-runtime waits for its session file), so
+    377 ms, on VM 200): one retry picks up the token after the claim, one is spare; 1 fails.
+    `--disable About`: rclone never asks the server for the disk size (Statfs answers with a placeholder),
+    so a warm pod sends nothing before the claim: no 401s, no backoff (first `ls -R` 128 ms). Only the
+    one expected 401 after the claim remains: rclone keeps its token in memory and re-reads the
+    file only when the server rejects it. Nobody lists it before the claim (agent-runtime waits for its session file), so
     no cache needs refreshing then. `--allow-other`: the sandbox's user reads what root mounted."""
     return ["mount", ":webdav:", "/mnt/inputs", "--webdav-url", f"{gateway_url.rstrip('/')}/dav/",
             "--webdav-bearer-token-command", "cat /run/session/capability",
             "--read-only", "--allow-other", "--dir-cache-time", "10s", "--vfs-cache-mode", "off",
-            "--low-level-retries", "3", "--log-level", "NOTICE"]
+            "--low-level-retries", "3", "--disable", "About", "--log-level", "NOTICE"]
 
 
 class Mounts:
