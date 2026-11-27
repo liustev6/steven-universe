@@ -99,7 +99,7 @@ strike it through with the date, as below.
 | Item | Skipped from | Comes back |
 |---|---|---|
 | ~~**4.14 Hey Pi shows the assistant**~~ ✅ 2026-11-26: the speech state (idle, listening, thinking, speaking) on both sides, the speech view (the assistant's character), the voice button (`wake`), thinking again between the agent's messages ([voice-path.md](../voice-path.md) 4.14) | CP4 | 4.14 ✅ |
-| **4.15 protocol B in shared-schemas; the agent's latency levers** (~5,800 tokens per call of Codex's own context, below) | CP4 | **next** |
+| **4.15 protocol B in shared-schemas; the agent's latency levers:** in progress: Codex's tool lookup gone 2026-11-27 (the answer's first text 5.17 → 2.76 s, [voice-path.md](../voice-path.md) 4.15); Codex's own context (~10.4k tokens a first request) left as is; protocol B in shared-schemas next | CP4 | **in progress** |
 | **CP4's "done when":** the first-audio budget measured against what was set; a week of daily use | CP4 | after 4.15 |
 | **Home Assistant's tools** (`home.*`, each with its class) **and confirmations** (G12, `confirmation.requested`, asked out loud on the Pi) | CP5 ([tools.md](tools.md) "Later") | after CP4 is done |
 | **Deploys of the Pi on push** (pi-server, Hey Pi): deployer phase 4; until then by hand from the Mac, on the home LAN | [deployer.md](../deployer.md) | when deploying by hand gets in the way; the Pi on Tailscale first, to deploy from away |

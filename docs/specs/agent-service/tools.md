@@ -98,8 +98,9 @@ only `[A-Za-z0-9_-]`), seen by the model as `mcp__tools__weather_forecast`, repo
   question: 4 of 4) → `pi_end_conversation` and one goodbye; "谢谢，那后天呢？" → the forecast, not the
   end. By voice on the Pi: "谢谢。好了，休息一下吧。" → the goodbye played whole, the session ended the
   same millisecond, released.
-- **Time:** a weather answer ~6–8 s from what was heard (the first tool call of a session pays
-  Codex's tool lookup, ~2 s); a goodbye with the end tool ~5 s to its first word.
+- **Time:** a weather answer ~6–8 s from what was heard (each tool call paid Codex's tool lookup,
+  ~2 s: gone since 4.15, the answer's first text ~2.8 s into the agent's turn); a goodbye with the end
+  tool ~5 s to its first word.
 - **The prompt cache:** a first turn's cached input steady at ~17.4k of ~27k (~64%), from 5.6–17.2k
   with the time in the instructions; later turns mostly cached (20–27k).
 - **Safety:** below; every check live.
@@ -123,9 +124,18 @@ Not staged: an injection inside a real tool result (tools-service's are our own)
 checks above don't depend on where an instruction came from.
 
 ## Found along the way
-- **Codex 0.167.2 keeps MCP tools behind its tool search** (`tool_search_always_defer_mcp_tools`, not
-  configurable for an MCP server): the model looked a tool up only when told to. Answered by TL14; the
-  lookup costs ~2 s before a session's first tool call (4.15's speed work).
+- **Codex 0.167.2 keeps MCP tools behind its tool search:** on its code-mode models (`gpt-6-luna`
+  included) the model gets one tool, `exec` (JavaScript, its other tools nested in it), and MCP tools
+  are *deferred*: left out of the request, found by searching `ALL_TOOLS` in a script. The model looked
+  a tool up only when told to (answered by TL14), and the lookup cost a whole model round trip before
+  **every** call, not just a session's first: the spoken line done → the tool started 2.27 s median
+  (1.8–3.1, 6 weather questions on the Pi). **Fixed 2026-11-27 (4.15, `594b25d`):**
+  agent-runtime sets `mcp_servers.tools.omit_tools_from = ["deferred", "code_mode"]` (Codex's
+  `apply_mcp_tool_exposure_policy`; the old `tool_search_always_defer_mcp_tools` flag is a no-op), so
+  the tools are sent as the model's own: line → tool **0.21 s** median, the answer's first text 5.17 →
+  **2.76 s**, the agent done 5.72 → **3.32 s** (the same 6 questions). Found by capturing what the
+  pinned Codex sends, against a stand-in gateway: ~10.4k tokens on a first request, under 500 of them
+  ours (`exec` ~5.5k; sub-agent tools and instructions ~2k; skills ~850).
 - **The start's race:** the runtime starts the moment the claim writes the session file; with the tools
   looked up alongside the claim, Codex could list them before they were known. Answered by looking them
   up before the claim (TL7).
