@@ -1,0 +1,7 @@
+# The specs, readable by agent sessions (agent-service CP6, files-and-mounts.md; the steven-ai profile)
+# and later by Steven AI's search (CP8). A push changing docs/specs/** mirrors them here through the
+# deployer (deployer.md D21): uploaded when changed, deleted when removed. The deployer's grant at
+# file-management (auth-service's policy) covers public/steven-universe/ only.
+sync: specs
+source: docs/specs
+destination: public/steven-universe/specs/
