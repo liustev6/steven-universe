@@ -1,10 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import NavBar from "@/components/common/Navbar";
-import Loader from "@/components/common/Loader";
-import ChatbotWrapper from "@/components/common/ChatbotWrapper";
-import NeonTrail from "@/components/effects/NeonTrail";
-import FooterWrapper from "@/components/common/FooterWrapper";
 
 export const metadata: Metadata = {
   title: "Hongyuan (Steven) Liu | AI Developer",
@@ -39,6 +34,12 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * The root layout: only the document. Each part of the site brings its own chrome:
+ * - app/(site)/      the current website (loader, neon trail, navbar, footer, chatbot)
+ * - app/prototype/   the new website's prototype, built from a clean page
+ * A route group's folder name, "(site)", never appears in URLs.
+ */
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -46,14 +47,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>
-        <Loader />
-        <NeonTrail />
-        <NavBar />
-        {children}
-        <FooterWrapper />
-        <ChatbotWrapper />
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

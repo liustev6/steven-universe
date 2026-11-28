@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { FiSend } from "react-icons/fi";
 import clsx from "clsx";
-import { sendChatMessage } from "../../app/stevenAi/controller";
+import { sendChatMessage } from "@/app/(site)/stevenAi/controller";
 
 /**
  * Floating chatbot component
