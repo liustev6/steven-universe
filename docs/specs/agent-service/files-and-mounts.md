@@ -1,6 +1,6 @@
 # Spec: files and mounts (how a sandbox sees and saves your files)
 
-**Status: CP6, in progress.** Designed 2026-11-09 (milestone 2); **revised 2026-11-27** (6.2) for what
+**Status: CP6 done (2026-11-28).** Designed 2026-11-09 (milestone 2); **revised 2026-11-27** (6.2) for what
 CP2–CP5 built (pods with their own proxy and workspace, the token exchange, the gateway's tools) and
 the 6.1 spike's answers; **revised 2026-11-28** for 6.7: one local folder (`work/`), saving through
 `sfsync` (`put`, `rm`) into the session's own folder, what the agent is told, a 2 s listing cache. Part of [agent-service](README.md); its build: [tracker.md](tracker.md) CP6.
@@ -352,7 +352,26 @@ sandbox on VM 200 during a turn):**
   mounter (its configuration): only the capability; between turns, reads → 403 (only the folders
   leading down to the grant answer); a session without files (`pi`): "0 file grant(s)", its `/dav/`
   empty, `/dav/public/` 404, `inputs/` empty.
-- **M4** comes with `sfsync` (6.7).
+- **M4, yes (2026-11-28, 6.7 deployed; `sfsync` run in a live `steven-ai` sandbox during a turn):**
+  every refusal decided at the gateway, never reaching file-management, as one line with its code:
+  `private/other/…`, `public/steven-universe/…` and another session's folder → "outside the folders
+  you may write to (private/session-files/<its id>/)", exit 77; a 26 MB file → "26.0 MB is over this
+  session's limit of 25 MB per file", 77; a missing local file 66; `rm` of a file that isn't there →
+  "isn't there; nothing was removed", 66; `sfsync ls` → usage, 64; between turns → "no turn is
+  running; nothing was changed", 75 (and the mount reads fail, as before).
+- **The sandbox, as F1 and F13 say:** `/workspace` and `inputs/` refuse writes ("Permission
+  denied"), `work/` takes them; gVisor reports the real sizes, so the workspace note says
+  `/workspace/work` 1.0 GB and `/tmp` 512 MB (the `chat` template).
+- **A save shows in the mount (F11):** `put` 0.33–0.37 s; the file under `inputs/` at once in a
+  folder not listed just before, 1.72 s later in one that was (the 2 s listing cache).
+
+**The "done when", live (2026-11-28):** a `steven-ai` session from the `agent` CLI, asked to
+summarize D21 and save it: it read `deployer.md` from `inputs/public/…`, wrote
+`/workspace/work/d21.md`, ran `sfsync put` to `private/session-files/<its id>/reports/d21.md` (680
+bytes; `⬆ saved` in the caller's stream, `artifact.created` in its events), listed it under
+`inputs/`, and tried `private/other/d21.md`: refused, exit 77, and it quoted the refusal back word
+for word. file-management's audit: every `list`, `read`, `write` and `delete` as agent-service on
+behalf of `service:agent-cli`. No real token in the pod (unchanged since 6.8).
 
 **Done when:** a session reads `inputs/public/…`, works in `work/`, saves
 `/workspace/work/report.md` with `sfsync put` to `private/session-files/<its id>/`, and sees it under
