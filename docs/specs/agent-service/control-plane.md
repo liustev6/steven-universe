@@ -223,6 +223,18 @@ profiles:
     mcp_tools: []                  # no tools
     limits: {wall_seconds: 120, max_turns: 2, max_turn_tokens: 20000}
     history: {carry_turns: 0}
+  steven-ai:                       # answers about steven-universe from its specs (CP6, CP8)
+    template: chat
+    effort: medium
+    instructions: | …
+    allow_codex_instructions: false
+    tools: [shell]                 # needed to read files, and to run sfsync
+    mcp_tools: []
+    files:                         # RFC 9396 file_access, intersected with the caller's grant (files-and-mounts.md F6)
+      - {actions: [read, list], locations: ["public/"]}
+      - {actions: [read, list, write, delete], locations: ["private/session-files/${session}/"]}   # its own folder (F10)
+    limits: {wall_seconds: 1800, max_turns: 40, max_turn_tokens: 200000}   # max_file_mb: 25 (default, F7)
+    history: {carry_turns: 6}
 ```
 What reaches the runtime (protocol A's `Profile` in the session file) is the subset it needs
 (model, effort, instructions: the profile's, the session's tools and files (tools.md TL14,
@@ -230,8 +242,10 @@ files-and-mounts.md F6: always, when it has any, generated from what it was gran
 intersection with its caller's grant), the caller's (C15), then the carried-over turns (C9), as one
 text, from what never changes to what changes most (TL15); `allow_codex_instructions` as protocol A's
 `codex_instructions`, tools, wall time): `AgentProfile.runtime()` in `app/profiles.py`. The profiles
-`steven-ai` (the evidence chat) and `voice` were removed on 2026-11-18, unused since `pi`; the tests have
-their own profiles (`tests/profiles.yaml`).
+`steven-ai` (the evidence chat) and `voice` were removed on 2026-11-18, unused since `pi`; `steven-ai`
+came back in CP6 (6.5) for the specs; the tests have their own profiles (`tests/profiles.yaml`).
+`${client}` and `${session}` in `files` are filled in at the session's start (the caller's client,
+the session's id).
 
 ## History (PostgreSQL)
 **Tables** (Alembic migrations, reviewed in git; SQLAlchemy 2 with psycopg 3):

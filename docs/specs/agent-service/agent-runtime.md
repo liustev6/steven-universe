@@ -118,9 +118,20 @@ appear as `task.*` events).
 |---|---|
 | `model` | a model Codex offers under your plan (the SDK's model list) |
 | `effort` | `model_reasoning_effort` |
-| `instructions` | added to Codex's own instructions (`developer_instructions`), or, with `codex_instructions: false`, **replacing** them (`base_instructions`) |
+| `instructions` | added to Codex's own instructions (`developer_instructions`), or, with `codex_instructions: false`, **replacing** them (`base_instructions`). With `shell` on, the runtime puts its workspace note first (6, below) |
 | `codex_instructions` | keep Codex's built-in coding-agent instructions (default `true`). Set from the profile's `allow_codex_instructions` (control-plane.md); `pi` sets `false`: 42% fewer tokens per call (Q3) |
 | `tools` | Codex's feature switches: shell commands (`features.shell_tool`), web search (`web_search = "live"`, and the gateway provider's `supports_standalone_web_search`: since Codex 0.167 a custom provider gets the search tool only with it; the search is its own request, `POST /model/alpha/search`, relayed by the gateway like any model call), image viewing; `[]` = all off. **Always:** one MCP server, `tools`, the gateway's `/mcp` with the capability as its bearer token, Codex's own approvals off for it (CP5, [tools.md](tools.md)) |
+
+**6. The sandbox's files (CP6, [files-and-mounts.md](files-and-mounts.md)).**
+- **Codex starts in `/workspace/work`**, the one writable folder on disk; `/tmp` (in memory) holds
+  `HOME` and `CODEX_HOME`; `/workspace/inputs` is the read-only mount; everything else is read-only.
+- **The workspace note** (F13): with `shell` on, the runtime puts a short note first in the
+  instructions: what `work/`, `/tmp` and `inputs/` are for, with their sizes measured in the sandbox
+  (`shutil.disk_usage`; the template sets them). The same for every session of a template, so it
+  stays at the cacheable start (TL15).
+- **`sfsync`** (F7, F12), a console script in the image (`core/sfsync.py`): `put LOCAL_FILE
+  DESTINATION` and `rm DESTINATION`, to the gateway's `/files` with the session capability; it
+  checks nothing itself, and prints the gateway's answer as one line with a `sysexits.h` code.
 
 ## Milestone 1: the test setup
 **Day 1: one message, paid by your subscription.** No tools, on your Mac; then the same on the test
@@ -197,6 +208,6 @@ above have answers recorded here. Their answers become this spec's locked decisi
 
 ## Not in milestone 1
 Tools (weather, Home Assistant), files (milestone 2: [files-and-mounts.md](files-and-mounts.md); the
-runtime sees `/workspace/inputs` as a read-only folder and saves through `publish`), skills, the
+runtime sees `/workspace/inputs` as a read-only folder and saves through `sfsync`), skills, the
 local model, speech, agent-service, sandbox-runner, auth-service integration, CI builds of the
 sandbox image. Each is added once the runtime's numbers are known.
