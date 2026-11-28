@@ -7,7 +7,7 @@ from __future__ import annotations
 import uuid
 
 from shared_schemas.agent_service import (  # noqa: F401  (the protocol, for agent-service's modules)
-    ENVELOPE_FIELDS, VERSION, Body, BType, EndReason, Error, ErrorCode, MessageCompleted, MessageDelta,
+    ENVELOPE_FIELDS, VERSION, ArtifactCreated, ArtifactDeleted, Body, BType, EndReason, Error, ErrorCode, MessageCompleted, MessageDelta,
     SessionStatus, TaskCompleted, TaskProgress, TaskStarted, ToolCompleted, ToolStarted, TurnCompleted,
     TurnStarted, Usage, _Body, json_schema, parse_body,
 )

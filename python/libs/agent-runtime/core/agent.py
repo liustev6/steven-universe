@@ -8,7 +8,9 @@ The SDK (`openai-codex`) drives a local `codex app-server` over JSON-RPC. We giv
   lists the session's tools-service tools (none is fine: an empty list) and forwards each call;
 - a fresh CODEX_HOME on /tmp (read-only root, R4), no AGENTS.md from the workspace, no update
   checks or analytics (only the gateway is reachable anyway);
-- its own sandbox off and no approval prompts: our container is the boundary.
+- its own sandbox off and no approval prompts: our container is the boundary;
+- its working folder `/workspace/work`, the one writable folder on disk, and, with a shell, the
+  workspace note first in its instructions (core/workspace.py; files-and-mounts.md F13).
 
 `Translator` turns Codex notifications into protocol-A event payloads (core/types). It needs no
 Codex process, so it's tested directly.
@@ -24,6 +26,7 @@ from enum import Enum
 from typing import Any
 
 from core.types import OUTPUT_CHARS, EventType, SessionFile
+from core.workspace import WORK, workspace_note
 
 Payload = dict[str, Any]
 CAPABILITY_ENV = "AGENT_CAPABILITY"        # the provider's env_key: Codex sends it as `Authorization: Bearer`
@@ -193,6 +196,13 @@ class Translator:
         return []
 
 
+def instructions(profile) -> str | None:
+    """The profile's instructions, with the workspace note first when the agent has a shell (it is the
+    same for every session of a template: the cacheable start, TL15)."""
+    parts = [workspace_note() if "shell" in profile.tools else "", profile.instructions]
+    return "\n\n".join(p for p in parts if p) or None
+
+
 class Agent:
     """One Codex thread for the whole session: follow-up turns keep the conversation.
 
@@ -200,7 +210,7 @@ class Agent:
     sends outside any turn (the plan's usage and rate limits). Both feed one queue per turn.
     """
 
-    def __init__(self, session: SessionFile, *, cwd: str = "/workspace", codex_home: str | None = None,
+    def __init__(self, session: SessionFile, *, cwd: str = WORK, codex_home: str | None = None,
                  codex_bin: str | None = None):
         self._session = session
         self._cwd, self._codex_bin = cwd, codex_bin
@@ -216,7 +226,7 @@ class Agent:
         from openai_codex import ApprovalMode, AsyncCodex, Sandbox
 
         p = self._session.profile
-        own = p.instructions or None
+        own = instructions(p)
         self._codex = AsyncCodex(codex_config(self._session, codex_home=self._codex_home, codex_bin=self._codex_bin))
         await self._codex.__aenter__()
         self._thread = await self._codex.thread_start(

@@ -1,5 +1,69 @@
 {
   "$defs": {
+    "ArtifactCreated": {
+      "additionalProperties": false,
+      "description": "The session saved a file to storage (`sfsync put`; files-and-mounts.md F7): created or replaced.",
+      "properties": {
+        "type": {
+          "const": "artifact.created",
+          "default": "artifact.created",
+          "title": "Type",
+          "type": "string"
+        },
+        "location": {
+          "title": "Location",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "size": {
+          "title": "Size",
+          "type": "integer"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "location",
+        "size",
+        "sha256"
+      ],
+      "title": "ArtifactCreated",
+      "type": "object"
+    },
+    "ArtifactDeleted": {
+      "additionalProperties": false,
+      "description": "The session removed a file from storage (`sfsync rm`).",
+      "properties": {
+        "type": {
+          "const": "artifact.deleted",
+          "default": "artifact.deleted",
+          "title": "Type",
+          "type": "string"
+        },
+        "location": {
+          "title": "Location",
+          "type": "string"
+        }
+      },
+      "required": [
+        "location"
+      ],
+      "title": "ArtifactDeleted",
+      "type": "object"
+    },
     "EndReason": {
       "description": "Why a session ended (`session.status` ended): what to do next depends on it.",
       "enum": [
@@ -432,6 +496,8 @@
   },
   "discriminator": {
     "mapping": {
+      "artifact.created": "#/$defs/ArtifactCreated",
+      "artifact.deleted": "#/$defs/ArtifactDeleted",
       "error": "#/$defs/Error",
       "message.completed": "#/$defs/MessageCompleted",
       "message.delta": "#/$defs/MessageDelta",
@@ -476,6 +542,12 @@
     },
     {
       "$ref": "#/$defs/TurnCompleted"
+    },
+    {
+      "$ref": "#/$defs/ArtifactCreated"
+    },
+    {
+      "$ref": "#/$defs/ArtifactDeleted"
     },
     {
       "$ref": "#/$defs/Error"

@@ -75,6 +75,12 @@ class Printer:
             note(f"  {'✗' if e.get('is_error') else '✓'} {e.get('output', '')[:160].strip()}")
         elif t == "task.started":
             note(f"  ↳ task: {e.get('description') or e['task_id']}")
+        elif t == "artifact.created":
+            self._newline()
+            note(f"  ⬆ saved {e['location']} ({e.get('size', 0):,} bytes)")
+        elif t == "artifact.deleted":
+            self._newline()
+            note(f"  ✗ removed {e['location']}")
         elif t == "error":
             self._newline()
             print(f"{RED}error ({e.get('code')}): {e.get('message')}{RESET}", file=sys.stderr, flush=True)

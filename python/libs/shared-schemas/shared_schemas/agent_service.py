@@ -18,6 +18,8 @@ Every event is the envelope plus one body:
     task.progress       task_id, description, status
     task.completed      task_id, status, summary
     turn.completed      status, reason, first_text_ms, duration_ms, usage
+    artifact.created    location, source, size, sha256     (a file saved by `sfsync put`)
+    artifact.deleted    location                           (a file removed by `sfsync rm`)
     error               code, message
 
 Rules for callers (stable from v0 on):
@@ -53,6 +55,8 @@ class BType(StrEnum):
     TASK_PROGRESS = "task.progress"
     TASK_COMPLETED = "task.completed"
     TURN_COMPLETED = "turn.completed"
+    ARTIFACT_CREATED = "artifact.created"
+    ARTIFACT_DELETED = "artifact.deleted"
     ERROR = "error"
 
 
@@ -156,6 +160,21 @@ class TurnCompleted(_Body):
     usage: Usage | None = None               # None when it isn't known (e.g. agent-service restarted mid-turn)
 
 
+class ArtifactCreated(_Body):
+    """The session saved a file to storage (`sfsync put`; files-and-mounts.md F7): created or replaced."""
+    type: Literal[BType.ARTIFACT_CREATED] = BType.ARTIFACT_CREATED
+    location: str                            # `<bucket>/<key>`, as file-management names it
+    source: str | None = None                # the file in the sandbox it came from, as the agent named it
+    size: int                                # bytes
+    sha256: str                              # hex, of what was saved
+
+
+class ArtifactDeleted(_Body):
+    """The session removed a file from storage (`sfsync rm`)."""
+    type: Literal[BType.ARTIFACT_DELETED] = BType.ARTIFACT_DELETED
+    location: str
+
+
 class Error(_Body):
     type: Literal[BType.ERROR] = BType.ERROR
     code: ErrorCode
@@ -164,14 +183,14 @@ class Error(_Body):
 
 Body = Annotated[
     Union[SessionStatus, TurnStarted, MessageDelta, MessageCompleted, ToolStarted, ToolCompleted,
-          TaskStarted, TaskProgress, TaskCompleted, TurnCompleted, Error],
+          TaskStarted, TaskProgress, TaskCompleted, TurnCompleted, ArtifactCreated, ArtifactDeleted, Error],
     Field(discriminator="type"),
 ]
 _BODY: TypeAdapter[Body] = TypeAdapter(Body)
 _MODELS: dict[str, type[_Body]] = {
     m.model_fields["type"].default.value: m
     for m in (SessionStatus, TurnStarted, MessageDelta, MessageCompleted, ToolStarted, ToolCompleted,
-              TaskStarted, TaskProgress, TaskCompleted, TurnCompleted, Error)
+              TaskStarted, TaskProgress, TaskCompleted, TurnCompleted, ArtifactCreated, ArtifactDeleted, Error)
 }
 
 

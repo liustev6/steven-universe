@@ -7,9 +7,10 @@ gets their overlap with the caller's own grant at file-management (`grant_overla
 is in the token's own `authorization_details`: that, not the profile, is what the gateway acts on.
 Neither token ever reaches the sandbox.
 
-    resolve(files, owner)               the profile's request, for this caller
+    resolve(files, owner, session_id)   the profile's request, for this caller and session
     FileManagement.grant(token, req)    at a session's start: what it was granted (or NoFiles)
     FileManagement.dav(...)             a WebDAV read forwarded with the exchanged token (the gateway's /dav)
+    FileManagement.put/delete/exists    `sfsync`'s writes (the gateway's /files, F7), with the same token
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import base64
 import json
 import logging
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from service_auth import TokenClient, TokenRequestError
@@ -35,14 +37,17 @@ class NoFiles(Exception):
     """The caller may reach none of what the profile asks for (no grant, or nothing in common)."""
 
 
-def resolve(files: list[FileAccess], owner: str) -> list[dict[str, Any]]:
-    """The profile's request as RFC 9396 details for this caller. `${client}` is the caller's client
-    (a `service:<client>` subject); an entry naming it is left out for any other kind of caller."""
+def resolve(files: list[FileAccess], owner: str, session_id: Any = None) -> list[dict[str, Any]]:
+    """The profile's request as RFC 9396 details for this caller and session. `${client}` is the
+    caller's client (a `service:<client>` subject; a location naming it is left out for any other kind
+    of caller); `${session}` the session's id (its own folder, F10; left out without one)."""
     client = owner[len(SERVICE_PREFIX):] if owner.startswith(SERVICE_PREFIX) else None
+    session = str(session_id) if session_id else None
     out = []
     for f in files:
-        locations = [loc.replace("${client}", client) if client else loc
-                     for loc in f.locations if client or "${client}" not in loc]
+        locations = [loc.replace("${client}", client or "").replace("${session}", session or "")
+                     for loc in f.locations
+                     if (client or "${client}" not in loc) and (session or "${session}" not in loc)]
         if locations:
             out.append({"type": DETAIL_TYPE, "actions": list(f.actions), "locations": locations})
     return out
@@ -68,15 +73,42 @@ def locations(details: list[dict[str, Any]], *actions: str) -> list[str]:
     return sorted({loc for d in details if set(actions) & set(d.get("actions", [])) for loc in d.get("locations", [])})
 
 
+def covers(details: list[dict[str, Any]], action: str, location: str) -> bool:
+    """Whether the details allow `action` on `location` (`<bucket>/<key>`): a granted location is a
+    folder (ending in '/') covering everything under it, as file-management's own prefix rule."""
+    return any(location.startswith(loc) for loc in locations(details, action))
+
+
 def file_instructions(details: list[dict[str, Any]], mount: str = "/workspace/inputs") -> str:
-    """The session's folders, for its instructions (always, when it has any): from `details`, what the
-    exchange GRANTED (after the intersection), never from the profile's request."""
-    readable = locations(details, "read")
-    if not readable:
-        return ""
-    lines = ["Files you can read in this session (a read-only folder; use your shell: ls, cat, grep):"]
-    lines += [f"- {mount}/{loc}" for loc in readable]
-    return "\n".join(lines)
+    """The session's files, for its instructions (always, when it has any; F13): from `details`, what
+    the exchange GRANTED (after the intersection), never from the profile's request. The read part when
+    anything is readable; the `sfsync` part only when something is writable or deletable, each line
+    only for an action granted."""
+    readable, writable, deletable = (locations(details, a) for a in ("read", "write", "delete"))
+    parts = []
+    if readable:
+        lines = ["Files you can read in this session (read-only; use your shell: ls, cat, grep):"]
+        lines += [f"- {mount}/{loc}" for loc in readable]
+        parts.append("\n".join(lines))
+    if writable or deletable:
+        lines = ["To save files to storage, use the `sfsync` command in your shell; it is the only way to "
+                 "write (the folders above are read-only, and files left in /workspace/work or /tmp are "
+                 "lost when the session ends)."]
+        if writable:
+            lines.append("You may write to: " + ", ".join(writable))
+        if deletable:
+            lines.append("You may delete in: " + ", ".join(deletable))
+        if writable:
+            lines.append(f"  sfsync put /tmp/chart.png {writable[0]}chart.png")
+            lines.append(f"  sfsync put /workspace/work/report.md {writable[0]}reports/report.md")
+        if deletable:
+            lines.append(f"  sfsync rm  {deletable[0]}chart.png")
+        if writable:
+            seen = [loc for loc in writable if loc in readable]
+            lines.append("`put` replaces a file of the same name." + (
+                f" Saved files appear under {mount}/{seen[0]} within about 2 seconds." if seen else ""))
+        parts.append("\n".join(lines))
+    return "\n\n".join(parts)
 
 
 class FileManagement:
@@ -112,6 +144,29 @@ class FileManagement:
         out["Authorization"] = f"Bearer {token}"
         req = self.http.build_request(method, f"{self.url}/dav/{path}", headers=out)
         return await self.http.send(req, stream=True)
+
+    def _object(self, location: str) -> str:
+        return f"{self.url}/objects/{quote(location, safe='/')}"
+
+    async def put(self, caller_token: str, request: list[dict[str, Any]], location: str, body: bytes,
+                  content_type: str | None) -> httpx.Response:
+        """`sfsync put`: the bytes saved at `location` (`<bucket>/<key>`) with the exchanged token."""
+        token = await self.token(caller_token, request)
+        headers = {"Authorization": f"Bearer {token}"}
+        if content_type:
+            headers["Content-Type"] = content_type
+        return await self.http.put(self._object(location), content=body, headers=headers)
+
+    async def delete(self, caller_token: str, request: list[dict[str, Any]], location: str) -> httpx.Response:
+        """`sfsync rm` (file-management's delete is idempotent: 204 whether or not it was there)."""
+        token = await self.token(caller_token, request)
+        return await self.http.delete(self._object(location), headers={"Authorization": f"Bearer {token}"})
+
+    async def exists(self, caller_token: str, request: list[dict[str, Any]], location: str) -> bool | None:
+        """Whether a file is there (a HEAD); None when that can't be told."""
+        token = await self.token(caller_token, request)
+        r = await self.http.head(self._object(location), headers={"Authorization": f"Bearer {token}"})
+        return True if r.status_code == 200 else False if r.status_code == 404 else None
 
     async def aclose(self) -> None:
         await self.http.aclose()

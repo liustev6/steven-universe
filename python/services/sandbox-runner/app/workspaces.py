@@ -1,7 +1,11 @@
 """Workspaces under quota (sandbox-runner.md R13): one directory per pod on the XFS disk.
 
-    /srv/workspaces/<sandbox id>/        an XFS project with a hard block limit
-        work/   outputs/                 owned by the sandbox's uid; bind-mounted at /workspace
+    /srv/workspaces/<sandbox id>/        an XFS project with a hard block limit; root's, bound at /workspace
+        work/                            the only folder the sandbox's uid may write (Codex starts here)
+        inputs/                          root's, empty: where the mounter's folder is bound read-only
+
+The agent writes only in `work/` (and its in-memory /tmp); nothing else under /workspace
+(files-and-mounts.md F1; `outputs/` dropped 2026-11-28).
 
 The VM's kernel enforces the limit, so it holds under gVisor (measured: writes past it fail with
 "No space left on device"). Deleted with the pod.
@@ -38,10 +42,10 @@ class XfsWorkspaces:
     def create(self, sandbox_id: uuid.UUID, slot: int, quota_mb: int) -> Path:
         """The pod's directory, with a hard limit of `quota_mb` (its template's workspace_mb)."""
         path = self.root / str(sandbox_id)
-        for sub in ("work", "outputs"):
-            (path / sub).mkdir(parents=True)
-        for p in (path, path / "work", path / "outputs"):
-            shutil.chown(p, self.uid, self.uid)
+        (path / "work").mkdir(parents=True)
+        (path / "inputs").mkdir()
+        path.chmod(0o755)                                   # readable by the sandbox, writable only by root
+        shutil.chown(path / "work", self.uid, self.uid)
         project = PROJECT_BASE + slot
         self._xfs_quota(f"project -s -p {path} {project}", f"limit -p bhard={quota_mb}m {project}")
         return path

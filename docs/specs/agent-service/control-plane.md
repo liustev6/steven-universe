@@ -119,6 +119,7 @@ reconnect and the keep-alive are part of the standard instead of ours.)
 | `tool.completed` | `tool_id`, `is_error`, `output`, `truncated` | A `tool.completed` |
 | `task.started` / `task.progress` / `task.completed` | `task_id`, `description`, `status`, `summary` | A `task.*` |
 | `turn.completed` | `status`, `reason`, `first_text_ms`, `duration_ms`, `usage` (**this turn's** tokens: `input_tokens`, `cached_input_tokens`, `output_tokens`, `reasoning_tokens`, `total_tokens`; null if unknown) | A `turn.completed`: Codex reports the thread's running total, so agent-service subtracts the total at the turn's start; the engine's other figures stay internal |
+| `artifact.created` / `artifact.deleted` | `location` (`<bucket>/<key>`), and for created `source`, `size`, `sha256` | the gateway's `/files`: a file saved or removed with `sfsync` (files-and-mounts.md F7; CP6) |
 | `error` | `code` (`no_sandbox`, `rate_limited`, `budget`, `runtime`, `internal`), `message` | agent-service, A `runtime.error`, A `model.rate_limited` |
 
 **From the sandbox, checked, not trusted:** each protocol A event is parsed on its own (a bad one is

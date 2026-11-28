@@ -75,6 +75,18 @@ profiles:
 
   # files (files-and-mounts.md F6): read the public bucket, and the caller's own notes; its folders
   # listed in its instructions
+  # saves into its own folder with sfsync (files-and-mounts.md F7, F10); a 1 MB limit to test it
+  saver:
+    template: chat
+    effort: low
+    instructions: You save reports.
+    files:
+      - {actions: [read, list], locations: ["public/steven-universe/"]}
+      - {actions: [read, list, write, delete], locations: ["private/session-files/${session}/"]}
+    tools: [shell]
+    limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000, max_file_mb: 1}
+    history: {carry_turns: 0}
+
   filed:
     template: chat
     effort: low

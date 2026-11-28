@@ -36,7 +36,8 @@ NAME_PATTERN = r"^[a-z][a-z0-9-]{0,31}$"
 TOOL_LOCATION = re.compile(r"^[a-z][a-z0-9_]*/([a-z][a-z0-9_]*)?$")
 # file-management locations (files-and-mounts.md F6): a bucket or a folder in it, ending in "/";
 # `${client}` is the session's caller (as auth-service's policy writes it)
-FILE_LOCATION = re.compile(r"^[a-z0-9-]+/(([A-Za-z0-9._-]+|\$\{client\})/)*$")
+# `${client}`: the caller's client; `${session}`: the session's id (its own folder, F10). Filled in at its start.
+FILE_LOCATION = re.compile(r"^[a-z0-9-]+/(([A-Za-z0-9._-]+|\$\{client\}|\$\{session\})/)*$")
 CALLER_INSTRUCTIONS_MAX = 4000                             # characters (C15)
 
 
@@ -67,6 +68,7 @@ class Limits(BaseModel):
     max_turns: int = Field(100, gt=0)                      # turns per session
     max_turn_tokens: int = Field(200_000, gt=0)            # tokens in one turn, from the runtime's usage events
     max_tool_calls: int = Field(20, gt=0)                  # tools-service calls per session, counted at the gateway (TL10)
+    max_file_mb: int = Field(25, gt=0, le=1024)            # per file saved with `sfsync put`, checked at the gateway (F7)
 
 
 class History(BaseModel):

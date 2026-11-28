@@ -15,13 +15,16 @@
 #   mcp_tools            tools-service's (tools.md TL5): absent = the session owner's whole grant there;
 #                        a list of locations narrows it ("weather/"); [] = none
 #   files                file-management (files-and-mounts.md F6): RFC 9396 file_access entries, as in
-#                        auth-service's policy (`${client}` = the caller); the session gets their overlap
-#                        with its caller's grant. read/list: mounted read-only at /workspace/inputs/<bucket>/…;
-#                        write/delete: `publish`. Absent (the default) = no files
+#                        auth-service's policy (`${client}` = the caller, `${session}` = the session's id);
+#                        the session gets their overlap with its caller's grant. read/list: mounted read-only
+#                        at /workspace/inputs/<bucket>/…; write/delete: `sfsync put` / `sfsync rm` (F7).
+#                        Sessions save into their own folder, private/session-files/${session}/ (F10).
+#                        Absent (the default) = no files
 #   The session's tools and files are always listed in its instructions, after the profile's own,
 #   when it has any: generated from what it was GRANTED (after the intersection with its caller's
 #   grant), never from what the profile asks for.
-#   limits               wall_seconds (the session), max_turns (per session), max_turn_tokens (per turn)
+#   limits               wall_seconds (the session), max_turns (per session), max_turn_tokens (per turn),
+#                        max_tool_calls (per session, 20), max_file_mb (per file saved with sfsync, 25)
 #   history              carry_turns: the conversation's last N turns, carried into a new session (C9)
 
 profiles:
@@ -78,6 +81,7 @@ profiles:
     mcp_tools: []                 # no tools-service tools
     files:
       - {actions: [read, list], locations: ["public/"]}
+      - {actions: [read, list, write, delete], locations: ["private/session-files/${session}/"]}   # its own folder
     limits: {wall_seconds: 1800, max_turns: 40, max_turn_tokens: 200000}
     history: {carry_turns: 6}
 

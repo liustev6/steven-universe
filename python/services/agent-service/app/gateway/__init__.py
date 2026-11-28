@@ -5,6 +5,7 @@
     model.py     /model/{path}: OpenAI with your login, within budget     (C11, C13)
     mcp.py       /mcp: the session's tools-service tools                 (tools.md)
     dav.py       /dav: the session's files, read-only, for its mounter   (files-and-mounts.md)
+    files.py     /files: `sfsync put` / `rm`, checked here                (files-and-mounts.md F7)
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ import httpx
 from fastapi import FastAPI
 
 from app.broker import ModelLogin
-from app.gateway import dav, mcp, model, runtime
+from app.gateway import dav, files, mcp, model, runtime
 from app.gateway.pairing import runtime_dependency
 from app.sessions import Sessions
 
@@ -25,6 +26,7 @@ def create_gateway(sessions: Sessions, login: ModelLogin, upstream: httpx.AsyncC
     app.include_router(runtime.build_router(sessions, paired))
     app.include_router(model.build_router(sessions, login, upstream, paired))
     app.include_router(dav.build_router(sessions, paired))
+    app.include_router(files.build_router(sessions, paired))
     app.state.mcp, route = mcp.create_mcp(sessions)
     app.router.routes.append(route)
     return app

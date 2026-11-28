@@ -97,10 +97,12 @@ clients:
     grants:
       agent-service:
         scopes: [chat:read, chat:write, chat:admin]
-      file-management:                   # its agent sessions' files (the steven-ai profile reads public/)
-        scopes: [files:read, files:list]
+      file-management:                   # its agent sessions' files (files-and-mounts.md F6, F10)
+        scopes: [files:read, files:list, files:write, files:delete]
         authorization_details:
-          - {type: file_access, actions: [read, list], locations: ["public/"]}
+          - {type: file_access, actions: [read, list], locations: ["public/"]}       # steven-ai reads the specs
+          # every session's own folder; the exchange narrows each session to private/session-files/<its id>/
+          - {type: file_access, actions: [read, list, write, delete], locations: ["private/session-files/"]}
 
   # speech-service's test client on your Mac (python/services/speech-service/test-client): talk to
   # the live service and hear it, and read its status; and its voice loop (speech → agent → speech),

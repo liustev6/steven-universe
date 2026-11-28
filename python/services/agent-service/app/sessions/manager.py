@@ -219,7 +219,7 @@ class Sessions:
                              caller_token: str | None) -> list[dict]:
         """What the session may do at file-management: the overlap of the profile's `files` with the
         caller's grant (F6), or [] (never fails a start: the session just has no files)."""
-        request = resolve(p.files, owner)
+        request = resolve(p.files, owner, session_id)
         if self.files is None or not caller_token or not request:
             return []
         try:

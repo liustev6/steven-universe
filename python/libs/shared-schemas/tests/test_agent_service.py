@@ -5,7 +5,8 @@ import pytest
 from pydantic import ValidationError
 
 from shared_schemas.agent_service import (
-    SCHEMA_FILE, BType, MessageDelta, ToolStarted, TurnCompleted, parse_body, schema_text,
+    SCHEMA_FILE, ArtifactCreated, ArtifactDeleted, BType, MessageDelta, ToolStarted, TurnCompleted, parse_body,
+    schema_text,
 )
 
 ENVELOPE = {"v": 0, "session_id": "s", "conversation_id": "c", "turn_id": "t", "seq": 3, "ts": "2026-11-27T00:00:00Z"}
@@ -16,6 +17,14 @@ def test_an_event_off_the_stream_is_its_body():
     assert isinstance(body, ToolStarted) and body.name == "web_search" and body.server
     done = parse_body({**ENVELOPE, "type": "turn.completed", "status": "completed", "usage": None})
     assert isinstance(done, TurnCompleted) and done.type == BType.TURN_COMPLETED
+
+
+def test_a_saved_or_removed_file_is_an_artifact_event():
+    saved = parse_body({**ENVELOPE, "type": "artifact.created", "location": "private/session-files/s/r.md",
+                        "source": "/workspace/work/r.md", "size": 12, "sha256": "ab"}, strict=True)
+    assert isinstance(saved, ArtifactCreated) and saved.size == 12
+    gone = parse_body({**ENVELOPE, "type": "artifact.deleted", "location": "private/session-files/s/r.md"}, strict=True)
+    assert gone == ArtifactDeleted(location="private/session-files/s/r.md")
 
 
 def test_callers_ignore_what_they_dont_know():
