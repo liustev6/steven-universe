@@ -11,7 +11,8 @@
     "build": "npm run build --workspace=@steven-universe/shared-schemas && npm run build --workspace=personal-website-new",
     "build:schemas": "npm run build --workspace=@steven-universe/shared-schemas",
     "build:website": "npm run build --workspace=personal-website-new",
-    "dev:old": "npm run start --workspace=portfolio"
+    "dev:old": "npm run start --workspace=portfolio",
+    "test": "npm run test --workspace=personal-website-new"
   },
   "description": "Steven Universe monorepo - TypeScript/React applications",
   "author": "Steven Liu",
