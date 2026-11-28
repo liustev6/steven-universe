@@ -7,19 +7,20 @@
 #   template             the runner's template: which pod (infra/services/sandbox-runner/templates.yaml)
 #   model, effort        null model = Codex's default for your plan
 #   instructions         the profile's own rules (optional): first in the agent's instructions
-#   caller_instructions  append: a caller may add its own (POST /v1/sessions `instructions`: where it
-#                        is, who it serves), after the profile's; none (the default): refused (C15)
-#   codex_instructions   true: added to Codex's (a coding agent); false: they replace them
+#   allow_caller_instructions   true: a caller may add its own (POST /v1/sessions `instructions`: where
+#                        it is, who it serves), after the profile's; false (the default): refused (C15)
+#   allow_codex_instructions    true (the default): Codex's own instructions (a coding agent, ~10k
+#                        tokens) kept, the profile's added to them; false: the profile's replace them
 #   tools                Codex's built-in tools allowed (shell, web_search, view_image); [] = none
 #   mcp_tools            tools-service's (tools.md TL5): absent = the session owner's whole grant there;
 #                        a list of locations narrows it ("weather/"); [] = none
-#   tool_instructions    append: the session's tools-service tools listed in its instructions, after the
-#                        profile's own (Codex keeps MCP tools behind its tool search); none (the default)
 #   files                file-management (files-and-mounts.md F6): RFC 9396 file_access entries, as in
 #                        auth-service's policy (`${client}` = the caller); the session gets their overlap
 #                        with its caller's grant. read/list: mounted read-only at /workspace/inputs/<bucket>/…;
 #                        write/delete: `publish`. Absent (the default) = no files
-#   files_instructions   append: the session's readable folders listed in its instructions; none (the default)
+#   The session's tools and files are always listed in its instructions, after the profile's own,
+#   when it has any: generated from what it was GRANTED (after the intersection with its caller's
+#   grant), never from what the profile asks for.
 #   limits               wall_seconds (the session), max_turns (per session), max_turn_tokens (per turn)
 #   history              carry_turns: the conversation's last N turns, carried into a new session (C9)
 
@@ -52,9 +53,8 @@ profiles:
       Each user message starts with `[now: …]`, the panel's local time, for your reference; never
       include it in your response. Use the "Additional Client Info" below only for place and
       time questions. **Never name the city or time zone** unless asked where you are.
-    caller_instructions: append
-    tool_instructions: append     # the session's tools, listed after these rules (tools.md)
-    codex_instructions: false     # fewer tokens per call (agent-runtime.md Q3)
+    allow_caller_instructions: true
+    allow_codex_instructions: false     # fewer tokens per call (agent-runtime.md Q3)
     tools: [web_search]           # runs at OpenAI: the sandbox still reaches only the gateway (G4)
     limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
     history: {carry_turns: 4}
@@ -73,12 +73,11 @@ profiles:
       The specs are Markdown files under /workspace/inputs/public/steven-universe/specs/ (read-only).
       Before answering, find what is relevant with your shell (ls, grep -rn, cat), and say which spec
       and section you used (e.g. "deployer.md, D21"). If the specs don't cover it, say so: don't guess.
-    codex_instructions: false
+    allow_codex_instructions: false
     tools: [shell]
     mcp_tools: []                 # no tools-service tools
     files:
       - {actions: [read, list], locations: ["public/"]}
-    files_instructions: append
     limits: {wall_seconds: 1800, max_turns: 40, max_turn_tokens: 200000}
     history: {carry_turns: 6}
 
@@ -87,7 +86,7 @@ profiles:
     template: chat
     effort: low
     instructions: Reply with exactly the word the user asks for, and nothing else.
-    codex_instructions: false
+    allow_codex_instructions: false
     mcp_tools: []                 # no tools: smoke-test is granted some for tools-service's own smoke test
     limits: {wall_seconds: 120, max_turns: 2, max_turn_tokens: 20000}
     history: {carry_turns: 0}

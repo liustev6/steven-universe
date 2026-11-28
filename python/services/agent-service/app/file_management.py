@@ -69,7 +69,8 @@ def locations(details: list[dict[str, Any]], *actions: str) -> list[str]:
 
 
 def file_instructions(details: list[dict[str, Any]], mount: str = "/workspace/inputs") -> str:
-    """The session's folders, for its instructions (a profile's `files_instructions: append`)."""
+    """The session's folders, for its instructions (always, when it has any): from `details`, what the
+    exchange GRANTED (after the intersection), never from the profile's request."""
     readable = locations(details, "read")
     if not readable:
         return ""

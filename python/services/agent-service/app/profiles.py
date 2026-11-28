@@ -8,9 +8,12 @@ A profile holds two kinds of settings:
   (C15). The sandbox never sees these.
 
 The agent's instructions, in order, from what never changes to what changes most (the prompt
-cache shares the longest identical start of a prompt): the profile's own rules, the session's tools
-(`tool_instructions`, generated from its tool list), the caller's (C15), the carried-over turns (C9). The profile's come first and a caller can only add to them; what an agent may *do*
-(model, tools, budgets) is enforced at the gateway, never by the instructions.
+cache shares the longest identical start of a prompt): the profile's own rules; the session's tools
+and its files, **generated from what it was granted** (after the intersection with its caller's
+grant: never from what the profile asked for), always, when it has any; the caller's (C15, if
+`allow_caller_instructions`); the carried-over turns (C9). The profile's come first and a caller can
+only add to them; what an agent may *do* (model, tools, budgets) is enforced at the gateway, never by
+the instructions.
 
 Any caller with `chat:write` may start any profile (C2): a profile's cost is bounded by its limits.
 """
@@ -78,11 +81,12 @@ class AgentProfile(BaseModel):
     model: str | None = None                               # None: Codex's default for your plan
     effort: str | None = None                              # checked against protocol A's values below
     instructions: str = ""                                 # the profile's own rules; optional
-    caller_instructions: Literal["none", "append"] = "none"   # may a caller add its own (C15)
-    # append: the session's tools-service tools, listed in its instructions (tools.md): Codex keeps MCP
-    # tools behind its tool search, so a model not told about them takes a built-in tool instead
-    tool_instructions: Literal["none", "append"] = "none"
-    codex_instructions: bool = True                        # False: `instructions` replace Codex's own
+    # May a caller add its own instructions (C15: appended after the profile's and the generated
+    # blocks)? A permission: a caller's text goes into the agent's prompt. Off by default.
+    allow_caller_instructions: bool = False
+    # Keep Codex's own instructions (a coding agent, ~10k tokens per call), with the profile's added as
+    # developer instructions? False: the profile's replace them (protocol A's `codex_instructions`).
+    allow_codex_instructions: bool = True
     tools: list[Tool] = Field(default_factory=list)       # Codex's built-in tools only (web_search, ...)
     # tools-service's tools (tools.md TL5): None (the default) = the owner's whole grant there; a list
     # of locations narrows it (the overlap); [] = none. Never a second copy of the grant.
@@ -90,8 +94,6 @@ class AgentProfile(BaseModel):
     # file-management (files-and-mounts.md F6): what its sessions ask for; [] (the default) = no files.
     # read/list locations are mounted at /workspace/inputs/<bucket>/<folder>/; write/delete: `publish`.
     files: list[FileAccess] = Field(default_factory=list)
-    # append: the session's granted folders, listed in its instructions after the tools (where to look)
-    files_instructions: Literal["none", "append"] = "none"
     limits: Limits = Field(default_factory=Limits)
     history: History = Field(default_factory=History)
 
@@ -109,14 +111,14 @@ class AgentProfile(BaseModel):
 
     def runtime(self, name: str, context: str = "", caller: str = "", tools: str = "") -> RuntimeProfile:
         """Protocol A's Profile for the session file: the profile's instructions, then `tools` (the
-        session's tool block, when the profile appends it), then the caller's (`caller`, C15; checked
-        by the caller of this), then `context` (the carried-over turns, C9), as one text, so the
-        runtime needs nothing new to use them."""
+        session's generated blocks: its tools and its files, from what it was granted), then the
+        caller's (`caller`, C15; checked by the caller of this), then `context` (the carried-over turns,
+        C9), as one text, so the runtime needs nothing new to use them."""
         parts = (self.instructions.strip(), tools.strip(), caller.strip(), context.strip())
         instructions = "\n\n".join(part for part in parts if part)
         return RuntimeProfile(
             name=name, model=self.model, effort=self.effort, instructions=instructions,
-            codex_instructions=self.codex_instructions, tools=self.tools,
+            codex_instructions=self.allow_codex_instructions, tools=self.tools,
             limits=RuntimeLimits(wall_seconds=self.limits.wall_seconds),
         )
 

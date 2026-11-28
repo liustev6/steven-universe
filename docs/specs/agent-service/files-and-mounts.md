@@ -73,7 +73,7 @@ publish (in the sandbox) → the pod's proxy → gateway: PUT/DELETE /files/…,
   (`/run/session`) and talks only to the gateway, through the proxy. It sends the file's bytes; the
   gateway decides.
 - **Off by default.** Only a profile with `write` (or `delete`) locations gets anything to publish to;
-  its instructions (`files_instructions: append`) tell the agent where and how. Running the CLI needs
+  its instructions (always, from what it was granted) tell the agent where and how. Running the CLI needs
   a shell (the profile's `tools: [shell]`); `pi` has none and stays read-only.
 - **Every change is audited twice:** `artifact.created` / `artifact.deleted` in the session's events,
   and file-management's audit line (*agent-service on behalf of the caller*).
@@ -184,8 +184,9 @@ For "the `agent` CLI asks a session to summarize its notes and save the summary"
 **How 6.5 works (agent-service):**
 - **The profile** asks in the policy's own words: `files:` RFC 9396 `file_access` entries,
   `${client}` filled in with the caller's client (`service:<client>`; an entry naming it is left out
-  for any other kind of caller). `files_instructions: append` lists the session's readable folders in
-  its instructions, after the tools.
+  for any other kind of caller). The session's readable folders are always listed in its instructions,
+  after the tools, from what the exchange *granted* (after the intersection), never from the profile's
+  request; nothing is listed for a session granted nothing.
 - **At the start** (`Sessions._session_files`), the caller's token is exchanged for the profile's
   request; what auth-service granted (the overlap, `grant_overlap`) is read from the new token's own
   `authorization_details` and stored on the session (`sessions.files`, migration 0004), like its

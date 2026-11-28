@@ -143,7 +143,7 @@ class Sessions:
         if p is None:
             raise UnknownProfile(f"unknown profile: {profile}")
         instructions = (instructions or "").strip() or None
-        if instructions and p.caller_instructions != "append":
+        if instructions and not p.allow_caller_instructions:
             raise InstructionsNotAllowed(f"the profile {profile!r} takes no caller instructions")
         if self.stopped:
             raise Stopped("agent-service is stopped (the kill switch)")
@@ -178,8 +178,10 @@ class Sessions:
         tools = await self._session_tools(session.id, p, caller_token)
         files = await self._session_files(session.id, p, owner, caller_token)
         block = "\n\n".join(b for b in (
-            tool_instructions(tools, MCP_SERVER) if p.tool_instructions == "append" else "",
-            file_instructions(files) if p.files_instructions == "append" else "") if b)
+            # Both from what the session was GRANTED (tools-service's list with the exchanged token;
+            # the exchange's granted file_access), after the intersection with the caller's grant:
+            # never from the profile's request. Always, when it has any; nothing when it has none.
+            tool_instructions(tools, MCP_SERVER), file_instructions(files)) if b)
         runtime = p.runtime(profile, context_text(carried, self.s.CARRY_CHARS), instructions or "", block)
         try:
             sandbox_id = await self.runner.claim(p.template, session.id, capability, runtime.model_dump(mode="json"))

@@ -8,7 +8,7 @@ profiles:
     effort: medium
     instructions: |
       You are a personal assistant. Answer directly.
-    codex_instructions: true
+    allow_codex_instructions: true
     limits: {wall_seconds: 3600, max_turns: 100, max_turn_tokens: 200000}
     history: {carry_turns: 6}
 
@@ -18,7 +18,7 @@ profiles:
     effort: low
     instructions: |
       You answer by voice. Reply in one to three short sentences of plain speech.
-    codex_instructions: false
+    allow_codex_instructions: false
     limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
     history: {carry_turns: 4}
 
@@ -28,8 +28,8 @@ profiles:
     effort: low
     instructions: |
       You are the panel's voice assistant.
-    caller_instructions: append
-    codex_instructions: false
+    allow_caller_instructions: true
+    allow_codex_instructions: false
     tools: [web_search]
     limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
     history: {carry_turns: 4}
@@ -39,7 +39,7 @@ profiles:
     template: chat
     effort: low
     instructions: Reply with exactly the word the user asks for, and nothing else.
-    codex_instructions: false
+    allow_codex_instructions: false
     limits: {wall_seconds: 120, max_turns: 2, max_turn_tokens: 20000}
     history: {carry_turns: 0}
 
@@ -48,9 +48,8 @@ profiles:
     template: chat
     effort: low
     instructions: You answer with tools.
-    codex_instructions: false
+    allow_codex_instructions: false
     mcp_tools: ["weather/"]
-    tool_instructions: append
     limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000, max_tool_calls: 2}
     history: {carry_turns: 0}
 
@@ -59,7 +58,7 @@ profiles:
     template: chat
     effort: low
     instructions: You answer without tools.
-    codex_instructions: false
+    allow_codex_instructions: false
     mcp_tools: []
     limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
     history: {carry_turns: 0}
@@ -69,9 +68,8 @@ profiles:
     template: chat
     effort: low
     instructions: You are the panel.
-    caller_instructions: append
-    tool_instructions: append
-    codex_instructions: false
+    allow_caller_instructions: true
+    allow_codex_instructions: false
     limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
     history: {carry_turns: 0}
 
@@ -84,7 +82,6 @@ profiles:
       You answer from the files.
     files:
       - {actions: [read, list], locations: ["public/steven-universe/", "private/${client}/notes/"]}
-    files_instructions: append
     tools: [shell]
     limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}
     history: {carry_turns: 4}

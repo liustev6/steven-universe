@@ -238,7 +238,8 @@ async def test_the_session_file_lists_its_tools_after_the_profiles_own_text(env)
     own, block = instructions.split("\n\n", 1)
     assert own == "You answer with tools."
     assert block.splitlines()[1:] == ["- mcp__tools__weather_current: now.", "- mcp__tools__weather_forecast: days."]
-    await env.sessions.start(ME, "chat", caller_token="t")                       # tool_instructions: none
+    # Always, from what was granted: a session with no tools gets no block (the profile asks for none)
+    await env.sessions.start(ME, "toolless", caller_token="t")
     assert "mcp__tools__" not in env.runner.claims[-1]["profile"]["instructions"]
 
 

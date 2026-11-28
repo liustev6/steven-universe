@@ -28,7 +28,8 @@ SCOPE = "tools:call"
 
 
 def tool_instructions(tools: list[dict[str, Any]], server: str = "tools") -> str:
-    """The session's tools, for its instructions (a profile's `tool_instructions: append`): each by the
+    """The session's tools, for its instructions (always, when it has any; the list tools-service gave
+    for the exchanged token: after the intersection, never the profile's request): each by the
     name the model sees (Codex: `mcp__<server>__<tool>`) and its description's first sentence. Sorted,
     so the same grants always give the same text (the prompt cache)."""
     if not tools:

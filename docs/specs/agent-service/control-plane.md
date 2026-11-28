@@ -54,7 +54,7 @@ project: the service and its own **PostgreSQL** (`python/services/agent-service/
 | C12 | **Profiles are a reviewed file:** `infra/services/agent-service/profiles.yaml`, installed by every deploy (the deployer's `files`). | Changing what an agent may do is a reviewed diff (G5). |
 | C13 | **Budgets are enforced at the gateway** (G14): turns per session, tokens per turn (counted from the model responses the gateway relays, never from what the sandbox reports), and the profile's wall time; past one, the model route refuses and the turn fails with a clear `error`. | The sandbox is assumed compromised; only the gateway's limits are real. |
 | C14 | **The kill switch:** `DELETE` a session; `POST /v1/admin/stop` (`chat:admin`) ends every session and refuses new ones until `…/start`; or stop the runner. The switch is a row in `flags`, so it stays on across restarts and deploys. | One call stops everything, without touching hosts. |
-| C15 | **A caller may add instructions, after the profile's** (2026-11-18): `POST /v1/sessions` takes `instructions` (at most 4,000 characters), accepted only by a profile with `caller_instructions: append` (else `400 instructions_not_allowed`). The agent's instructions are, in order: the profile's own (optional), the caller's, the carried-over turns (C9). Stored with the session (`sessions.instructions`); a live session keeps the ones it started with. Append only: no profile lets a caller replace its rules. | The profile is the reviewed policy, the same for every caller; the caller knows its own setting (where a panel is, its time zone, whom it serves), which shouldn't be in a shared file. Appending keeps the reviewed rules first, as OpenAI's Assistants API does with `additional_instructions`. It's safe to accept: what an agent may *do* (model, tools, budgets) is enforced at the gateway (C13), never by the prompt. |
+| C15 | **A caller may add instructions, after the profile's** (2026-11-18): `POST /v1/sessions` takes `instructions` (at most 4,000 characters), accepted only by a profile with `allow_caller_instructions: true` (default `false`; else `400 instructions_not_allowed`). The agent's instructions are, in order: the profile's own (optional), the caller's, the carried-over turns (C9). Stored with the session (`sessions.instructions`); a live session keeps the ones it started with. Append only: no profile lets a caller replace its rules. | The profile is the reviewed policy, the same for every caller; the caller knows its own setting (where a panel is, its time zone, whom it serves), which shouldn't be in a shared file. Appending keeps the reviewed rules first, as OpenAI's Assistants API does with `additional_instructions`. It's safe to accept: what an agent may *do* (model, tools, budgets) is enforced at the gateway (C13), never by the prompt. |
 
 ## The sessions API (443, callers)
 Auth: an auth-service token, `aud=agent-service`. Scopes: `chat:write` (start, talk in and end
@@ -210,9 +210,8 @@ profiles:
     effort: low
     instructions: |                # optional: the profile's own rules
       You are Hey Pi, … You answer by voice: one to three short sentences …
-    caller_instructions: append    # pi-server adds where the panel is (C15); default none
-    tool_instructions: append      # the session's tools-service tools listed (tools.md TL14); default none
-    codex_instructions: false      # 42% fewer tokens per call (agent-runtime.md Q3)
+    allow_caller_instructions: true   # pi-server adds where the panel is (C15); default false
+    allow_codex_instructions: false   # ours replace Codex's: 42% fewer tokens per call (agent-runtime.md Q3); default true
     tools: [web_search]            # Codex's built-ins only, run at OpenAI (no sandbox network, G4)
     # mcp_tools: [weather/]        # optional: narrows the caller's tools-service grant (tools.md TL5); absent = all of it
     limits: {wall_seconds: 1800, max_turns: 60, max_turn_tokens: 50000}   # max_tool_calls: 20 (default, TL10)
@@ -220,14 +219,16 @@ profiles:
   smoke:                           # deploy smoke tests: one short turn, as cheap as possible
     template: chat
     effort: low
-    codex_instructions: false
+    allow_codex_instructions: false
     mcp_tools: []                  # no tools
     limits: {wall_seconds: 120, max_turns: 2, max_turn_tokens: 20000}
     history: {carry_turns: 0}
 ```
 What reaches the runtime (protocol A's `Profile` in the session file) is the subset it needs
-(model, effort, instructions: the profile's, the session's tool list (tools.md TL14), the caller's (C15),
-then the carried-over turns (C9), as one text, from what never changes to what changes most (TL15);
+(model, effort, instructions: the profile's, the session's tools and files (tools.md TL14,
+files-and-mounts.md F6: always, when it has any, generated from what it was granted after the
+intersection with its caller's grant), the caller's (C15), then the carried-over turns (C9), as one
+text, from what never changes to what changes most (TL15); `allow_codex_instructions` as protocol A's
 `codex_instructions`, tools, wall time): `AgentProfile.runtime()` in `app/profiles.py`. The profiles
 `steven-ai` (the evidence chat) and `voice` were removed on 2026-11-18, unused since `pi`; the tests have
 their own profiles (`tests/profiles.yaml`).
